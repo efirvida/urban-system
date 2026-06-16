@@ -299,7 +299,7 @@ export default function MapView({
       }
       const el = document.createElement("div");
       el.className =
-        "flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white shadow-md";
+        "flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white shadow-md cursor-pointer transition-transform hover:scale-110";
       el.style.backgroundColor = color;
       el.textContent = label;
 
