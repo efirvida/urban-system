@@ -47,10 +47,9 @@ export default function Home() {
   }, []);
 
   const handleMappingConfirm = useCallback(
-    (mapping: ColumnMapping) => {
-      if (!rawData) return;
+    (mapping: ColumnMapping, dataRows: Record<string, unknown>[]) => {
       try {
-        const rows = applyMapping(rawData.rows, mapping);
+        const rows = applyMapping(dataRows, mapping);
         setValidatedRows(rows);
         setError(null);
         setPageState("review");
@@ -60,7 +59,7 @@ export default function Home() {
         );
       }
     },
-    [rawData]
+    []
   );
 
   const handleRowsChange = useCallback((rows: ValidatedRow[]) => {

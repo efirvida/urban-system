@@ -11,7 +11,8 @@ import {
 
 interface ColumnMapperProps {
   data: RawFileData;
-  onConfirm: (mapping: ColumnMapping, previewCount: number) => void;
+  /** Passes the mapping + the (possibly re-headed) rows to apply it on */
+  onConfirm: (mapping: ColumnMapping, rows: Record<string, unknown>[]) => void;
   onBack: () => void;
 }
 
@@ -297,7 +298,7 @@ export default function ColumnMapper({
           )}
         </div>
         <button
-          onClick={() => onConfirm(mapping, validCount)}
+          onClick={() => onConfirm(mapping, effectiveData.rows)}
           disabled={!allSelected}
           className="btn-primary"
         >
