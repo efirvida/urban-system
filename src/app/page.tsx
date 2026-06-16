@@ -273,6 +273,7 @@ export default function Home() {
           totalDistance: nsgaData.balanced.totalDistance,
           totalDays: nsgaData.balanced.days,
           totalLocations: locations.length,
+          _meta: nsgaData._meta,
         });
         setResultHaversine(null);
         setRoutingMode("osrm");
@@ -507,51 +508,61 @@ export default function Home() {
                 const labels = { balanced: "⚖️ Balanceada", minDistance: "📏 Mínima distancia", minDays: "📅 Mínimos días" } as const;
                 return (
                   <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3">
-                    <div className="text-xs font-semibold text-blue-700 mb-1 flex items-center justify-between">
-                      <span>🧬 Solución NSGA-II</span>
-                      <span className="text-[10px] text-blue-400 font-normal">
-                        {nsgaSolutions.minDistance.days === nsgaSolutions.minDays.days
-                          ? "⚠️ Sin diversidad"
-                          : `📊 ${nsgaSolutions.balanced.days}d · ${nsgaSolutions.balanced.totalDistance.toFixed(0)}km`
-                        }
-                        {nsgaSolutions.minDistance.totalDistance === nsgaSolutions.minDays.totalDistance &&
-                          nsgaSolutions.minDistance.days === nsgaSolutions.minDays.days &&
-                          <span className="ml-1 text-red-400">(idénticas)</span>
-                        }
-                      </span>
+                    <div className="text-xs font-semibold text-blue-700 mb-1">
+                      🧬 Solución NSGA-II
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      {(["balanced", "minDistance", "minDays"] as const).map((mode) => {
-                        const sol = nsgaSolutions[mode];
-                        const isActive = selectedNsgaMode === mode;
-                        return (
-                          <button
-                            key={mode}
-                            onClick={() => {
-                              setSelectedNsgaMode(mode);
-                              setResult({
-                                days: sol.dayRoutes,
-                                totalDistance: sol.totalDistance,
-                                totalDays: sol.days,
-                                totalLocations: locations.length,
-                              });
-                              setHiddenDays(new Set(sol.dayRoutes.slice(1).map((d) => d.day)));
-                            }}
-                            className={cn(
-                              "flex items-center justify-between w-full text-left px-3 py-2 rounded-md text-sm transition-all",
-                              isActive
-                                ? "bg-white text-blue-800 shadow-sm border border-blue-300 font-medium"
-                                : "text-gray-600 hover:bg-white/70 hover:text-gray-800"
-                            )}
-                          >
-                            <span>{labels[mode]}</span>
-                            <span className={cn("text-xs font-mono", isActive ? "text-blue-500" : "text-gray-400")}>
-                              {sol.days}d · {sol.totalDistance.toFixed(0)}km
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {(() => {
+                      const sameDist = nsgaSolutions.minDistance.totalDistance === nsgaSolutions.minDays.totalDistance;
+                      const sameDays = nsgaSolutions.minDistance.days === nsgaSolutions.minDays.days;
+                      const identical = sameDist && sameDays;
+                      const modes: Array<"balanced" | "minDistance" | "minDays"> = identical
+                        ? ["balanced"]
+                        : ["balanced", "minDistance", "minDays"];
+                      const labels = { balanced: "⚖️ Balanceada", minDistance: "📏 Mínima distancia", minDays: "📅 Mínimos días" } as const;
+                      return (
+                        <div className="flex flex-col gap-1.5">
+                          {modes.map((mode) => {
+                            const sol = nsgaSolutions[mode];
+                            const isActive = identical || selectedNsgaMode === mode;
+                            return (
+                              <button
+                                key={mode}
+                                onClick={() => {
+                                  setSelectedNsgaMode(mode);
+                                  setResult({
+                                    days: sol.dayRoutes,
+                                    totalDistance: sol.totalDistance,
+                                    totalDays: sol.days,
+                                    totalLocations: locations.length,
+                                    _meta: result._meta,
+                                  });
+                                  setHiddenDays(new Set(sol.dayRoutes.slice(1).map((d) => d.day)));
+                                }}
+                                className={cn(
+                                  "flex items-center justify-between w-full text-left px-3 py-2 rounded-md text-sm transition-all",
+                                  isActive
+                                    ? "bg-white text-blue-800 shadow-sm border border-blue-300 font-medium"
+                                    : "text-gray-600 hover:bg-white/70 hover:text-gray-800"
+                                )}
+                              >
+                                <span>{labels[mode] || mode}</span>
+                                <span className={cn("text-xs font-mono", isActive ? "text-blue-500" : "text-gray-400")}>
+                                  {identical && mode === "balanced"
+                                    ? `${sol.days}d · ${sol.totalDistance.toFixed(0)}km`
+                                    : `${sol.days}d · ${sol.totalDistance.toFixed(0)}km`
+                                  }
+                                </span>
+                              </button>
+                            );
+                          })}
+                          {identical && (
+                            <div className="text-[10px] text-gray-400 text-center mt-1">
+                              Las tres métricas convergen a la misma solución
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })()}

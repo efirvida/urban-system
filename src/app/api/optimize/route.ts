@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
       const home = { name: "Casa", lat: normalizedConfig.homeLat, lng: normalizedConfig.homeLng };
       const nsgaResult = runNSGA2(locations, home, normalizedConfig, distanceMatrix);
 
+      const elapsed = Date.now() - startTime;
       const response: NSGAResponse = {
         algorithm: "nsga2",
         minDistance: nsgaResult.minDistance,
@@ -118,6 +119,12 @@ export async function POST(request: NextRequest) {
         balanced: nsgaResult.balanced,
         generations: nsgaResult.generations,
         populationSize: nsgaResult.populationSize,
+        _meta: {
+          elapsedMs: elapsed,
+          osrmPairs: distanceMatrix ? Object.keys(distanceMatrix).length : 0,
+          totalPairs: (locations.length * (locations.length + 1)) / 2,
+          routingMode: distanceMatrix ? "osrm" : "haversine",
+        },
         _debug: nsgaResult._debug,
       };
 

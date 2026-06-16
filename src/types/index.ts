@@ -116,6 +116,12 @@ export interface NSGAResponse {
   balanced: ParetoSolution;
   generations: number;
   populationSize: number;
+  _meta?: {
+    elapsedMs: number;
+    osrmPairs: number;
+    totalPairs: number;
+    routingMode: "osrm" | "haversine";
+  };
   _debug?: {
     frontSize: number;
     uniqueDays: number[];
