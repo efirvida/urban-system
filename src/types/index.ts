@@ -116,4 +116,12 @@ export interface NSGAResponse {
   balanced: ParetoSolution;
   generations: number;
   populationSize: number;
+  _debug?: {
+    frontSize: number;
+    uniqueDays: number[];
+    uniqueDists: number[];
+    minDist: { days: number; km: number };
+    minDays: { days: number; km: number };
+    balanced: { days: number; km: number };
+  };
 }

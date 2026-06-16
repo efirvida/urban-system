@@ -332,6 +332,14 @@ export interface NSGAResult {
   paretoFront: ParetoSolution[];
   generations: number;
   populationSize: number;
+  _debug: {
+    frontSize: number;
+    uniqueDays: number[];
+    uniqueDists: number[];
+    minDist: { days: number; km: number };
+    minDays: { days: number; km: number };
+    balanced: { days: number; km: number };
+  };
 }
 
 export function runNSGA2(
@@ -354,7 +362,8 @@ export function runNSGA2(
     return { minDistance: { days: 0, totalDistance: 0, routes: [], dayRoutes: [] },
              minDays: { days: 0, totalDistance: 0, routes: [], dayRoutes: [] },
              balanced: { days: 0, totalDistance: 0, routes: [], dayRoutes: [] },
-             paretoFront: [], generations: 0, populationSize: 0 };
+             paretoFront: [], generations: 0, populationSize: 0,
+             _debug: { frontSize: 0, uniqueDays: [], uniqueDists: [], minDist: { days: 0, km: 0 }, minDays: { days: 0, km: 0 }, balanced: { days: 0, km: 0 } } };
   }
 
   // Initialize
@@ -459,13 +468,29 @@ export function runNSGA2(
     return score < bestScore ? sol : best;
   });
 
+  // Debug: log the Pareto front diversity
+  const uniqueDays = [...new Set(front.map(s => s.days))].sort((a, b) => a - b);
+  const uniqueDist = [...new Set(front.map(s => Math.round(s.totalDistance / 10) * 10))].sort((a, b) => a - b);
+  console.log(`[NSGA2] Front size: ${front.length}, Unique days: ${uniqueDays.join(",")}, Unique dists (by 10km): ${uniqueDist.join(",")}`);
+  console.log(`[NSGA2] MinDist: ${minDistance.days}d ${minDistance.totalDistance.toFixed(0)}km`);
+  console.log(`[NSGA2] MinDays: ${minDays.days}d ${minDays.totalDistance.toFixed(0)}km`);
+  console.log(`[NSGA2] Balanced: ${balanced.days}d ${balanced.totalDistance.toFixed(0)}km`);
+
   return {
     minDistance,
     minDays,
     balanced,
-    paretoFront: front,
+    paretoFront: front.slice(0, 5),
     generations: p.generations,
     populationSize: p.populationSize,
+    _debug: {
+      frontSize: front.length,
+      uniqueDays: uniqueDays,
+      uniqueDists: uniqueDist,
+      minDist: { days: minDistance.days, km: minDistance.totalDistance },
+      minDays: { days: minDays.days, km: minDays.totalDistance },
+      balanced: { days: balanced.days, km: balanced.totalDistance },
+    },
   };
 }
 
