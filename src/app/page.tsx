@@ -247,6 +247,9 @@ export default function Home() {
         if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
 
         const nsgaData: NSGAResponse = await res.json();
+        if (nsgaData._debug) {
+          console.log("[NSGA2]", nsgaData._debug);
+        }
         setNsgaSolutions({
           minDistance: nsgaData.minDistance,
           minDays: nsgaData.minDays,
@@ -494,7 +497,15 @@ export default function Home() {
                 const labels = { balanced: "⚖️ Balanceada", minDistance: "📏 Mínima distancia", minDays: "📅 Mínimos días" } as const;
                 return (
                   <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3">
-                    <div className="text-xs font-semibold text-blue-700 mb-2">🧬 Solución NSGA-II</div>
+                    <div className="text-xs font-semibold text-blue-700 mb-1 flex items-center justify-between">
+                      <span>🧬 Solución NSGA-II</span>
+                      <span className="text-[10px] text-blue-400 font-normal">
+                        {nsgaSolutions.minDistance.days === nsgaSolutions.minDays.days
+                          ? "⚠️ Sin diversidad"
+                          : "✅ " + nsgaSolutions.balanced.days + "d · " + nsgaSolutions.balanced.totalDistance.toFixed(0) + "km"
+                        }
+                      </span>
+                    </div>
                     <div className="flex flex-col gap-1.5">
                       {(["balanced", "minDistance", "minDays"] as const).map((mode) => {
                         const sol = nsgaSolutions[mode];
