@@ -18,9 +18,14 @@ export interface MatrixProgress {
 
 export type ProgressCallback = (p: MatrixProgress) => void;
 
+/** GeoJSON LineString coordinate pair */
+type CoordPair = [number, number];
+
 interface CacheEntry {
   distance: number;
   real: boolean;
+  /** Route geometry (road-following polyline) for visualization */
+  geometry?: CoordPair[];
 }
 
 // ─── LRU Cache (client-side) ─────────────────────────────────
@@ -63,29 +68,46 @@ const cache = new ClientCache();
 
 // ─── OSRM call from browser ──────────────────────────────────
 
+/** Coordinate-based key for geometry lookup: lat1,lng1|lat2,lng2 (sorted) */
+function coordKey(lat1: number, lng1: number, lat2: number, lng2: number): string {
+  const a = `${lat1.toFixed(6)},${lng1.toFixed(6)}`;
+  const b = `${lat2.toFixed(6)},${lng2.toFixed(6)}`;
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+interface OSRMResult {
+  distance: number;
+  geometry: CoordPair[];
+}
+
 async function osrmFetch(
   lat1: number,
   lng1: number,
   lat2: number,
   lng2: number,
   retries = 2
-): Promise<number | null> {
-  const url = `https://router.project-osrm.org/route/v1/driving/${lng1},${lat1};${lng2},${lat2}?overview=false&alternatives=false&steps=false`;
+): Promise<OSRMResult | null> {
+  const url =
+    `https://router.project-osrm.org/route/v1/driving/${lng1},${lat1};${lng2},${lat2}` +
+    `?overview=simplified&geometries=geojson&alternatives=false&steps=false`;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) {
-      // Wait before retry (500ms, 1s)
       await new Promise((r) => setTimeout(r, attempt * 500));
     }
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
+      const timeout = setTimeout(() => controller.abort(), 10000);
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timeout);
       if (!res.ok) continue;
       const data = await res.json();
       if (data.code !== "Ok" || !data.routes?.length) continue;
-      return data.routes[0].distance / 1000;
+      const route = data.routes[0];
+      return {
+        distance: route.distance / 1000,
+        geometry: route.geometry?.coordinates ?? [],
+      };
     } catch {
       continue;
     }
@@ -123,6 +145,11 @@ function cacheKey(homeLat: number, homeLng: number, locations: Array<{ lat: numb
   return CACHE_PREFIX + Math.abs(hash).toString(36);
 }
 
+export interface RouteGeometryMap {
+  /** "i,j" → array of [lng, lat] pairs forming the road path */
+  get: (i: number, j: number) => CoordPair[] | undefined;
+}
+
 export async function buildDistanceMatrices(
   homeLat: number,
   homeLng: number,
@@ -131,6 +158,7 @@ export async function buildDistanceMatrices(
 ): Promise<{
   osrmMatrix: Map<string, number>;
   haversineMatrix: Map<string, number>;
+  osrmGeometry: Map<string, CoordPair[]>;
 }> {
   const all = [{ lat: homeLat, lng: homeLng }, ...locations];
   const n = all.length;
@@ -157,6 +185,17 @@ export async function buildDistanceMatrices(
 
   if (cached) {
     const osrmMatrix = new Map(Object.entries(cached));
+    const osrmGeometry = new Map<string, CoordPair[]>();
+    // Rebuild geometry from cache if available
+    try {
+      const rawGeo = typeof window !== "undefined" ? window.localStorage.getItem(ck + "_geo") : null;
+      if (rawGeo) {
+        const parsed = JSON.parse(rawGeo) as Record<string, CoordPair[]>;
+        for (const [k, v] of Object.entries(parsed)) {
+          osrmGeometry.set(k, v);
+        }
+      }
+    } catch {}
     onProgress({
       phase: "matrix",
       stage: "Matriz de distancias cargada de caché",
@@ -167,11 +206,12 @@ export async function buildDistanceMatrices(
       realCount: Object.keys(cached).length,
       haversineCount: 0,
     });
-    return { osrmMatrix, haversineMatrix };
+    return { osrmMatrix, haversineMatrix, osrmGeometry };
   }
 
   // OSRM matrix — needs API calls
   const osrmMatrix = new Map<string, number>();
+  const osrmGeometry = new Map<string, CoordPair[]>();
 
   let done = 0;
   let realCount = 0;
@@ -244,9 +284,17 @@ export async function buildDistanceMatrices(
       try {
         const result = await osrmFetch(p1.lat, p1.lng, p2.lat, p2.lng);
         if (result !== null) {
-          const isReal = Math.abs(result - H) > 0.1;
-          osrmMatrix.set(key, result);
-          cache.set(p1.lat, p1.lng, p2.lat, p2.lng, { distance: result, real: isReal });
+          const isReal = Math.abs(result.distance - H) > 0.1;
+          osrmMatrix.set(key, result.distance);
+          if (result.geometry.length > 0) {
+            // Store by coordinate key for lookup independent of indices
+            osrmGeometry.set(coordKey(p1.lat, p1.lng, p2.lat, p2.lng), result.geometry);
+          }
+          cache.set(p1.lat, p1.lng, p2.lat, p2.lng, {
+            distance: result.distance,
+            real: isReal,
+            geometry: result.geometry.length > 0 ? result.geometry : undefined,
+          });
           if (isReal) realCount++;
           else haversineCount++;
         } else {
@@ -274,12 +322,17 @@ export async function buildDistanceMatrices(
   try {
     const obj: Record<string, number> = {};
     osrmMatrix.forEach((v, k) => { obj[k] = v; });
+    const geoObj: Record<string, CoordPair[]> = {};
+    osrmGeometry.forEach((v, k) => { geoObj[k] = v; });
     if (typeof window !== "undefined") {
       window.localStorage.setItem(ck, JSON.stringify(obj));
+      if (Object.keys(geoObj).length > 0) {
+        window.localStorage.setItem(ck + "_geo", JSON.stringify(geoObj));
+      }
     }
   } catch {}
 
-  return { osrmMatrix, haversineMatrix };
+  return { osrmMatrix, haversineMatrix, osrmGeometry };
 }
 
 /** Get distance from matrix */

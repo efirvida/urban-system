@@ -68,6 +68,8 @@ export default function Home() {
   const [resultHaversine, setResultHaversine] = useState<OptimizeResponse | null>(null);
   /** "osrm" = real roads, "haversine" = straight lines */
   const [routingMode, setRoutingMode] = useState<"osrm" | "haversine">("osrm");
+  /** Road-following geometry from OSRM: "i,j" → [lng,lat][], where 0=home */
+  const [routeGeometry, setRouteGeometry] = useState<Map<string, [number, number][]> | null>(null);
 
   // ── Map data (derived) ──
   const mapData = useMemo((): MapViewData => {
@@ -88,6 +90,7 @@ export default function Home() {
         home,
         hiddenDays,
         routingMode,
+        routeGeometry: routingMode === "osrm" ? routeGeometry ?? undefined : undefined,
       };
     }
 
@@ -96,7 +99,7 @@ export default function Home() {
     }
 
     return {};
-  }, [phase, validatedRows, locations, config, result, resultHaversine, hiddenDays, routingMode]);
+  }, [phase, validatedRows, locations, config, result, resultHaversine, hiddenDays, routingMode, routeGeometry]);
 
   // ── Handlers ──
   const handleFileLoaded = useCallback((data: RawFileData) => {
@@ -152,12 +155,15 @@ export default function Home() {
     try {
       // ── Phase 1: Build distance matrices (client-side) ──
       setOptimizePhase("matrix");
-      const { osrmMatrix, haversineMatrix } = await buildDistanceMatrices(
+      const { osrmMatrix, haversineMatrix, osrmGeometry } = await buildDistanceMatrices(
         config.homeLat,
         config.homeLng,
         locations,
         setMatrixProgress
       );
+
+      // Store road geometry for map visualization
+      setRouteGeometry(osrmGeometry);
 
       // Convert Maps to plain objects for JSON serialization
       const osrmObj: Record<string, number> = {};
