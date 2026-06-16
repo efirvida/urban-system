@@ -213,12 +213,49 @@ function sliceTour(
 
   while (ptr < tour.length) {
     dayIdx++;
+
+    // ── Collect as many stops as the constraint allows ──
+    const dayIndices: number[] = [];
+
+    while (ptr < tour.length) {
+      const proposed = [...dayIndices, tour[ptr]];
+      const km = estimateRouteKm(proposed, locations, home, precomputed);
+      const hours = km / config.avgSpeed + proposed.length * config.visitTime / 60;
+
+      let violation = false;
+      switch (config.constraintType) {
+        case "hours":
+          if (hours > config.constraintValue) violation = true;
+          break;
+        case "visits":
+          if (proposed.length > config.constraintValue) violation = true;
+          break;
+        case "capacity":
+          if (proposed.length > config.constraintValue) violation = true;
+          break;
+      }
+
+      if (violation) break;
+      dayIndices.push(tour[ptr]);
+      ptr++;
+    }
+
+    // Edge case: single location doesn't fit the constraint → force it
+    if (dayIndices.length === 0 && ptr < tour.length) {
+      dayIndices.push(tour[ptr]);
+      ptr++;
+    }
+
+    if (dayIndices.length === 0) break;
+
+    // ── Re-order within the day: Nearest Neighbor from home ──
+    const ordered = nearestNeighborWithinDay(dayIndices, locations, home, precomputed);
+
+    // ── Build stops ──
     const stops: Stop[] = [];
     let cumulativeDist = 0;
     let cumulativeTime = 0;
-    const nStops: number[] = [];
 
-    // Start at home
     stops.push({
       sequence: 0,
       name: home.name,
@@ -230,91 +267,32 @@ function sliceTour(
       isHome: true,
     });
 
-    let prevLat = home.lat;
-    let prevLng = home.lng;
-
-    while (ptr < tour.length) {
-      const locIdx = tour[ptr];
-      const loc = locations[locIdx];
-      const dSegment = pairDist(
-        nStops.length === 0 ? -1 : nStops[nStops.length - 1],
-        locIdx,
-        locations,
-        precomputed
-      );
-
-      // Calculate what the round trip would look like
-      const proposedKm = cumulativeDist + dSegment + pairDist(locIdx, -1, locations, precomputed);
-      const proposedStops = nStops.length + 1;
-      const proposedHours = proposedKm / config.avgSpeed + proposedStops * config.visitTime / 60;
-
-      let violation = false;
-      switch (config.constraintType) {
-        case "hours":
-          if (proposedHours > config.constraintValue) violation = true;
-          break;
-        case "visits":
-          if (proposedStops > config.constraintValue) violation = true;
-          break;
-        case "capacity":
-          if (proposedStops > config.constraintValue) violation = true;
-          break;
-      }
-
-      if (violation) break;
-
-      // Add to current day
-      const t = dSegment / config.avgSpeed;
-      cumulativeDist += dSegment;
+    for (let i = 0; i < ordered.length; i++) {
+      const idx = ordered[i];
+      const d = pairDist(i === 0 ? -1 : ordered[i - 1], idx, locations, precomputed);
+      const t = d / config.avgSpeed;
+      cumulativeDist += d;
       cumulativeTime += t + config.visitTime / 60;
-      nStops.push(locIdx);
 
       stops.push({
-        sequence: stops.length,
-        name: loc.name,
-        lat: loc.lat,
-        lng: loc.lng,
-        distanceFromPrev: dSegment,
+        sequence: i + 1,
+        name: locations[idx].name,
+        lat: locations[idx].lat,
+        lng: locations[idx].lng,
+        distanceFromPrev: d,
         cumulativeDistance: cumulativeDist,
         cumulativeTime: cumulativeTime,
         isHome: false,
       });
-
-      prevLat = loc.lat;
-      prevLng = loc.lng;
-      ptr++;
     }
 
-    // Return to home (only if we visited at least one stop)
-    if (nStops.length === 0) {
-      // Edge case: single location doesn't fit the constraint
-      // Force-add it anyway
-      const forcedIdx = tour[ptr];
-      const forcedLoc = locations[forcedIdx];
-      const dSeg = haversineDistance(home.lat, home.lng, forcedLoc.lat, forcedLoc.lng);
-      cumulativeDist = dSeg;
-      cumulativeTime = dSeg / config.avgSpeed + config.visitTime / 60;
-      nStops.push(forcedIdx);
-      stops.push({
-        sequence: 1,
-        name: forcedLoc.name,
-        lat: forcedLoc.lat,
-        lng: forcedLoc.lng,
-        distanceFromPrev: dSeg,
-        cumulativeDistance: cumulativeDist,
-        cumulativeTime: cumulativeTime,
-        isHome: false,
-      });
-      ptr++;
-    }
-
-    const returnDist = pairDist(nStops[nStops.length - 1], -1, locations, precomputed);
+    const returnDist = pairDist(ordered[ordered.length - 1], -1, locations, precomputed);
     const returnTime = returnDist / config.avgSpeed;
     cumulativeDist += returnDist;
     cumulativeTime += returnTime;
 
     stops.push({
-      sequence: stops.length,
+      sequence: ordered.length + 1,
       name: home.name,
       lat: home.lat,
       lng: home.lng,
@@ -329,9 +307,78 @@ function sliceTour(
       stops,
       totalDistance: cumulativeDist,
       totalTime: cumulativeTime,
-      totalStops: nStops.length,
+      totalStops: ordered.length,
     });
   }
 
   return days;
+}
+
+/** Estimate round-trip distance for a set of indices */
+function estimateRouteKm(
+  indices: number[],
+  locations: Location[],
+  home: Location,
+  precomputed?: Record<string, number>
+): number {
+  if (indices.length === 0) return 0;
+  if (indices.length === 1) {
+    return 2 * pairDist(indices[0], -1, locations, precomputed);
+  }
+
+  // Simple NN ordering estimate
+  const unvisited = new Set(indices);
+  let current = -1; // home
+  let total = 0;
+
+  while (unvisited.size > 0) {
+    let nearest = -1;
+    let minD = Infinity;
+    for (const idx of unvisited) {
+      const d = pairDist(current, idx, locations, precomputed);
+      if (d < minD) {
+        minD = d;
+        nearest = idx;
+      }
+    }
+    if (nearest === -1) break;
+    total += minD;
+    current = nearest;
+    unvisited.delete(nearest);
+  }
+
+  total += pairDist(current, -1, locations, precomputed); // return home
+  return total;
+}
+
+/** Nearest Neighbor ordering from home */
+function nearestNeighborWithinDay(
+  indices: number[],
+  locations: Location[],
+  home: Location,
+  precomputed?: Record<string, number>
+): number[] {
+  if (indices.length <= 1) return indices;
+
+  const unvisited = new Set(indices);
+  const ordered: number[] = [];
+  let current = -1; // home
+
+  while (unvisited.size > 0) {
+    let nearest = -1;
+    let minD = Infinity;
+    for (const idx of unvisited) {
+      const d = pairDist(current, idx, locations, precomputed);
+      if (d < minD) {
+        minD = d;
+        nearest = idx;
+      }
+    }
+    if (nearest === -1) break;
+    ordered.push(nearest);
+    current = nearest;
+    unvisited.delete(nearest);
+  }
+
+  return ordered;
 }
