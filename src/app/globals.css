@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-gray-200;
+  }
+
+  body {
+    @apply bg-white text-gray-900 antialiased;
+  }
+}
+
+@layer components {
+  .split-layout {
+    @apply grid grid-cols-1 lg:grid-cols-2 gap-6;
+  }
+
+  .card-base {
+    @apply bg-white rounded-lg border border-gray-200 shadow-sm;
+  }
+
+  .card-header {
+    @apply px-4 py-3 border-b border-gray-200 font-semibold text-sm;
+  }
+
+  .card-body {
+    @apply p-4;
+  }
+
+  .input-field {
+    @apply w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2
+           text-sm font-medium text-white shadow-sm
+           hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500
+           disabled:opacity-50 disabled:cursor-not-allowed
+           transition-colors duration-150;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-md border border-gray-300
+           bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm
+           hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500
+           disabled:opacity-50 disabled:cursor-not-allowed
+           transition-colors duration-150;
+  }
+}
+
+/* Map container must have explicit height */
+.map-container {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+}
+
+.maplibregl-popup-content {
+  font-size: 13px;
+  padding: 10px !important;
+  border-radius: 8px !important;
+}
+
+.maplibregl-popup-close-button {
+  font-size: 16px;
+  padding: 4px;
+}
