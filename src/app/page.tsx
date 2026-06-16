@@ -247,8 +247,18 @@ export default function Home() {
         if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
 
         const nsgaData: NSGAResponse = await res.json();
-        if (nsgaData._debug) {
-          console.log("[NSGA2]", nsgaData._debug);
+        // Debug NSGA-II response
+        if (typeof window !== "undefined") {
+          (window as any).__nsgaDebug = nsgaData._debug || nsgaData;
+          console.log("[NSGA2] Response received", nsgaData._debug ? "with debug" : "NO debug data");
+          if (nsgaData._debug) {
+            console.log("[NSGA2] Front size:", nsgaData._debug.frontSize);
+            console.log("[NSGA2] Days diversity:", nsgaData._debug.uniqueDays);
+          } else {
+            console.log("[NSGA2] minDistance:", nsgaData.minDistance?.days, "days", nsgaData.minDistance?.totalDistance, "km");
+            console.log("[NSGA2] minDays:", nsgaData.minDays?.days, "days", nsgaData.minDays?.totalDistance, "km");
+            console.log("[NSGA2] balanced:", nsgaData.balanced?.days, "days", nsgaData.balanced?.totalDistance, "km");
+          }
         }
         setNsgaSolutions({
           minDistance: nsgaData.minDistance,
@@ -502,7 +512,11 @@ export default function Home() {
                       <span className="text-[10px] text-blue-400 font-normal">
                         {nsgaSolutions.minDistance.days === nsgaSolutions.minDays.days
                           ? "⚠️ Sin diversidad"
-                          : "✅ " + nsgaSolutions.balanced.days + "d · " + nsgaSolutions.balanced.totalDistance.toFixed(0) + "km"
+                          : `📊 ${nsgaSolutions.balanced.days}d · ${nsgaSolutions.balanced.totalDistance.toFixed(0)}km`
+                        }
+                        {nsgaSolutions.minDistance.totalDistance === nsgaSolutions.minDays.totalDistance &&
+                          nsgaSolutions.minDistance.days === nsgaSolutions.minDays.days &&
+                          <span className="ml-1 text-red-400">(idénticas)</span>
                         }
                       </span>
                     </div>
