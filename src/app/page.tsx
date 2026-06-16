@@ -74,7 +74,7 @@ export default function Home() {
   const [routeGeometry, setRouteGeometry] = useState<Map<string, [number, number][]> | null>(null);
 
   // NSGA-II
-  const [algorithm, setAlgorithm] = useState<"deterministic" | "nsga2">("deterministic");
+  const [algorithm, setAlgorithm] = useState<"deterministic" | "nsga2">("nsga2");
   const [nsgaSolutions, setNsgaSolutions] = useState<{
     minDistance: NSGAResponse["minDistance"];
     minDays: NSGAResponse["minDays"];
