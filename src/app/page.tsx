@@ -80,7 +80,7 @@ export default function Home() {
     }
 
     return {};
-  }, [phase, validatedRows, locations, config, result]);
+  }, [phase, validatedRows, locations, config, result, hiddenDays]);
 
   // ── Handlers ──
   const handleFileLoaded = useCallback((data: RawFileData) => {
