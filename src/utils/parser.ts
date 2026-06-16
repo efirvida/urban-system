@@ -1,20 +1,18 @@
-import { Location, OdsRow } from "@/types";
 import * as XLSX from "xlsx";
+import { RawFileData, ColumnMapping, ValidatedRow, Location } from "@/types";
+
+// ─── Step 1: Extract raw data from file ──────────────────────
 
 /**
- * Parse a .ods (or .xlsx/.xls) file buffer into an array of Locations.
- *
- * Expected columns (case-insensitive):
- *   - "Nombre" (string) — location name
- *   - "Latitud" (number) — latitude
- *   - "Longitud" (number) — longitude
- *
- * @throws Error if the file format is invalid or required columns are missing
+ * Read a spreadsheet buffer and return all columns + all rows
+ * without applying any mapping or validation.
  */
-export function parseLocationsFromFile(buffer: ArrayBuffer): Location[] {
+export function extractRawData(
+  buffer: ArrayBuffer,
+  fileName: string
+): RawFileData {
   const workbook = XLSX.read(buffer, { type: "array" });
 
-  // Use the first sheet
   const firstSheetName = workbook.SheetNames[0];
   if (!firstSheetName) {
     throw new Error("El archivo no contiene ninguna hoja de cálculo.");
@@ -22,9 +20,9 @@ export function parseLocationsFromFile(buffer: ArrayBuffer): Location[] {
 
   const sheet = workbook.Sheets[firstSheetName];
 
-  // Convert to JSON (raw: false to get formatted values)
+  // raw: true so numbers stay as numbers, empty cells as undefined
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-    raw: false,
+    raw: true,
     defval: "",
   });
 
@@ -32,73 +30,122 @@ export function parseLocationsFromFile(buffer: ArrayBuffer): Location[] {
     throw new Error("La hoja de cálculo está vacía.");
   }
 
-  // Find column indices by name (case-insensitive)
-  const headers = Object.keys(rows[0]);
-  const findHeader = (variants: string[]): string | undefined => {
-    return headers.find((h) =>
-      variants.some((v) => h.toLowerCase() === v.toLowerCase())
+  const columns = Object.keys(rows[0]);
+
+  return { fileName, columns, rows };
+}
+
+// ─── Step 2: Apply column mapping → validated rows ───────────
+
+/**
+ * Given raw rows and a column mapping, produce validated rows.
+ * Every row gets a row, invalid ones are marked with isValid=false.
+ */
+export function applyMapping(
+  rows: Record<string, unknown>[],
+  mapping: ColumnMapping
+): ValidatedRow[] {
+  return rows.map((row, idx) => {
+    const rawName = String(row[mapping.nameColumn] ?? "").trim();
+    const rawLat = String(row[mapping.latColumn] ?? "").trim();
+    const rawLng = String(row[mapping.lngColumn] ?? "").trim();
+
+    const parsedLat = parseFloatCoords(rawLat);
+    const parsedLng = parseFloatCoords(rawLng);
+
+    const errors: string[] = [];
+
+    if (!rawName) {
+      errors.push("Nombre vacío");
+    }
+
+    if (isNaN(parsedLat)) {
+      errors.push(`Latitud inválida: "${rawLat}"`);
+    } else if (parsedLat < -90 || parsedLat > 90) {
+      errors.push(`Latitud fuera de rango: ${parsedLat}`);
+    }
+
+    if (isNaN(parsedLng)) {
+      errors.push(`Longitud inválida: "${rawLng}"`);
+    } else if (parsedLng < -180 || parsedLng > 180) {
+      errors.push(`Longitud fuera de rango: ${parsedLng}`);
+    }
+
+    return {
+      id: `row-${idx}`,
+      selected: errors.length === 0, // auto-deselect invalid rows
+      name: rawName,
+      lat: isNaN(parsedLat) ? null : parsedLat,
+      lng: isNaN(parsedLng) ? null : parsedLng,
+      rawName,
+      rawLat,
+      rawLng,
+      isValid: errors.length === 0,
+      validationError: errors.length > 0 ? errors.join("; ") : undefined,
+      edited: false,
+    };
+  });
+}
+
+// ─── Helpers ─────────────────────────────────────────────────
+
+/** Parse a coordinate string — handles both "." and "," as decimal sep */
+function parseFloatCoords(value: string): number {
+  if (!value) return NaN;
+  const normalized = value.replace(",", ".");
+  return parseFloat(normalized);
+}
+
+/** Auto-detect column mapping from column names */
+export function autoDetectMapping(
+  columns: string[]
+): ColumnMapping | null {
+  const lowerCols = columns.map((c) => c.toLowerCase().trim());
+
+  const findCol = (variants: string[]): string | undefined => {
+    const idx = lowerCols.findIndex((c) =>
+      variants.some((v) => c === v || c.startsWith(v))
     );
+    return idx !== -1 ? columns[idx] : undefined;
   };
 
-  const nombreCol = findHeader(["nombre"]);
-  const latitudCol = findHeader(["latitud", "latitude", "lat"]);
-  const longitudCol = findHeader(["longitud", "longitude", "lng", "lon"]);
+  const nameCol =
+    findCol(["nombre", "name", "location", "dirección", "direccion", "title"]) ??
+    columns[0]; // fallback: first column
 
-  if (!nombreCol || !latitudCol || !longitudCol) {
-    const missing: string[] = [];
-    if (!nombreCol) missing.push("'Nombre'");
-    if (!latitudCol) missing.push("'Latitud'");
-    if (!longitudCol) missing.push("'Longitud'");
-    throw new Error(
-      `Columnas requeridas no encontradas: ${missing.join(", ")}. ` +
-        `Columnas disponibles: ${headers.join(", ")}`
-    );
-  }
+  const latCol = findCol([
+    "latitud",
+    "latitude",
+    "lat",
+    "y",
+    "coord_y",
+    "coordenada_y",
+  ]);
 
-  const locations: Location[] = [];
+  const lngCol = findCol([
+    "longitud",
+    "longitude",
+    "lng",
+    "lon",
+    "long",
+    "x",
+    "coord_x",
+    "coordenada_x",
+  ]);
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const rawNombre = String(row[nombreCol] ?? "").trim();
-    const rawLat = parseFloat(String(row[latitudCol]).replace(",", "."));
-    const rawLng = parseFloat(String(row[longitudCol]).replace(",", "."));
+  if (!latCol || !lngCol) return null;
+  return { nameColumn: nameCol, latColumn: latCol, lngColumn: lngCol };
+}
 
-    if (!rawNombre) {
-      continue; // skip rows without a name
-    }
+// ─── Convert ValidatedRows to Locations (final step) ─────────
 
-    if (isNaN(rawLat) || isNaN(rawLng)) {
-      throw new Error(
-        `Fila ${i + 2}: coordenadas inválidas para "${rawNombre}". ` +
-          `Lat: ${row[latitudCol]}, Lng: ${row[longitudCol]}`
-      );
-    }
-
-    if (rawLat < -90 || rawLat > 90) {
-      throw new Error(
-        `Fila ${i + 2}: latitud fuera de rango (-90 a 90) para "${rawNombre}": ${rawLat}`
-      );
-    }
-
-    if (rawLng < -180 || rawLng > 180) {
-      throw new Error(
-        `Fila ${i + 2}: longitud fuera de rango (-180 a 180) para "${rawNombre}": ${rawLng}`
-      );
-    }
-
-    locations.push({
-      name: rawNombre,
-      lat: rawLat,
-      lng: rawLng,
-    });
-  }
-
-  if (locations.length === 0) {
-    throw new Error(
-      "No se encontraron ubicaciones válidas en el archivo. " +
-        "Asegúrate de que las filas tengan nombre y coordenadas."
-    );
-  }
-
-  return locations;
+/** Filter selected + valid rows and return Location[] */
+export function validatedToLocations(rows: ValidatedRow[]): Location[] {
+  return rows
+    .filter((r) => r.selected && r.isValid && r.lat !== null && r.lng !== null)
+    .map((r) => ({
+      name: r.name,
+      lat: r.lat!,
+      lng: r.lng!,
+    }));
 }

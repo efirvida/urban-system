@@ -1,15 +1,15 @@
 "use client";
 
 import { useCallback, useState, useRef } from "react";
-import { Location } from "@/types";
-import { parseLocationsFromFile } from "@/utils/parser";
+import { RawFileData } from "@/types";
+import { extractRawData, autoDetectMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
 
 interface FileUploadProps {
-  onLocationsLoaded: (locations: Location[]) => void;
+  onFileLoaded: (data: RawFileData) => void;
 }
 
-export default function FileUpload({ onLocationsLoaded }: FileUploadProps) {
+export default function FileUpload({ onFileLoaded }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -20,7 +20,6 @@ export default function FileUpload({ onLocationsLoaded }: FileUploadProps) {
       setError(null);
       setLoading(true);
 
-      // Validate extension
       const ext = file.name.split(".").pop()?.toLowerCase();
       if (!ext || !["ods", "xlsx", "xls"].includes(ext)) {
         setError(
@@ -32,8 +31,19 @@ export default function FileUpload({ onLocationsLoaded }: FileUploadProps) {
 
       try {
         const buffer = await file.arrayBuffer();
-        const locations = parseLocationsFromFile(buffer);
-        onLocationsLoaded(locations);
+        const rawData = extractRawData(buffer, file.name);
+
+        // Auto-detect mapping to verify columns are usable
+        const suggested = autoDetectMapping(rawData.columns);
+        if (!suggested) {
+          // Still pass the data — the user can map manually
+          setError(
+            "No se pudieron detectar automáticamente las columnas " +
+              "de latitud/longitud. Seleccionalas manualmente."
+          );
+        }
+
+        onFileLoaded(rawData);
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Error al leer el archivo"
@@ -42,7 +52,7 @@ export default function FileUpload({ onLocationsLoaded }: FileUploadProps) {
         setLoading(false);
       }
     },
-    [onLocationsLoaded]
+    [onFileLoaded]
   );
 
   const handleDrop = useCallback(
@@ -110,7 +120,7 @@ export default function FileUpload({ onLocationsLoaded }: FileUploadProps) {
               o haz clic para seleccionar (también .xlsx / .xls)
             </p>
             <div className="inline-block text-xs bg-gray-200 rounded px-2 py-1 text-gray-500">
-              Columnas: Nombre · Latitud · Longitud
+              Seleccionarás las columnas después
             </div>
           </div>
         )}
