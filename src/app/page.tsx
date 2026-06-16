@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useMemo, useRef } from "react";
+import { useCallback, useState, useMemo } from "react";
 import {
   Location,
   Config,
@@ -11,6 +11,7 @@ import {
 } from "@/types";
 import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
+import { buildDistanceMatrices, MatrixProgress } from "@/utils/clientRouting";
 
 import FileUpload from "@/components/FileUpload";
 import ColumnMapper from "@/components/ColumnMapper";
@@ -18,6 +19,7 @@ import DataEditor from "@/components/DataEditor";
 import ConfigPanel from "@/components/ConfigPanel";
 import ResultsPanel from "@/components/ResultsPanel";
 import OptimizeButton from "@/components/OptimizeButton";
+import OptimizeProgress from "@/components/OptimizeProgress";
 import MapView, { MapViewData } from "@/components/MapView";
 import Sidebar from "@/components/Sidebar";
 
@@ -60,6 +62,13 @@ export default function Home() {
   const [placementMode, setPlacementMode] = useState<"home" | null>(null);
   const [hiddenDays, setHiddenDays] = useState<Set<number>>(new Set());
 
+  // Optimization progress & dual results
+  const [optimizePhase, setOptimizePhase] = useState<"idle" | "matrix" | "algorithm" | "done" | "error">("idle");
+  const [matrixProgress, setMatrixProgress] = useState<MatrixProgress | null>(null);
+  const [resultHaversine, setResultHaversine] = useState<OptimizeResponse | null>(null);
+  /** "osrm" = real roads, "haversine" = straight lines */
+  const [routingMode, setRoutingMode] = useState<"osrm" | "haversine">("osrm");
+
   // ── Map data (derived) ──
   const mapData = useMemo((): MapViewData => {
     const home =
@@ -71,8 +80,15 @@ export default function Home() {
       return { markers: validatedRows };
     }
 
-    if (phase === "results" && result) {
-      return { routes: result.days, locations, home, hiddenDays };
+    if (phase === "results" && (result || resultHaversine)) {
+      const activeResult = routingMode === "osrm" ? result : resultHaversine;
+      return {
+        routes: activeResult?.days,
+        locations,
+        home,
+        hiddenDays,
+        routingMode,
+      };
     }
 
     if (phase === "config") {
@@ -80,7 +96,7 @@ export default function Home() {
     }
 
     return {};
-  }, [phase, validatedRows, locations, config, result, hiddenDays]);
+  }, [phase, validatedRows, locations, config, result, resultHaversine, hiddenDays, routingMode]);
 
   // ── Handlers ──
   const handleFileLoaded = useCallback((data: RawFileData) => {
@@ -130,23 +146,59 @@ export default function Home() {
 
     setLoading(true);
     setError(null);
+    setOptimizePhase("matrix");
+    setMatrixProgress(null);
 
     try {
-      const res = await fetch("/api/optimize", {
+      // ── Phase 1: Build distance matrices (client-side) ──
+      setOptimizePhase("matrix");
+      const { osrmMatrix, haversineMatrix } = await buildDistanceMatrices(
+        config.homeLat,
+        config.homeLng,
+        locations,
+        setMatrixProgress
+      );
+
+      // Convert Maps to plain objects for JSON serialization
+      const osrmObj: Record<string, number> = {};
+      osrmMatrix.forEach((v, k) => { osrmObj[k] = v; });
+      const havObj: Record<string, number> = {};
+      haversineMatrix.forEach((v, k) => { havObj[k] = v; });
+
+      // ── Phase 2: Run algorithm with OSRM matrix ──
+      setOptimizePhase("algorithm");
+      setMatrixProgress(null);
+
+      const resOSRM = await fetch("/api/optimize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locations, config }),
+        body: JSON.stringify({ locations, config, distanceMatrix: osrmObj }),
       });
-      if (!res.ok) {
-        const err = await res.json();
+
+      // Run algorithm with Haversine matrix
+      const resHav = await fetch("/api/optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locations, config, distanceMatrix: havObj }),
+      });
+
+      if (!resOSRM.ok) {
+        const err = await resOSRM.json();
         throw new Error(err.error || "Error en la optimización");
       }
-      const data: OptimizeResponse = await res.json();
-      setResult(data);
+
+      const osrmResult: OptimizeResponse = await resOSRM.json();
+      const havResult: OptimizeResponse = await resHav.json();
+
+      setResult(osrmResult);
+      setResultHaversine(havResult);
+      setRoutingMode("osrm");
+      setOptimizePhase("done");
       setPhase("results");
       setSidebarOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error inesperado");
+      setOptimizePhase("error");
     } finally {
       setLoading(false);
     }
@@ -257,25 +309,35 @@ export default function Home() {
           <>
             {stepsNode}
             <div className="mt-3 space-y-4">
-              <ConfigPanel
-                config={config}
-                onChange={setConfig}
-                locationCount={locations.length}
-                placingHome={placementMode === "home"}
-                onTogglePlaceHome={handleTogglePlaceHome}
-              />
-              <OptimizeButton
-                onClick={handleOptimize}
-                loading={loading}
-                disabled={locations.length === 0}
-              />
-
-              <button
-                onClick={() => setPhase("review")}
-                className="btn-secondary w-full text-sm"
-              >
-                ← Volver a editar ubicaciones
-              </button>
+              {optimizePhase === "idle" || optimizePhase === "done" ? (
+                <>
+                  <ConfigPanel
+                    config={config}
+                    onChange={setConfig}
+                    locationCount={locations.length}
+                    placingHome={placementMode === "home"}
+                    onTogglePlaceHome={handleTogglePlaceHome}
+                  />
+                  <OptimizeButton
+                    onClick={handleOptimize}
+                    loading={loading}
+                    disabled={locations.length === 0}
+                  />
+                  <button
+                    onClick={() => setPhase("review")}
+                    className="btn-secondary w-full text-sm"
+                  >
+                    ← Volver a editar ubicaciones
+                  </button>
+                </>
+              ) : (
+                <OptimizeProgress
+                  progress={matrixProgress}
+                  phase={optimizePhase === "algorithm" ? "algorithm" : "matrix"}
+                  totalLocations={locations.length}
+                  error={error ?? undefined}
+                />
+              )}
             </div>
           </>
         );
@@ -284,11 +346,51 @@ export default function Home() {
         return result ? (
           <>
             {stepsNode}
-            <div className="mt-3">
+            <div className="mt-3 space-y-3">
+              {/* Routing mode toggle */}
+              {resultHaversine && (
+                <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1 border">
+                  <button
+                    onClick={() => setRoutingMode("osrm")}
+                    className={cn(
+                      "flex-1 text-xs py-1.5 px-3 rounded-md font-medium transition-colors",
+                      routingMode === "osrm"
+                        ? "bg-white text-blue-700 shadow-sm border"
+                        : "text-gray-500 hover:text-gray-700"
+                    )}
+                  >
+                    🚗 Ruta real
+                  </button>
+                  <button
+                    onClick={() => setRoutingMode("haversine")}
+                    className={cn(
+                      "flex-1 text-xs py-1.5 px-3 rounded-md font-medium transition-colors",
+                      routingMode === "haversine"
+                        ? "bg-white text-blue-700 shadow-sm border"
+                        : "text-gray-500 hover:text-gray-700"
+                    )}
+                  >
+                    📏 Línea recta
+                  </button>
+                </div>
+              )}
+
               <ResultsPanel
-                days={result.days}
-                totalDistance={result.totalDistance}
-                totalDays={result.totalDays}
+                days={
+                  routingMode === "osrm"
+                    ? result.days
+                    : resultHaversine?.days ?? result.days
+                }
+                totalDistance={
+                  routingMode === "osrm"
+                    ? result.totalDistance
+                    : resultHaversine?.totalDistance ?? result.totalDistance
+                }
+                totalDays={
+                  routingMode === "osrm"
+                    ? result.totalDays
+                    : resultHaversine?.totalDays ?? result.totalDays
+                }
                 totalLocations={result.totalLocations}
                 hiddenDays={hiddenDays}
                 onToggleDay={(day) =>
@@ -299,9 +401,10 @@ export default function Home() {
                     return next;
                   })
                 }
+                routingLabel={routingMode === "osrm" ? "🚗 Rutas reales" : "📏 Línea recta"}
               />
 
-              <div className="mt-4 flex flex-col gap-2">
+              <div className="flex flex-col gap-2">
                 <button
                   onClick={() => setPhase("config")}
                   className="btn-secondary w-full text-sm"

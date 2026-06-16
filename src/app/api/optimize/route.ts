@@ -5,9 +5,11 @@ import { optimizeRoutes } from "@/utils/routerOptimizer";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { locations, config } = body as {
+    const { locations, config, distanceMatrix } = body as {
       locations: Location[];
       config: Config;
+      /** Optional pre-computed distance matrix: "i,j" → km */
+      distanceMatrix?: Record<string, number>;
     };
 
     // ─── Validation ─────────────────────────────────────────
@@ -102,7 +104,7 @@ export async function POST(request: NextRequest) {
     // ─── Optimize ───────────────────────────────────────────
 
     const startTime = Date.now();
-    const result = await optimizeRoutes(locations, normalizedConfig);
+    const result = await optimizeRoutes(locations, normalizedConfig, distanceMatrix);
     const elapsed = Date.now() - startTime;
 
     const response: OptimizeResponse = {
@@ -114,8 +116,7 @@ export async function POST(request: NextRequest) {
         elapsedMs: elapsed,
         osrmPairs: result.osrmPairs,
         totalPairs: result.totalPairs,
-        routingMode:
-          result.osrmPairs > result.totalPairs * 0.5 ? "osrm" : "haversine",
+        routingMode: result.osrmPairs > 0 ? "osrm" : "haversine",
       },
     };
 

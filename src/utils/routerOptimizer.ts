@@ -70,6 +70,25 @@ class DistanceMatrix {
   isReal(i: number, j: number): boolean {
     return this.real[this.idx(i)][this.idx(j)];
   }
+
+  /** Load from a pre-computed map: "i,j" → km, where 0=home, 1..n=locations */
+  loadFromMap(map: Record<string, number>, n: number): void {
+    for (const [key, value] of Object.entries(map)) {
+      const [a, b] = key.split(",").map(Number);
+      if (isNaN(a) || isNaN(b)) continue;
+      // Convert from 0=home to -1=home
+      const i = a === 0 ? -1 : a - 1;
+      const j = b === 0 ? -1 : b - 1;
+      const ai = this.idx(i);
+      const bj = this.idx(j);
+      if (ai < 0 || ai > n || bj < 0 || bj > n) continue;
+      this.d[ai][bj] = value;
+      this.d[bj][ai] = value;
+      // Mark all as real — the client already distinguished
+      this.real[ai][bj] = true;
+      this.real[bj][ai] = true;
+    }
+  }
 }
 
 // ─── Public API ───────────────────────────────────────────────
@@ -77,9 +96,15 @@ class DistanceMatrix {
 /**
  * Main entry point — async version that uses road distances.
  */
+/**
+ * Main entry point — async version that uses road distances.
+ * If `precomputedMatrix` is provided (from client-side OSRM), uses that
+ * instead of server-side routing calls.
+ */
 export async function optimizeRoutes(
   locations: Location[],
-  config: Config
+  config: Config,
+  precomputedMatrix?: Record<string, number>
 ): Promise<{ days: DayRoute[]; totalDistance: number; osrmPairs: number; totalPairs: number }> {
   if (locations.length === 0) {
     return { days: [], totalDistance: 0, osrmPairs: 0, totalPairs: 0 };
@@ -91,25 +116,25 @@ export async function optimizeRoutes(
     lng: config.homeLng,
   };
 
-  // All coords: [home, ...locations]
   const allCoords = [home, ...locations];
 
-  // ── Pre-compute distance matrix ──
+  // ── Build distance matrix ──
   const matrix = new DistanceMatrix(locations.length);
-  let pairsDone = 0;
-  const totalPairs = (locations.length * (locations.length + 1)) / 2; // includes home pairs
+  const totalPairs = (locations.length * (locations.length + 1)) / 2;
 
-  // Home → each location
-  for (let i = 0; i < locations.length; i++) {
-    await matrix.set(allCoords, -1, i);
-    pairsDone++;
-  }
-
-  // Location ↔ Location
-  for (let i = 0; i < locations.length; i++) {
-    for (let j = i + 1; j < locations.length; j++) {
-      await matrix.set(allCoords, i, j);
-      pairsDone++;
+  if (precomputedMatrix && Object.keys(precomputedMatrix).length > 0) {
+    // Use pre-computed matrix from client
+    // Keys are "i,j" where 0=home, 1..n=locations
+    matrix.loadFromMap(precomputedMatrix, locations.length);
+  } else {
+    // Fall back to server-side computation
+    for (let i = 0; i < locations.length; i++) {
+      await matrix.set(allCoords, -1, i);
+    }
+    for (let i = 0; i < locations.length; i++) {
+      for (let j = i + 1; j < locations.length; j++) {
+        await matrix.set(allCoords, i, j);
+      }
     }
   }
 

@@ -14,6 +14,8 @@ export interface MapViewData {
   home?: { lat: number; lng: number } | null;
   /** Days to hide from the map (day numbers, 1-based) */
   hiddenDays?: Set<number>;
+  /** Which routing mode is being displayed */
+  routingMode?: "osrm" | "haversine";
 }
 
 interface MapViewProps {
@@ -402,11 +404,16 @@ export default function MapView({
 
   return (
     <div className="absolute inset-0" style={{ width: "100%", height: "100%" }}>
+      {/* Routing mode badge (bottom-left of map) */}
+      {data.routingMode && (
+        <div className="absolute bottom-4 left-4 z-10 px-2.5 py-1 bg-white/90 backdrop-blur-sm rounded-full shadow text-xs text-gray-500 border">
+          {data.routingMode === "osrm" ? "🚗 Ruta real" : "📏 Línea recta"}
+        </div>
+      )}
+
       {/* Placement mode overlay indicator */}
       {placementMode === "home" && (
-        <div
-          className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-4 py-2 bg-blue-600 text-white rounded-full shadow-lg text-sm font-medium"
-        >
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-4 py-2 bg-blue-600 text-white rounded-full shadow-lg text-sm font-medium whitespace-nowrap">
           🏠 Haz clic en el mapa para colocar la casa
         </div>
       )}

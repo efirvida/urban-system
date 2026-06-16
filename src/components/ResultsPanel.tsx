@@ -11,6 +11,7 @@ interface ResultsPanelProps {
   totalLocations: number;
   hiddenDays?: Set<number>;
   onToggleDay?: (day: number) => void;
+  routingLabel?: string;
 }
 
 export default function ResultsPanel({
@@ -20,6 +21,7 @@ export default function ResultsPanel({
   totalLocations,
   hiddenDays,
   onToggleDay,
+  routingLabel,
 }: ResultsPanelProps) {
   const [expandedDay, setExpandedDay] = useState<number>(1);
 
@@ -27,7 +29,12 @@ export default function ResultsPanel({
     <div className="space-y-4">
       {/* Global summary */}
       <div className="card-base">
-        <div className="card-header">📊 Resumen Global</div>
+        <div className="card-header flex items-center justify-between">
+          <span>📊 Resumen Global</span>
+          {routingLabel && (
+            <span className="text-xs font-normal text-gray-400">{routingLabel}</span>
+          )}
+        </div>
         <div className="card-body grid grid-cols-3 gap-4 text-center">
           <div>
             <div className="text-2xl font-bold text-blue-600">{totalDays}</div>
@@ -76,17 +83,17 @@ export default function ResultsPanel({
               </span>
             </div>
             <div className="flex items-center gap-3 text-xs text-gray-500">
-              {/* Toggle visibility */}
+              {/* Toggle visibility — discrete eye icon */}
               {onToggleDay && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     onToggleDay(day.day);
                   }}
-                  className={`px-2 py-0.5 rounded-full border transition-colors ${
+                  className={`w-7 h-7 flex items-center justify-center rounded-full border transition-colors text-xs ${
                     hiddenDays?.has(day.day)
-                      ? "border-gray-200 text-gray-300"
-                      : "border-blue-200 text-blue-600 bg-blue-50"
+                      ? "border-gray-200 text-gray-300 hover:text-gray-500 hover:border-gray-300"
+                      : "border-blue-200 text-blue-500 bg-blue-50 hover:bg-blue-100"
                   }`}
                   title={
                     hiddenDays?.has(day.day)
@@ -94,7 +101,7 @@ export default function ResultsPanel({
                       : "Ocultar en mapa"
                   }
                 >
-                  {hiddenDays?.has(day.day) ? "👁‍🗨" : "👁"} Mapa
+                  {hiddenDays?.has(day.day) ? "🙈" : "👁"}
                 </button>
               )}
               <span>{formatDistance(day.totalDistance)}</span>
