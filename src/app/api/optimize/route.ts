@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Location, Config, OptimizeResponse, ApiError } from "@/types";
+import { Location, Config, OptimizeResponse, NSGAResponse, ApiError } from "@/types";
 import { optimizeRoutes } from "@/utils/routerOptimizer";
+import { runNSGA2 } from "@/utils/nsga2";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { locations, config, distanceMatrix } = body as {
+    const { locations, config, distanceMatrix, algorithm } = body as {
       locations: Location[];
       config: Config;
-      /** Optional pre-computed distance matrix: "i,j" → km */
       distanceMatrix?: Record<string, number>;
+      /** "deterministic" (default) or "nsga2" */
+      algorithm?: string;
     };
 
     // ─── Validation ─────────────────────────────────────────
@@ -104,6 +106,24 @@ export async function POST(request: NextRequest) {
     // ─── Optimize ───────────────────────────────────────────
 
     const startTime = Date.now();
+
+    if (algorithm === "nsga2") {
+      const home = { name: "Casa", lat: normalizedConfig.homeLat, lng: normalizedConfig.homeLng };
+      const nsgaResult = runNSGA2(locations, home, normalizedConfig, distanceMatrix);
+
+      const response: NSGAResponse = {
+        algorithm: "nsga2",
+        minDistance: nsgaResult.minDistance,
+        minDays: nsgaResult.minDays,
+        balanced: nsgaResult.balanced,
+        generations: nsgaResult.generations,
+        populationSize: nsgaResult.populationSize,
+      };
+
+      return NextResponse.json(response);
+    }
+
+    // Default: deterministic Route-First + Local Search
     const result = await optimizeRoutes(locations, normalizedConfig, distanceMatrix);
     const elapsed = Date.now() - startTime;
 

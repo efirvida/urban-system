@@ -5,6 +5,7 @@ import {
   Location,
   Config,
   OptimizeResponse,
+  NSGAResponse,
   RawFileData,
   ValidatedRow,
   ColumnMapping,
@@ -70,6 +71,15 @@ export default function Home() {
   const [routingMode, setRoutingMode] = useState<"osrm" | "haversine">("osrm");
   /** Road-following geometry from OSRM: "i,j" → [lng,lat][], where 0=home */
   const [routeGeometry, setRouteGeometry] = useState<Map<string, [number, number][]> | null>(null);
+
+  // NSGA-II
+  const [algorithm, setAlgorithm] = useState<"deterministic" | "nsga2">("deterministic");
+  const [nsgaSolutions, setNsgaSolutions] = useState<{
+    minDistance: NSGAResponse["minDistance"];
+    minDays: NSGAResponse["minDays"];
+    balanced: NSGAResponse["balanced"];
+  } | null>(null);
+  const [selectedNsgaMode, setSelectedNsgaMode] = useState<"minDistance" | "minDays" | "balanced">("balanced");
 
   // ── Map data (derived) ──
   const mapData = useMemo((): MapViewData => {
@@ -168,60 +178,70 @@ export default function Home() {
       const havObj: Record<string, number> = {};
       haversineMatrix.forEach((v, k) => { havObj[k] = v; });
 
-      // ── Phase 2: Run algorithm with OSRM matrix ──
+      // ── Phase 2: Run algorithm ──
       setOptimizePhase("algorithm");
       setMatrixProgress(null);
 
-      const resOSRM = await fetch("/api/optimize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locations, config, distanceMatrix: osrmObj }),
-      });
-
-      // Run algorithm with Haversine matrix
-      const resHav = await fetch("/api/optimize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locations, config, distanceMatrix: havObj }),
-      });
-
-      if (!resOSRM.ok) {
-        const err = await resOSRM.json();
-        throw new Error(err.error || "Error en la optimización");
-      }
-
-      const osrmResult: OptimizeResponse = await resOSRM.json();
-      const havResult: OptimizeResponse = await resHav.json();
-
-      setResult(osrmResult);
-      setResultHaversine(havResult);
-      setRoutingMode("osrm");
-      setOptimizePhase("done");
-      // Show only Day 1 on the map by default
-      setHiddenDays(
-        new Set(
-          osrmResult.days.slice(1).map((d) => d.day)
-        )
-      );
-
-      // ── Phase 3: Fetch road geometry for visualization ──
-      // Only for visible route segments (not all N² pairs)
-      const routeStops = osrmResult.days.map((d) => d.stops);
-      fetchRouteGeometries(routeStops, (current, total) => {
-        setMatrixProgress({
-          phase: "matrix",
-          stage: `Cargando geometría de rutas (${current}/${total})...`,
-          current,
-          total,
-          percent: Math.round((current / total) * 100),
-          etaSeconds: 0,
-          realCount: current,
-          haversineCount: 0,
+      if (algorithm === "nsga2") {
+        // ── NSGA-II: single call, returns 3 solutions ──
+        const res = await fetch("/api/optimize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ locations, config, distanceMatrix: osrmObj, algorithm }),
         });
-      }).then((geo) => {
-        setRouteGeometry(geo);
-        setMatrixProgress(null);
-      });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+
+        const nsgaData: NSGAResponse = await res.json();
+        setNsgaSolutions({
+          minDistance: nsgaData.minDistance,
+          minDays: nsgaData.minDays,
+          balanced: nsgaData.balanced,
+        });
+        setSelectedNsgaMode("balanced");
+
+        // Use balanced as initial result
+        setResult({
+          days: nsgaData.balanced.dayRoutes,
+          totalDistance: nsgaData.balanced.totalDistance,
+          totalDays: nsgaData.balanced.days,
+          totalLocations: locations.length,
+        });
+        setResultHaversine(null);
+        setRoutingMode("osrm");
+        setOptimizePhase("done");
+        setHiddenDays(new Set(nsgaData.balanced.dayRoutes.slice(1).map((d) => d.day)));
+
+        const routeStops = nsgaData.balanced.dayRoutes.map((d) => d.stops);
+        fetchRouteGeometries(routeStops, (cur, tot) => {
+          setMatrixProgress({ phase: "matrix", stage: `Geometría (${cur}/${tot})...`, current: cur, total: tot, percent: Math.round(cur/tot*100), etaSeconds: 0, realCount: cur, haversineCount: 0 });
+        }).then((geo) => { setRouteGeometry(geo); setMatrixProgress(null); });
+      } else {
+        // ── Deterministic: two calls (OSRM + Haversine) ──
+        const resOSRM = await fetch("/api/optimize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ locations, config, distanceMatrix: osrmObj }),
+        });
+        const resHav = await fetch("/api/optimize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ locations, config, distanceMatrix: havObj }),
+        });
+        if (!resOSRM.ok) { const err = await resOSRM.json(); throw new Error(err.error); }
+
+        const osrmResult: OptimizeResponse = await resOSRM.json();
+        const havResult: OptimizeResponse = await resHav.json();
+        setResult(osrmResult);
+        setResultHaversine(havResult);
+        setRoutingMode("osrm");
+        setOptimizePhase("done");
+        setHiddenDays(new Set(osrmResult.days.slice(1).map((d) => d.day)));
+
+        const routeStops = osrmResult.days.map((d) => d.stops);
+        fetchRouteGeometries(routeStops, (cur, tot) => {
+          setMatrixProgress({ phase: "matrix", stage: `Geometría (${cur}/${tot})...`, current: cur, total: tot, percent: Math.round(cur/tot*100), etaSeconds: 0, realCount: cur, haversineCount: 0 });
+        }).then((geo) => { setRouteGeometry(geo); setMatrixProgress(null); });
+      }
 
       setPhase("results");
       setSidebarOpen(true);
@@ -347,6 +367,32 @@ export default function Home() {
                     placingHome={placementMode === "home"}
                     onTogglePlaceHome={handleTogglePlaceHome}
                   />
+                  {/* Algorithm selector */}
+                  <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1 border">
+                    <button
+                      onClick={() => setAlgorithm("deterministic")}
+                      className={cn(
+                        "flex-1 text-xs py-1.5 px-2 rounded-md font-medium transition-colors",
+                        algorithm === "deterministic"
+                          ? "bg-white text-blue-700 shadow-sm border"
+                          : "text-gray-500 hover:text-gray-700"
+                      )}
+                    >
+                      🧠 Exacto
+                    </button>
+                    <button
+                      onClick={() => setAlgorithm("nsga2")}
+                      className={cn(
+                        "flex-1 text-xs py-1.5 px-2 rounded-md font-medium transition-colors",
+                        algorithm === "nsga2"
+                          ? "bg-white text-blue-700 shadow-sm border"
+                          : "text-gray-500 hover:text-gray-700"
+                      )}
+                    >
+                      🧬 NSGA-II
+                    </button>
+                  </div>
+
                   <OptimizeButton
                     onClick={handleOptimize}
                     loading={loading}
@@ -386,9 +432,43 @@ export default function Home() {
             <>
               {stepsNode}
               <div className="mt-3 space-y-3">
-                {/* Routing mode toggle */}
-                {resultHaversine && hasRealRoutes && (
-                  <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1 border">
+                {/* NSGA-II solution selector */}
+              {nsgaSolutions && (
+                <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1 border">
+                  {(["balanced", "minDistance", "minDays"] as const).map((mode) => {
+                    const labels = { balanced: "⚖️ Balanceada", minDistance: "📏 Min distancia", minDays: "📅 Min días" };
+                    const sol = nsgaSolutions[mode];
+                    return (
+                      <button
+                        key={mode}
+                        onClick={() => {
+                          setSelectedNsgaMode(mode);
+                          setResult({
+                            days: sol.dayRoutes,
+                            totalDistance: sol.totalDistance,
+                            totalDays: sol.days,
+                            totalLocations: locations.length,
+                          });
+                          setHiddenDays(new Set(sol.dayRoutes.slice(1).map((d) => d.day)));
+                        }}
+                        className={cn(
+                          "flex-1 text-xs py-1.5 px-2 rounded-md font-medium transition-colors leading-tight",
+                          selectedNsgaMode === mode
+                            ? "bg-white text-blue-700 shadow-sm border"
+                            : "text-gray-500 hover:text-gray-700"
+                        )}
+                      >
+                        <div>{labels[mode]}</div>
+                        <div className="text-[10px] opacity-60">{sol.days}d · {sol.totalDistance.toFixed(0)}km</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Routing mode toggle */}
+              {resultHaversine && hasRealRoutes && (
+                <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1 border">
                     <button
                       onClick={() => setRoutingMode("osrm")}
                       className={cn(

@@ -95,3 +95,25 @@ export interface ApiError {
   error: string;
   details?: string;
 }
+
+// ─── NSGA-II ─────────────────────────────────────────────────
+
+/** A single solution from the Pareto front */
+export interface ParetoSolution {
+  days: number;
+  totalDistance: number;
+  /** Location indices per route (in visit order) */
+  routes: number[][];
+  /** Converted DayRoute[] for map display */
+  dayRoutes: DayRoute[];
+}
+
+/** Response when algorithm=nsga2 */
+export interface NSGAResponse {
+  algorithm: "nsga2";
+  minDistance: ParetoSolution;
+  minDays: ParetoSolution;
+  balanced: ParetoSolution;
+  generations: number;
+  populationSize: number;
+}
