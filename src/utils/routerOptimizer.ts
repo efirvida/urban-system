@@ -2,110 +2,49 @@ import { Location, Config, DayRoute, Stop } from "@/types";
 import { haversineDistance } from "./haversine";
 import { drivingDistance } from "./routing";
 
-// ─── Internal types ───────────────────────────────────────────
-
-interface SavingsPair {
-  i: number;
-  j: number;
-  savings: number;
-}
-
-interface RouteCluster {
-  indices: number[];
-}
-
 // ─── Distance cache ───────────────────────────────────────────
 
 /**
- * Pre-computed distance matrix.
- * dist[i][j] = road distance between locations i and j (km).
- * Index -1 = home.
+ * Internal distance function: uses precomputed matrix when available,
+ * falls back to drivingDistance (OSRM), then Haversine.
  */
-class DistanceMatrix {
-  private n: number;
-  private d: number[][];
-  private real: boolean[][]; // whether it's a real (OSRM) distance
-
-  constructor(n: number) {
-    this.n = n;
-    this.d = Array.from({ length: n + 1 }, () => new Array(n + 1).fill(0));
-    this.real = Array.from({ length: n + 1 }, () => new Array(n + 1).fill(false));
+async function getDist(
+  lat1: number, lng1: number,
+  lat2: number, lng2: number,
+  precomputed?: Record<string, number>,
+  i?: number, j?: number
+): Promise<number> {
+  // Try precomputed matrix first (by index when available)
+  if (precomputed && i !== undefined && j !== undefined) {
+    const a = i === -1 ? 0 : i + 1;
+    const b = j === -1 ? 0 : j + 1;
+    const key = a < b ? `${a},${b}` : `${b},${a}`;
+    const val = precomputed[key];
+    if (val !== undefined) return val;
   }
 
-  private idx(locationIdx: number): number {
-    return locationIdx + 1; // 0 → home (index -1 → 0), 1..n → 1..n
-  }
+  // Try OSRM
+  try {
+    const real = await drivingDistance(lat1, lng1, lat2, lng2);
+    if (real > 0) return real;
+  } catch {}
 
-  async set(
-    coords: { lat: number; lng: number }[],
-    i: number,
-    j: number
-  ): Promise<void> {
-    const a = this.idx(i);
-    const b = this.idx(j);
-    const p1 = i === -1 ? coords[0] : coords[i]; // home is first
-    const p2 = j === -1 ? coords[0] : coords[j]; // home is first
-
-    // For tiny distances (same point), Haversine is fine
-    const H = haversineDistance(p1.lat, p1.lng, p2.lat, p2.lng);
-    if (H < 0.01) {
-      this.d[a][b] = H;
-      this.d[b][a] = H;
-      return;
-    }
-
-    const real = await drivingDistance(p1.lat, p1.lng, p2.lat, p2.lng);
-    const isReal = Math.abs(real - H) > 0.1;
-
-    this.d[a][b] = real;
-    this.d[b][a] = real;
-    this.real[a][b] = isReal;
-    this.real[b][a] = isReal;
-  }
-
-  get(i: number, j: number): number {
-    return this.d[this.idx(i)][this.idx(j)];
-  }
-
-  isReal(i: number, j: number): boolean {
-    return this.real[this.idx(i)][this.idx(j)];
-  }
-
-  /** Load from a pre-computed map: "i,j" → km, where 0=home, 1..n=locations */
-  loadFromMap(map: Record<string, number>, n: number): void {
-    for (const [key, value] of Object.entries(map)) {
-      const [a, b] = key.split(",").map(Number);
-      if (isNaN(a) || isNaN(b)) continue;
-      // Convert from 0=home to -1=home
-      const i = a === 0 ? -1 : a - 1;
-      const j = b === 0 ? -1 : b - 1;
-      const ai = this.idx(i);
-      const bj = this.idx(j);
-      if (ai < 0 || ai > n || bj < 0 || bj > n) continue;
-      this.d[ai][bj] = value;
-      this.d[bj][ai] = value;
-      // Mark all as real — the client already distinguished
-      this.real[ai][bj] = true;
-      this.real[bj][ai] = true;
-    }
-  }
+  // Fallback to Haversine
+  return haversineDistance(lat1, lng1, lat2, lng2);
 }
 
-// ─── Public API ───────────────────────────────────────────────
+// ─── Main entry point ────────────────────────────────────────
 
-/**
- * Main entry point — async version that uses road distances.
- */
-/**
- * Main entry point — async version that uses road distances.
- * If `precomputedMatrix` is provided (from client-side OSRM), uses that
- * instead of server-side routing calls.
- */
 export async function optimizeRoutes(
   locations: Location[],
   config: Config,
   precomputedMatrix?: Record<string, number>
-): Promise<{ days: DayRoute[]; totalDistance: number; osrmPairs: number; totalPairs: number }> {
+): Promise<{
+  days: DayRoute[];
+  totalDistance: number;
+  osrmPairs: number;
+  totalPairs: number;
+}> {
   if (locations.length === 0) {
     return { days: [], totalDistance: 0, osrmPairs: 0, totalPairs: 0 };
   }
@@ -116,195 +55,170 @@ export async function optimizeRoutes(
     lng: config.homeLng,
   };
 
-  const allCoords = [home, ...locations];
+  // ── Step 1: Build a giant TSP tour ──
+  // Nearest Neighbor + 2-opt improvement
+  const tour = await buildGiantTour(locations, home, config, precomputedMatrix);
 
-  // ── Build distance matrix ──
-  const matrix = new DistanceMatrix(locations.length);
-  const totalPairs = (locations.length * (locations.length + 1)) / 2;
-
-  if (precomputedMatrix && Object.keys(precomputedMatrix).length > 0) {
-    // Use pre-computed matrix from client
-    // Keys are "i,j" where 0=home, 1..n=locations
-    matrix.loadFromMap(precomputedMatrix, locations.length);
-  } else {
-    // Fall back to server-side computation
-    for (let i = 0; i < locations.length; i++) {
-      await matrix.set(allCoords, -1, i);
-    }
-    for (let i = 0; i < locations.length; i++) {
-      for (let j = i + 1; j < locations.length; j++) {
-        await matrix.set(allCoords, i, j);
-      }
-    }
-  }
-
-  // Count real vs estimated
-  let osrmPairs = 0;
-  for (let i = -1; i < locations.length; i++) {
-    for (let j = i + 1; j < locations.length; j++) {
-      if (i === -1 && j === -1) continue;
-      if (matrix.isReal(i, j)) osrmPairs++;
-    }
-  }
-
-  // ── Algorithm ──
-  const savings = calculateSavings(locations, matrix);
-  const clusters = buildClusters(locations, home, matrix, savings, config);
-  const days = orderClusters(clusters, locations, home, config, matrix);
+  // ── Step 2: Slice the tour into daily segments ──
+  const days = sliceTour(tour, locations, home, config, precomputedMatrix);
 
   const totalDistance = days.reduce((sum, d) => sum + d.totalDistance, 0);
 
-  return { days, totalDistance, osrmPairs, totalPairs };
+  return {
+    days,
+    totalDistance,
+    osrmPairs: precomputedMatrix ? Object.keys(precomputedMatrix).length : 0,
+    totalPairs: (locations.length * (locations.length + 1)) / 2,
+  };
 }
 
-// ─── Step 1: Savings ─────────────────────────────────────────
+// ─── Step 1: Giant TSP Tour ──────────────────────────────────
 
-function calculateSavings(locations: Location[], matrix: DistanceMatrix): SavingsPair[] {
-  const pairs: SavingsPair[] = [];
-
-  for (let i = 0; i < locations.length; i++) {
-    for (let j = i + 1; j < locations.length; j++) {
-      const dHomeToI = matrix.get(-1, i);
-      const dHomeToJ = matrix.get(-1, j);
-      const dIToJ = matrix.get(i, j);
-      const savings = dHomeToI + dHomeToJ - dIToJ;
-      pairs.push({ i, j, savings });
-    }
-  }
-
-  pairs.sort((a, b) => b.savings - a.savings);
-  return pairs;
-}
-
-// ─── Step 2: Clusters ────────────────────────────────────────
-
-function buildClusters(
-  locations: Location[],
-  home: Location,
-  matrix: DistanceMatrix,
-  savings: SavingsPair[],
-  config: Config
-): RouteCluster[] {
-  const n = locations.length;
-  const assignment = new Array<number>(n).fill(-1);
-  const clusters: RouteCluster[] = [];
-
-  for (const pair of savings) {
-    const assignedI = assignment[pair.i];
-    const assignedJ = assignment[pair.j];
-
-    if (assignedI === -1 && assignedJ === -1) {
-      const cluster: RouteCluster = { indices: [pair.i, pair.j] };
-      if (!wouldViolateCluster(cluster, locations, home, matrix, config)) {
-        clusters.push(cluster);
-        assignment[pair.i] = clusters.length - 1;
-        assignment[pair.j] = clusters.length - 1;
-      }
-    } else if (assignedI !== -1 && assignedJ === -1) {
-      const cluster = clusters[assignedI];
-      if (!wouldViolateAddition(cluster, pair.j, locations, home, matrix, config)) {
-        cluster.indices.push(pair.j);
-        assignment[pair.j] = assignedI;
-      }
-    } else if (assignedI === -1 && assignedJ !== -1) {
-      const cluster = clusters[assignedJ];
-      if (!wouldViolateAddition(cluster, pair.i, locations, home, matrix, config)) {
-        cluster.indices.push(pair.i);
-        assignment[pair.i] = assignedJ;
-      }
-    }
-  }
-
-  // Unassigned → solo clusters
-  for (let i = 0; i < n; i++) {
-    if (assignment[i] === -1) {
-      clusters.push({ indices: [i] });
-      assignment[i] = clusters.length - 1;
-    }
-  }
-
-  return clusters;
-}
-
-// ─── Constraint checks ───────────────────────────────────────
-
-function estimateRouteKm(
-  indices: number[],
-  locations: Location[],
-  home: Location,
-  matrix: DistanceMatrix
-): number {
-  if (indices.length === 0) return 0;
-  if (indices.length === 1) {
-    return matrix.get(-1, indices[0]) * 2; // home → loc → home
-  }
-
-  const distsFromHome = indices.map((idx) => matrix.get(-1, idx));
-  const farthest = Math.max(...distsFromHome);
-  const nearest = Math.min(...distsFromHome);
-
-  let internal = 0;
-  for (let k = 0; k < indices.length - 1; k++) {
-    internal += matrix.get(indices[k], indices[k + 1]);
-  }
-
-  return farthest + internal + nearest;
-}
-
-function wouldViolateCluster(
-  cluster: RouteCluster,
-  locations: Location[],
-  home: Location,
-  matrix: DistanceMatrix,
-  config: Config
-): boolean {
-  return checkConstraint(estimateRouteKm(cluster.indices, locations, home, matrix), cluster.indices.length, config);
-}
-
-function wouldViolateAddition(
-  cluster: RouteCluster,
-  newIdx: number,
-  locations: Location[],
-  home: Location,
-  matrix: DistanceMatrix,
-  config: Config
-): boolean {
-  const proposed = [...cluster.indices, newIdx];
-  return checkConstraint(estimateRouteKm(proposed, locations, home, matrix), proposed.length, config);
-}
-
-function checkConstraint(km: number, stops: number, config: Config): boolean {
-  switch (config.constraintType) {
-    case "hours": {
-      const travelHours = km / config.avgSpeed;
-      const visitHours = (stops * config.visitTime) / 60;
-      return travelHours + visitHours > config.constraintValue;
-    }
-    case "visits":
-      return stops > config.constraintValue;
-    case "capacity":
-      return stops > config.constraintValue;
-    default:
-      return false;
-  }
-}
-
-// ─── Step 3: Intra-route ordering ────────────────────────────
-
-function orderClusters(
-  clusters: RouteCluster[],
+async function buildGiantTour(
   locations: Location[],
   home: Location,
   config: Config,
-  matrix: DistanceMatrix
-): DayRoute[] {
-  return clusters.map((cluster, dayIdx) => {
-    const ordered = nearestNeighbor(cluster.indices, locations, home, matrix);
+  precomputed?: Record<string, number>
+): Promise<number[]> {
+  // Nearest Neighbor
+  const n = locations.length;
+  const visited = new Set<number>();
+  const tour: number[] = [];
 
+  let currentLat = home.lat;
+  let currentLng = home.lng;
+
+  while (visited.size < n) {
+    let nearest = -1;
+    let nearestDist = Infinity;
+
+    for (let i = 0; i < n; i++) {
+      if (visited.has(i)) continue;
+      const d = await getDist(
+        currentLat, currentLng,
+        locations[i].lat, locations[i].lng,
+        precomputed, -1, i
+      );
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearest = i;
+      }
+    }
+
+    if (nearest === -1) break;
+
+    tour.push(nearest);
+    visited.add(nearest);
+    currentLat = locations[nearest].lat;
+    currentLng = locations[nearest].lng;
+  }
+
+  // 2-opt improvement
+  improveTour2Opt(tour, locations, precomputed);
+
+  return tour;
+}
+
+// ─── 2-opt improvement ───────────────────────────────────────
+
+function tourDist(
+  tour: number[],
+  locations: Location[],
+  precomputed?: Record<string, number>
+): number {
+  if (tour.length <= 1) return 0;
+  let total = 0;
+  for (let i = 0; i < tour.length - 1; i++) {
+    total += pairDist(tour[i], tour[i + 1], locations, precomputed);
+  }
+  return total;
+}
+
+function pairDist(
+  a: number, b: number,
+  locations: Location[],
+  precomputed?: Record<string, number>
+): number {
+  const ai = a === -1 ? -1 : a;
+  const bj = b === -1 ? -1 : b;
+  if (precomputed) {
+    const keyA = ai === -1 ? 0 : ai + 1;
+    const keyB = bj === -1 ? 0 : bj + 1;
+    const key = keyA < keyB ? `${keyA},${keyB}` : `${keyB},${keyA}`;
+    const val = precomputed[key];
+    if (val !== undefined) return val;
+  }
+  return haversineDistance(
+    ai === -1 ? 0 : locations[ai].lat,
+    ai === -1 ? 0 : locations[ai].lng,
+    bj === -1 ? 0 : locations[bj].lat,
+    bj === -1 ? 0 : locations[bj].lng
+  );
+}
+
+function improveTour2Opt(
+  tour: number[],
+  locations: Location[],
+  precomputed?: Record<string, number>
+): void {
+  if (tour.length < 3) return;
+
+  let improved = true;
+  let iterations = 0;
+  const MAX_ITER = 100;
+
+  while (improved && iterations < MAX_ITER) {
+    improved = false;
+    iterations++;
+
+    for (let i = 0; i < tour.length - 2; i++) {
+      for (let j = i + 2; j < tour.length - 1; j++) {
+        // Current edges: (i, i+1) and (j, j+1)
+        const d1 = pairDist(tour[i], tour[i + 1], locations, precomputed);
+        const d2 = pairDist(tour[j], tour[j + 1], locations, precomputed);
+        // Proposed edges: (i, j) and (i+1, j+1)
+        const d3 = pairDist(tour[i], tour[j], locations, precomputed);
+        const d4 = pairDist(tour[i + 1], tour[j + 1], locations, precomputed);
+
+        if (d1 + d2 > d3 + d4) {
+          // Swap: reverse segment [i+1, j]
+          let left = i + 1;
+          let right = j;
+          while (left < right) {
+            const tmp = tour[left];
+            tour[left] = tour[right];
+            tour[right] = tmp;
+            left++;
+            right--;
+          }
+          improved = true;
+        }
+      }
+    }
+  }
+}
+
+// ─── Step 2: Slice Tour into Days ────────────────────────────
+
+function sliceTour(
+  tour: number[],
+  locations: Location[],
+  home: Location,
+  config: Config,
+  precomputed?: Record<string, number>
+): DayRoute[] {
+  const days: DayRoute[] = [];
+  let dayIdx = 0;
+  let ptr = 0;
+
+  while (ptr < tour.length) {
+    dayIdx++;
     const stops: Stop[] = [];
     let cumulativeDist = 0;
     let cumulativeTime = 0;
+    const nStops: number[] = [];
 
+    // Start at home
     stops.push({
       sequence: 0,
       name: home.name,
@@ -316,30 +230,85 @@ function orderClusters(
       isHome: true,
     });
 
-    let prevIdx = -1; // home
+    let prevLat = home.lat;
+    let prevLng = home.lng;
 
-    for (const idx of ordered) {
-      const d = matrix.get(prevIdx, idx);
-      const t = d / config.avgSpeed;
-      cumulativeDist += d;
+    while (ptr < tour.length) {
+      const locIdx = tour[ptr];
+      const loc = locations[locIdx];
+      const dSegment = pairDist(
+        nStops.length === 0 ? -1 : nStops[nStops.length - 1],
+        locIdx,
+        locations,
+        precomputed
+      );
+
+      // Calculate what the round trip would look like
+      const proposedKm = cumulativeDist + dSegment + pairDist(locIdx, -1, locations, precomputed);
+      const proposedStops = nStops.length + 1;
+      const proposedHours = proposedKm / config.avgSpeed + proposedStops * config.visitTime / 60;
+
+      let violation = false;
+      switch (config.constraintType) {
+        case "hours":
+          if (proposedHours > config.constraintValue) violation = true;
+          break;
+        case "visits":
+          if (proposedStops > config.constraintValue) violation = true;
+          break;
+        case "capacity":
+          if (proposedStops > config.constraintValue) violation = true;
+          break;
+      }
+
+      if (violation) break;
+
+      // Add to current day
+      const t = dSegment / config.avgSpeed;
+      cumulativeDist += dSegment;
       cumulativeTime += t + config.visitTime / 60;
+      nStops.push(locIdx);
 
       stops.push({
         sequence: stops.length,
-        name: locations[idx].name,
-        lat: locations[idx].lat,
-        lng: locations[idx].lng,
-        distanceFromPrev: d,
+        name: loc.name,
+        lat: loc.lat,
+        lng: loc.lng,
+        distanceFromPrev: dSegment,
         cumulativeDistance: cumulativeDist,
         cumulativeTime: cumulativeTime,
         isHome: false,
       });
 
-      prevIdx = idx;
+      prevLat = loc.lat;
+      prevLng = loc.lng;
+      ptr++;
     }
 
-    // Return to home
-    const returnDist = matrix.get(prevIdx, -1);
+    // Return to home (only if we visited at least one stop)
+    if (nStops.length === 0) {
+      // Edge case: single location doesn't fit the constraint
+      // Force-add it anyway
+      const forcedIdx = tour[ptr];
+      const forcedLoc = locations[forcedIdx];
+      const dSeg = haversineDistance(home.lat, home.lng, forcedLoc.lat, forcedLoc.lng);
+      cumulativeDist = dSeg;
+      cumulativeTime = dSeg / config.avgSpeed + config.visitTime / 60;
+      nStops.push(forcedIdx);
+      stops.push({
+        sequence: 1,
+        name: forcedLoc.name,
+        lat: forcedLoc.lat,
+        lng: forcedLoc.lng,
+        distanceFromPrev: dSeg,
+        cumulativeDistance: cumulativeDist,
+        cumulativeTime: cumulativeTime,
+        isHome: false,
+      });
+      ptr++;
+    }
+
+    const returnDist = pairDist(nStops[nStops.length - 1], -1, locations, precomputed);
     const returnTime = returnDist / config.avgSpeed;
     cumulativeDist += returnDist;
     cumulativeTime += returnTime;
@@ -355,46 +324,14 @@ function orderClusters(
       isHome: true,
     });
 
-    return {
-      day: dayIdx + 1,
+    days.push({
+      day: dayIdx,
       stops,
       totalDistance: cumulativeDist,
       totalTime: cumulativeTime,
-      totalStops: ordered.length,
-    };
-  });
-}
-
-function nearestNeighbor(
-  indices: number[],
-  locations: Location[],
-  home: Location,
-  matrix: DistanceMatrix
-): number[] {
-  if (indices.length <= 1) return indices;
-
-  const unvisited = new Set(indices);
-  const ordered: number[] = [];
-  let currentIdx = -1; // home
-
-  while (unvisited.size > 0) {
-    let nearest: number | null = null;
-    let nearestDist = Infinity;
-
-    for (const idx of unvisited) {
-      const d = matrix.get(currentIdx, idx);
-      if (d < nearestDist) {
-        nearestDist = d;
-        nearest = idx;
-      }
-    }
-
-    if (nearest !== null) {
-      ordered.push(nearest);
-      currentIdx = nearest;
-      unvisited.delete(nearest);
-    }
+      totalStops: nStops.length,
+    });
   }
 
-  return ordered;
+  return days;
 }
