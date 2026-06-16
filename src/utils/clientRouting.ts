@@ -67,21 +67,30 @@ async function osrmFetch(
   lat1: number,
   lng1: number,
   lat2: number,
-  lng2: number
+  lng2: number,
+  retries = 2
 ): Promise<number | null> {
   const url = `https://router.project-osrm.org/route/v1/driving/${lng1},${lat1};${lng2},${lat2}?overview=false&alternatives=false&steps=false`;
 
-  try {
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.code !== "Ok" || !data.routes?.length) return null;
-    return data.routes[0].distance / 1000; // m → km
-  } catch {
-    return null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      // Wait before retry (500ms, 1s)
+      await new Promise((r) => setTimeout(r, attempt * 500));
+    }
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data.code !== "Ok" || !data.routes?.length) continue;
+      return data.routes[0].distance / 1000;
+    } catch {
+      continue;
+    }
   }
+  return null;
 }
 
 // ─── Build matrix with progress ──────────────────────────────
@@ -94,6 +103,26 @@ async function osrmFetch(
  * Reports progress via callback during OSRM phase.
  * The Haversine matrix is computed instantly (no API calls).
  */
+const CACHE_PREFIX = "vrp_matrix_";
+
+/**
+ * Build a cache key from coordinates hash.
+ */
+function cacheKey(homeLat: number, homeLng: number, locations: Array<{ lat: number; lng: number }>): string {
+  let str = `${homeLat.toFixed(4)},${homeLng.toFixed(4)}`;
+  for (const loc of locations) {
+    str += `|${loc.lat.toFixed(4)},${loc.lng.toFixed(4)}`;
+  }
+  // Simple hash
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const chr = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + chr;
+    hash |= 0;
+  }
+  return CACHE_PREFIX + Math.abs(hash).toString(36);
+}
+
 export async function buildDistanceMatrices(
   homeLat: number,
   homeLng: number,
@@ -114,6 +143,31 @@ export async function buildDistanceMatrices(
       const key = `${i},${j}`;
       haversineMatrix.set(key, haversineDistance(all[i].lat, all[i].lng, all[j].lat, all[j].lng));
     }
+  }
+
+  // ── Check localStorage cache ──
+  const ck = cacheKey(homeLat, homeLng, locations);
+  let cached: Record<string, number> | null = null;
+  try {
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem(ck) : null;
+    if (raw) {
+      cached = JSON.parse(raw);
+    }
+  } catch {}
+
+  if (cached) {
+    const osrmMatrix = new Map(Object.entries(cached));
+    onProgress({
+      phase: "matrix",
+      stage: "Matriz de distancias cargada de caché",
+      current: totalPairs,
+      total: totalPairs,
+      percent: 100,
+      etaSeconds: 0,
+      realCount: Object.keys(cached).length,
+      haversineCount: 0,
+    });
+    return { osrmMatrix, haversineMatrix };
   }
 
   // OSRM matrix — needs API calls
@@ -142,8 +196,8 @@ export async function buildDistanceMatrices(
     });
   };
 
-  // Rate limiting: max 3 concurrent requests
-  const MAX_CONCURRENT = 4;
+  // Rate limiting: max 2 concurrent requests to avoid OSRM rate limits
+  const MAX_CONCURRENT = 2;
 
   const pairs: Array<{ i: number; j: number }> = [];
   for (let i = 0; i < n; i++) {
@@ -215,6 +269,16 @@ export async function buildDistanceMatrices(
   await Promise.all(workers);
 
   report();
+
+  // ── Save to localStorage cache ──
+  try {
+    const obj: Record<string, number> = {};
+    osrmMatrix.forEach((v, k) => { obj[k] = v; });
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ck, JSON.stringify(obj));
+    }
+  } catch {}
+
   return { osrmMatrix, haversineMatrix };
 }
 

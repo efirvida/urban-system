@@ -291,7 +291,9 @@ export default function MapView({
       lng: number,
       label: string,
       color: string,
-      popupHtml?: string
+      popupHtml?: string,
+      /** Show as pin icon instead of numbered circle */
+      pinOnly?: boolean
     ) => {
       keepIds.add(id);
       const existing = markersMap.get(id);
@@ -299,11 +301,21 @@ export default function MapView({
         existing.setLngLat([lng, lat]);
         return;
       }
+
       const el = document.createElement("div");
-      el.className =
-        "flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white shadow-md cursor-pointer transition-transform hover:scale-110";
-      el.style.backgroundColor = color;
-      el.textContent = label;
+
+      if (pinOnly) {
+        // Simple POI dot
+        el.className =
+          "w-4 h-4 rounded-full border-2 border-white shadow-md cursor-pointer transition-transform hover:scale-125";
+        el.style.backgroundColor = color;
+      } else {
+        // Numbered circle
+        el.className =
+          "flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white shadow-md cursor-pointer transition-transform hover:scale-110";
+        el.style.backgroundColor = color;
+        el.textContent = label;
+      }
 
       const m = new maplibregl.Marker({ element: el })
         .setLngLat([lng, lat])
@@ -314,14 +326,12 @@ export default function MapView({
       markersMap.set(id, m);
     };
 
-    // ── Markers from validated rows ──
+    // ── Markers from validated rows (pin dots, no numbers) ──
     if (markers) {
-      let idx = 0;
       for (const row of markers) {
         if (row.lat === null || row.lng === null) continue;
-        idx++;
         const color = row.selected ? "#3b82f6" : "#9ca3af";
-        addMarker(row.id, row.lat, row.lng, String(idx), color);
+        addMarker(row.id, row.lat, row.lng, "", color, undefined, true);
         const m = markersMap.get(row.id);
         if (m) {
           m.getElement().style.opacity = row.selected ? "1" : "0.4";
@@ -330,7 +340,7 @@ export default function MapView({
       }
     }
 
-    // ── Markers from confirmed locations ──
+    // ── Markers from confirmed locations (pin dots, no numbers) ──
     if (locations) {
       for (let i = 0; i < locations.length; i++) {
         const loc = locations[i];
@@ -339,9 +349,10 @@ export default function MapView({
           id,
           loc.lat,
           loc.lng,
-          String(i + 1),
+          "",
           "#3b82f6",
-          `<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`
+          `<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`,
+          true
         );
         allPoints.push([loc.lng, loc.lat]);
       }

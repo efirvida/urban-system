@@ -11,6 +11,7 @@ interface ResultsPanelProps {
   totalLocations: number;
   hiddenDays?: Set<number>;
   onToggleDay?: (day: number) => void;
+  onExpandDay?: (day: number) => void;
   routingLabel?: string;
 }
 
@@ -21,6 +22,7 @@ export default function ResultsPanel({
   totalLocations,
   hiddenDays,
   onToggleDay,
+  onExpandDay,
   routingLabel,
 }: ResultsPanelProps) {
   const [expandedDay, setExpandedDay] = useState<number>(1);
@@ -64,9 +66,11 @@ export default function ResultsPanel({
         return (
           <div key={day.day} className="card-base overflow-hidden">
             <button
-              onClick={() =>
-                setExpandedDay(isExpanded ? -1 : day.day)
-              }
+              onClick={() => {
+                const newDay = isExpanded ? -1 : day.day;
+                setExpandedDay(newDay);
+                if (newDay !== -1 && onExpandDay) onExpandDay(newDay);
+              }}
               className="w-full text-left"
             >
           <div

@@ -194,6 +194,12 @@ export default function Home() {
       setResultHaversine(havResult);
       setRoutingMode("osrm");
       setOptimizePhase("done");
+      // Show only Day 1 on the map by default
+      setHiddenDays(
+        new Set(
+          osrmResult.days.slice(1).map((d) => d.day)
+        )
+      );
       setPhase("results");
       setSidebarOpen(true);
     } catch (err) {
@@ -343,84 +349,108 @@ export default function Home() {
         );
 
       case "results":
-        return result ? (
-          <>
-            {stepsNode}
-            <div className="mt-3 space-y-3">
-              {/* Routing mode toggle */}
-              {resultHaversine && (
-                <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1 border">
+        return result ? (() => {
+          const activeResult = routingMode === "osrm" ? result : resultHaversine;
+          const activeDays = activeResult?.days ?? result.days;
+          const activeDistance = activeResult?.totalDistance ?? result.totalDistance;
+          const activeDaysCount = activeResult?.totalDays ?? result.totalDays;
+          const osrmMeta = result._meta;
+          const hasRealRoutes = (osrmMeta?.osrmPairs ?? 0) > 0;
+          const havDays = resultHaversine?.days.length ?? 0;
+          const diffClusters = hasRealRoutes && result.days.length !== havDays;
+
+          return (
+            <>
+              {stepsNode}
+              <div className="mt-3 space-y-3">
+                {/* Routing mode toggle */}
+                {resultHaversine && hasRealRoutes && (
+                  <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1 border">
+                    <button
+                      onClick={() => setRoutingMode("osrm")}
+                      className={cn(
+                        "flex-1 text-xs py-1.5 px-3 rounded-md font-medium transition-colors",
+                        routingMode === "osrm"
+                          ? "bg-white text-blue-700 shadow-sm border"
+                          : "text-gray-500 hover:text-gray-700"
+                      )}
+                    >
+                      🚗 Ruta real
+                    </button>
+                    <button
+                      onClick={() => setRoutingMode("haversine")}
+                      className={cn(
+                        "flex-1 text-xs py-1.5 px-3 rounded-md font-medium transition-colors",
+                        routingMode === "haversine"
+                          ? "bg-white text-blue-700 shadow-sm border"
+                          : "text-gray-500 hover:text-gray-700"
+                      )}
+                    >
+                      📏 Línea recta
+                    </button>
+                  </div>
+                )}
+
+                {!hasRealRoutes && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-xs text-amber-700 text-center">
+                    ⚠️ OSRM no disponible — usando distancias estimadas (Haversine)
+                  </div>
+                )}
+
+                {diffClusters && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-blue-700 text-center">
+                    📊 Ruta real: {result.days.length} días · Línea recta: {havDays} días
+                  </div>
+                )}
+
+                <ResultsPanel
+                  days={activeDays}
+                  totalDistance={activeDistance}
+                  totalDays={activeDaysCount}
+                  totalLocations={result.totalLocations}
+                  hiddenDays={hiddenDays}
+                  onToggleDay={(day) =>
+                    setHiddenDays((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(day)) next.delete(day);
+                      else next.add(day);
+                      return next;
+                    })
+                  }
+                  onExpandDay={(day) =>
+                    setHiddenDays((prev) => {
+                      const allDays = activeDays.map((d) => d.day);
+                      return new Set(allDays.filter((d) => d !== day));
+                    })
+                  }
+                  routingLabel={routingMode === "osrm" ? "🚗 Rutas reales" : "📏 Línea recta"}
+                />
+
+                <button
+                  onClick={() => setHiddenDays(new Set())}
+                  className="w-full text-xs text-center text-gray-400 hover:text-blue-600 transition-colors py-1"
+                >
+                  👁 Ver todas las rutas en el mapa
+                </button>
+
+                <div className="flex flex-col gap-2">
                   <button
-                    onClick={() => setRoutingMode("osrm")}
-                    className={cn(
-                      "flex-1 text-xs py-1.5 px-3 rounded-md font-medium transition-colors",
-                      routingMode === "osrm"
-                        ? "bg-white text-blue-700 shadow-sm border"
-                        : "text-gray-500 hover:text-gray-700"
-                    )}
+                    onClick={() => setPhase("config")}
+                    className="btn-secondary w-full text-sm"
                   >
-                    🚗 Ruta real
+                    ← Volver a configuración
                   </button>
                   <button
-                    onClick={() => setRoutingMode("haversine")}
-                    className={cn(
-                      "flex-1 text-xs py-1.5 px-3 rounded-md font-medium transition-colors",
-                      routingMode === "haversine"
-                        ? "bg-white text-blue-700 shadow-sm border"
-                        : "text-gray-500 hover:text-gray-700"
-                    )}
+                    onClick={handleReset}
+                    className="btn-secondary w-full text-sm"
                   >
-                    📏 Línea recta
+                    🆕 Nueva optimización
                   </button>
                 </div>
-              )}
-
-              <ResultsPanel
-                days={
-                  routingMode === "osrm"
-                    ? result.days
-                    : resultHaversine?.days ?? result.days
-                }
-                totalDistance={
-                  routingMode === "osrm"
-                    ? result.totalDistance
-                    : resultHaversine?.totalDistance ?? result.totalDistance
-                }
-                totalDays={
-                  routingMode === "osrm"
-                    ? result.totalDays
-                    : resultHaversine?.totalDays ?? result.totalDays
-                }
-                totalLocations={result.totalLocations}
-                hiddenDays={hiddenDays}
-                onToggleDay={(day) =>
-                  setHiddenDays((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(day)) next.delete(day);
-                    else next.add(day);
-                    return next;
-                  })
-                }
-                routingLabel={routingMode === "osrm" ? "🚗 Rutas reales" : "📏 Línea recta"}
-              />
-
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={() => setPhase("config")}
-                  className="btn-secondary w-full text-sm"
-                >
-                  ← Volver a configuración
-                </button>
-                <button
-                  onClick={handleReset}
-                  className="btn-secondary w-full text-sm"
-                >
-                  🆕 Nueva optimización
-                </button>
               </div>
-            </div>
-          </>
-        ) : null;
+            </>
+          );
+        })() : null;
 
       default:
         return null;
