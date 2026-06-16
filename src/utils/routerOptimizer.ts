@@ -60,8 +60,13 @@ export async function optimizeRoutes(
   const tour = await buildGiantTour(locations, home, config, precomputedMatrix);
 
   // ── Step 2: Slice the tour into daily segments ──
-  const days = sliceTour(tour, locations, home, config, precomputedMatrix);
+  let solution = sliceTourToSolution(tour, locations, home, config, precomputedMatrix);
 
+  // ── Step 3: Local Search improvement (OR-Tools style) ──
+  solution = localSearch(solution, locations, home, config, precomputedMatrix);
+
+  // ── Convert to DayRoute format ──
+  const days = solutionToDays(solution, locations, home, config, precomputedMatrix);
   const totalDistance = days.reduce((sum, d) => sum + d.totalDistance, 0);
 
   return {
@@ -198,23 +203,22 @@ function improveTour2Opt(
   }
 }
 
-// ─── Step 2: Slice Tour into Days ────────────────────────────
+// ─── Step 2: Slice Tour into Solution ────────────────────────
 
-function sliceTour(
+/** Solution = array of days, each day = array of location indices */
+type Solution = number[][];
+
+function sliceTourToSolution(
   tour: number[],
   locations: Location[],
   home: Location,
   config: Config,
   precomputed?: Record<string, number>
-): DayRoute[] {
-  const days: DayRoute[] = [];
-  let dayIdx = 0;
+): Solution {
+  const solution: Solution = [];
   let ptr = 0;
 
   while (ptr < tour.length) {
-    dayIdx++;
-
-    // ── Collect as many stops as the constraint allows ──
     const dayIndices: number[] = [];
 
     while (ptr < tour.length) {
@@ -224,94 +228,26 @@ function sliceTour(
 
       let violation = false;
       switch (config.constraintType) {
-        case "hours":
-          if (hours > config.constraintValue) violation = true;
-          break;
-        case "visits":
-          if (proposed.length > config.constraintValue) violation = true;
-          break;
-        case "capacity":
-          if (proposed.length > config.constraintValue) violation = true;
-          break;
+        case "hours": if (hours > config.constraintValue) violation = true; break;
+        case "visits": if (proposed.length > config.constraintValue) violation = true; break;
+        case "capacity": if (proposed.length > config.constraintValue) violation = true; break;
       }
-
       if (violation) break;
       dayIndices.push(tour[ptr]);
       ptr++;
     }
 
-    // Edge case: single location doesn't fit the constraint → force it
     if (dayIndices.length === 0 && ptr < tour.length) {
       dayIndices.push(tour[ptr]);
       ptr++;
     }
-
-    if (dayIndices.length === 0) break;
-
-    // ── Re-order within the day: Nearest Neighbor from home ──
-    const ordered = nearestNeighborWithinDay(dayIndices, locations, home, precomputed);
-
-    // ── Build stops ──
-    const stops: Stop[] = [];
-    let cumulativeDist = 0;
-    let cumulativeTime = 0;
-
-    stops.push({
-      sequence: 0,
-      name: home.name,
-      lat: home.lat,
-      lng: home.lng,
-      distanceFromPrev: 0,
-      cumulativeDistance: 0,
-      cumulativeTime: 0,
-      isHome: true,
-    });
-
-    for (let i = 0; i < ordered.length; i++) {
-      const idx = ordered[i];
-      const d = pairDist(i === 0 ? -1 : ordered[i - 1], idx, locations, precomputed);
-      const t = d / config.avgSpeed;
-      cumulativeDist += d;
-      cumulativeTime += t + config.visitTime / 60;
-
-      stops.push({
-        sequence: i + 1,
-        name: locations[idx].name,
-        lat: locations[idx].lat,
-        lng: locations[idx].lng,
-        distanceFromPrev: d,
-        cumulativeDistance: cumulativeDist,
-        cumulativeTime: cumulativeTime,
-        isHome: false,
-      });
+    if (dayIndices.length > 0) {
+      // Re-order within day using NN from home
+      solution.push(nearestNeighborWithinDay(dayIndices, locations, home, precomputed));
     }
-
-    const returnDist = pairDist(ordered[ordered.length - 1], -1, locations, precomputed);
-    const returnTime = returnDist / config.avgSpeed;
-    cumulativeDist += returnDist;
-    cumulativeTime += returnTime;
-
-    stops.push({
-      sequence: ordered.length + 1,
-      name: home.name,
-      lat: home.lat,
-      lng: home.lng,
-      distanceFromPrev: returnDist,
-      cumulativeDistance: cumulativeDist,
-      cumulativeTime: cumulativeTime,
-      isHome: true,
-    });
-
-    days.push({
-      day: dayIdx,
-      stops,
-      totalDistance: cumulativeDist,
-      totalTime: cumulativeTime,
-      totalStops: ordered.length,
-    });
   }
 
-  return days;
+  return solution;
 }
 
 /** Estimate round-trip distance for a set of indices */
@@ -359,26 +295,192 @@ function nearestNeighborWithinDay(
   precomputed?: Record<string, number>
 ): number[] {
   if (indices.length <= 1) return indices;
-
   const unvisited = new Set(indices);
   const ordered: number[] = [];
-  let current = -1; // home
-
+  let current = -1;
   while (unvisited.size > 0) {
-    let nearest = -1;
-    let minD = Infinity;
+    let nearest = -1; let minD = Infinity;
     for (const idx of unvisited) {
       const d = pairDist(current, idx, locations, precomputed);
-      if (d < minD) {
-        minD = d;
-        nearest = idx;
-      }
+      if (d < minD) { minD = d; nearest = idx; }
     }
     if (nearest === -1) break;
     ordered.push(nearest);
     current = nearest;
     unvisited.delete(nearest);
   }
-
   return ordered;
+}
+
+// ─── Step 3: Local Search ────────────────────────────────────
+
+/** Compute total round-trip distance for a solution */
+function solutionDistance(
+  sol: Solution, locations: Location[], precomputed?: Record<string, number>
+): number {
+  let total = 0;
+  for (const day of sol) {
+    if (day.length === 0) continue;
+    // home → first
+    total += pairDist(-1, day[0], locations, precomputed);
+    // between stops
+    for (let i = 1; i < day.length; i++) {
+      total += pairDist(day[i - 1], day[i], locations, precomputed);
+    }
+    // last → home
+    total += pairDist(day[day.length - 1], -1, locations, precomputed);
+  }
+  return total;
+}
+
+/** Check if a day's route violates the constraint */
+function dayViolates(
+  indices: number[], locations: Location[], home: Location,
+  config: Config, precomputed?: Record<string, number>
+): boolean {
+  if (indices.length === 0) return false;
+  const km = solutionDistance([indices], locations, precomputed);
+  const hours = km / config.avgSpeed + indices.length * config.visitTime / 60;
+  switch (config.constraintType) {
+    case "hours": return hours > config.constraintValue;
+    case "visits": return indices.length > config.constraintValue;
+    case "capacity": return indices.length > config.constraintValue;
+  }
+}
+
+/**
+ * Local search: try Relocate and Exchange moves to improve total distance.
+ * Inspired by OR-Tools' local search operators.
+ */
+function localSearch(
+  sol: Solution,
+  locations: Location[],
+  home: Location,
+  config: Config,
+  precomputed?: Record<string, number>
+): Solution {
+  let best = sol.map(d => [...d]); // deep clone
+  let bestDist = solutionDistance(best, locations, precomputed);
+  let improved = true;
+  const MAX_ITER = 50;
+  let iter = 0;
+
+  while (improved && iter < MAX_ITER) {
+    improved = false;
+    iter++;
+
+    // ── Relocate: move a location from one day to another ──
+    for (let fromDay = 0; fromDay < best.length; fromDay++) {
+      for (let fromPos = 0; fromPos < best[fromDay].length; fromPos++) {
+        const loc = best[fromDay][fromPos];
+
+        for (let toDay = 0; toDay < best.length; toDay++) {
+          if (toDay === fromDay) continue;
+
+          // Try inserting at every position in toDay
+          for (let toPos = 0; toPos <= best[toDay].length; toPos++) {
+            // Clone and apply
+            const candidate = best.map(d => [...d]);
+            candidate[fromDay].splice(fromPos, 1);
+            candidate[toDay].splice(toPos, 0, loc);
+
+            // Re-order both affected days with NN
+            candidate[fromDay] = nearestNeighborWithinDay(candidate[fromDay], locations, home, precomputed);
+            candidate[toDay] = nearestNeighborWithinDay(candidate[toDay], locations, home, precomputed);
+
+            // Check constraints
+            if (dayViolates(candidate[fromDay], locations, home, config, precomputed)) continue;
+            if (dayViolates(candidate[toDay], locations, home, config, precomputed)) continue;
+
+            const dist = solutionDistance(candidate, locations, precomputed);
+            if (dist < bestDist - 0.01) {
+              best = candidate;
+              bestDist = dist;
+              improved = true;
+              break; // restart loop
+            }
+          }
+          if (improved) break;
+        }
+        if (improved) break;
+      }
+      if (improved) break;
+    }
+
+    if (improved) continue;
+
+    // ── Exchange: swap two locations between days ──
+    for (let dayA = 0; dayA < best.length; dayA++) {
+      for (let posA = 0; posA < best[dayA].length; posA++) {
+        for (let dayB = dayA + 1; dayB < best.length; dayB++) {
+          for (let posB = 0; posB < best[dayB].length; posB++) {
+            const candidate = best.map(d => [...d]);
+            const tmpA = candidate[dayA][posA];
+            const tmpB = candidate[dayB][posB];
+            candidate[dayA][posA] = tmpB;
+            candidate[dayB][posB] = tmpA;
+
+            candidate[dayA] = nearestNeighborWithinDay(candidate[dayA], locations, home, precomputed);
+            candidate[dayB] = nearestNeighborWithinDay(candidate[dayB], locations, home, precomputed);
+
+            if (dayViolates(candidate[dayA], locations, home, config, precomputed)) continue;
+            if (dayViolates(candidate[dayB], locations, home, config, precomputed)) continue;
+
+            const dist = solutionDistance(candidate, locations, precomputed);
+            if (dist < bestDist - 0.01) {
+              best = candidate;
+              bestDist = dist;
+              improved = true;
+              break;
+            }
+          }
+          if (improved) break;
+        }
+        if (improved) break;
+      }
+      if (improved) break;
+    }
+  }
+
+  return best;
+}
+
+// ─── Convert Solution → DayRoute[] ──────────────────────────
+
+function solutionToDays(
+  sol: Solution,
+  locations: Location[],
+  home: Location,
+  config: Config,
+  precomputed?: Record<string, number>
+): DayRoute[] {
+  return sol.map((ordered, dayIdx) => {
+    const stops: Stop[] = [];
+    let cumulativeDist = 0;
+    let cumulativeTime = 0;
+
+    stops.push({ sequence: 0, name: home.name, lat: home.lat, lng: home.lng,
+      distanceFromPrev: 0, cumulativeDistance: 0, cumulativeTime: 0, isHome: true });
+
+    for (let i = 0; i < ordered.length; i++) {
+      const idx = ordered[i];
+      const d = pairDist(i === 0 ? -1 : ordered[i - 1], idx, locations, precomputed);
+      const t = d / config.avgSpeed;
+      cumulativeDist += d;
+      cumulativeTime += t + config.visitTime / 60;
+      stops.push({ sequence: i + 1, name: locations[idx].name, lat: locations[idx].lat,
+        lng: locations[idx].lng, distanceFromPrev: d, cumulativeDistance: cumulativeDist,
+        cumulativeTime: cumulativeTime, isHome: false });
+    }
+
+    const returnDist = pairDist(ordered[ordered.length - 1], -1, locations, precomputed);
+    cumulativeDist += returnDist;
+    cumulativeTime += returnDist / config.avgSpeed;
+    stops.push({ sequence: ordered.length + 1, name: home.name, lat: home.lat, lng: home.lng,
+      distanceFromPrev: returnDist, cumulativeDistance: cumulativeDist,
+      cumulativeTime: cumulativeTime, isHome: true });
+
+    return { day: dayIdx + 1, stops, totalDistance: cumulativeDist,
+      totalTime: cumulativeTime, totalStops: ordered.length };
+  });
 }
