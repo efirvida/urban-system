@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import maplibregl from "maplibre-gl";
+import { useCallback, useRef, useEffect } from "react";
 import { ValidatedRow, Location } from "@/types";
 import { cn } from "@/lib/utils";
+import LocationMapEditor from "./LocationMapEditor";
 
 interface DataEditorProps {
   rows: ValidatedRow[];
@@ -12,8 +12,6 @@ interface DataEditorProps {
   onBack: () => void;
 }
 
-// ─── Component ───────────────────────────────────────────────
-
 export default function DataEditor({
   rows,
   onChange,
@@ -21,6 +19,8 @@ export default function DataEditor({
   onBack,
 }: DataEditorProps) {
   const selectedCount = rows.filter((r) => r.selected && r.isValid).length;
+
+  // ── Toggle row selection ──
 
   const handleToggleRow = useCallback(
     (id: string) => {
@@ -31,54 +31,60 @@ export default function DataEditor({
     [rows, onChange]
   );
 
+  // ── Edit a single field ──
+
   const handleEditField = useCallback(
     (id: string, field: "name" | "lat" | "lng", value: string) => {
       onChange(
         rows.map((r) => {
           if (r.id !== id) return r;
 
+          let newName = r.name;
           let newLat = r.lat;
           let newLng = r.lng;
-          let newIsValid = true;
+          let newRawLat = r.rawLat;
+          let newRawLng = r.rawLng;
           const newErrors: string[] = [];
 
           if (field === "name") {
-            if (!value.trim()) newErrors.push("Nombre vacío");
+            newName = value.trim();
+            if (!newName) newErrors.push("Nombre vacío");
           } else if (field === "lat") {
+            newRawLat = value;
             const parsed = parseFloat(value.replace(",", "."));
             if (isNaN(parsed)) {
-              newErrors.push(`Latitud inválida`);
+              newErrors.push("Latitud inválida");
               newLat = null;
             } else if (parsed < -90 || parsed > 90) {
-              newErrors.push(`Latitud fuera de rango`);
+              newErrors.push("Latitud fuera de rango");
               newLat = parsed;
             } else {
               newLat = parsed;
             }
           } else if (field === "lng") {
+            newRawLng = value;
             const parsed = parseFloat(value.replace(",", "."));
             if (isNaN(parsed)) {
-              newErrors.push(`Longitud inválida`);
+              newErrors.push("Longitud inválida");
               newLng = null;
             } else if (parsed < -180 || parsed > 180) {
-              newErrors.push(`Longitud fuera de rango`);
+              newErrors.push("Longitud fuera de rango");
               newLng = parsed;
             } else {
               newLng = parsed;
             }
           }
 
-          newIsValid = newErrors.length === 0;
-
           return {
             ...r,
-            name: field === "name" ? value.trim() : r.name,
-            lat: field === "lat" ? newLat : r.lat,
-            lng: field === "lng" ? newLng : r.lng,
-            rawLat: field === "lat" ? value : r.rawLat,
-            rawLng: field === "lng" ? value : r.rawLng,
-            isValid: newIsValid,
-            validationError: newErrors.length > 0 ? newErrors.join("; ") : undefined,
+            name: newName,
+            lat: newLat,
+            lng: newLng,
+            rawLat: newRawLat,
+            rawLng: newRawLng,
+            isValid: newErrors.length === 0,
+            validationError:
+              newErrors.length > 0 ? newErrors.join("; ") : undefined,
             edited: true,
           };
         })
@@ -87,8 +93,10 @@ export default function DataEditor({
     [rows, onChange]
   );
 
-  // Called by the map when a marker is dragged
-  const handleMarkerDrag = useCallback(
+  // ── Marker drag callback ──
+  // Stable ref-based — never changes.
+
+  const onMarkerDrag = useCallback(
     (id: string, lat: number, lng: number) => {
       onChange(
         rows.map((r) =>
@@ -110,16 +118,37 @@ export default function DataEditor({
     [rows, onChange]
   );
 
+  // ── Confirm → emit locations ──
+
   const handleConfirm = useCallback(() => {
     const locations: Location[] = rows
-      .filter((r) => r.selected && r.isValid && r.lat !== null && r.lng !== null)
-      .map((r) => ({
-        name: r.name,
-        lat: r.lat!,
-        lng: r.lng!,
-      }));
+      .filter(
+        (r) => r.selected && r.isValid && r.lat !== null && r.lng !== null
+      )
+      .map((r) => ({ name: r.name, lat: r.lat!, lng: r.lng! }));
     onConfirm(locations);
   }, [rows, onConfirm]);
+
+  // ── Keyboard shortcuts ──
+
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = tableRef.current;
+    if (!el) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Space on a checkbox-like context toggles selection
+      if (e.key === " " && e.target instanceof HTMLInputElement) {
+        // Let the native checkbox handle space
+        return;
+      }
+    };
+    el.addEventListener("keydown", handleKeyDown);
+    return () => el.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // ── Render ──
 
   return (
     <div className="space-y-4">
@@ -132,18 +161,21 @@ export default function DataEditor({
         </span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4" style={{ minHeight: "70vh" }}>
-        {/* Left: Table */}
+      <div
+        className="grid grid-cols-1 lg:grid-cols-5 gap-4"
+        style={{ minHeight: "70vh" }}
+      >
+        {/* ─── Left: Table ─── */}
         <div className="lg:col-span-2 card-base overflow-hidden flex flex-col">
           <div className="card-header flex items-center justify-between">
             <span>Tabla de datos</span>
             <span className="text-xs text-gray-400">
-              Arrastra los marcadores en el mapa o edita aquí
+              Arrastra en el mapa o edita aquí
             </span>
           </div>
-          <div className="flex-1 overflow-auto">
+          <div ref={tableRef} className="flex-1 overflow-auto">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-white">
+              <thead className="sticky top-0 bg-white z-10">
                 <tr className="border-b text-left text-gray-500 text-xs">
                   <th className="p-2 w-8"></th>
                   <th className="p-2 font-medium">Nombre</th>
@@ -153,253 +185,161 @@ export default function DataEditor({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => {
-                  const isActive = row.selected && row.isValid;
-                  return (
-                    <tr
-                      key={row.id}
-                      className={cn(
-                        "border-b last:border-0 transition-colors",
-                        !row.selected && "opacity-40",
-                        row.validationError && !row.selected && "",
-                        "hover:bg-gray-50"
-                      )}
+                {rows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="p-8 text-center text-sm text-gray-400"
                     >
-                      {/* Checkbox */}
-                      <td className="p-2">
-                        <input
-                          type="checkbox"
-                          checked={row.selected}
-                          onChange={() => handleToggleRow(row.id)}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                      </td>
+                      No hay filas para mostrar
+                    </td>
+                  </tr>
+                )}
+                {rows.map((row) => (
+                  <tr
+                    key={row.id}
+                    className={cn(
+                      "border-b last:border-0 transition-colors",
+                      !row.selected && "opacity-40",
+                      "hover:bg-gray-50"
+                    )}
+                  >
+                    {/* Checkbox */}
+                    <td className="p-2">
+                      <input
+                        type="checkbox"
+                        checked={row.selected}
+                        onChange={() => handleToggleRow(row.id)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </td>
 
-                      {/* Name */}
-                      <td className="p-2">
-                        <input
-                          value={row.name}
-                          onChange={(e) =>
-                            handleEditField(row.id, "name", e.target.value)
-                          }
-                          className={cn(
-                            "w-full bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none px-1 py-0.5",
-                            !row.name && "text-gray-300 italic"
-                          )}
-                          placeholder="Sin nombre"
-                        />
-                      </td>
+                    {/* Name */}
+                    <td className="p-2">
+                      <input
+                        value={row.name}
+                        onChange={(e) =>
+                          handleEditField(row.id, "name", e.target.value)
+                        }
+                        className="w-full bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none px-1 py-0.5"
+                        placeholder="Sin nombre"
+                      />
+                    </td>
 
-                      {/* Lat */}
-                      <td className="p-2">
-                        <input
-                          value={row.rawLat}
-                          onChange={(e) =>
-                            handleEditField(row.id, "lat", e.target.value)
-                          }
-                          className={cn(
-                            "w-full bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none px-1 py-0.5 font-mono text-xs",
-                            row.lat === null && "text-red-400"
-                          )}
-                        />
-                      </td>
-
-                      {/* Lng */}
-                      <td className="p-2">
-                        <input
-                          value={row.rawLng}
-                          onChange={(e) =>
-                            handleEditField(row.id, "lng", e.target.value)
-                          }
-                          className={cn(
-                            "w-full bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none px-1 py-0.5 font-mono text-xs",
-                            row.lng === null && "text-red-400"
-                          )}
-                        />
-                      </td>
-
-                      {/* Status */}
-                      <td className="p-2">
-                        {row.validationError ? (
-                          <span
-                            className="text-red-500 cursor-help text-xs"
-                            title={row.validationError}
-                          >
-                            ✗
-                          </span>
-                        ) : (
-                          <span className="text-green-500 text-xs">✓</span>
+                    {/* Lat */}
+                    <td className="p-2">
+                      <input
+                        value={row.rawLat}
+                        onChange={(e) =>
+                          handleEditField(row.id, "lat", e.target.value)
+                        }
+                        className={cn(
+                          "w-full bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none px-1 py-0.5 font-mono text-xs",
+                          row.lat === null && "text-red-400"
                         )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                      />
+                    </td>
+
+                    {/* Lng */}
+                    <td className="p-2">
+                      <input
+                        value={row.rawLng}
+                        onChange={(e) =>
+                          handleEditField(row.id, "lng", e.target.value)
+                        }
+                        className={cn(
+                          "w-full bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none px-1 py-0.5 font-mono text-xs",
+                          row.lng === null && "text-red-400"
+                        )}
+                      />
+                    </td>
+
+                    {/* Status */}
+                    <td className="p-2">
+                      {row.validationError ? (
+                        <span
+                          className="text-red-500 cursor-help text-xs"
+                          title={row.validationError}
+                        >
+                          ✗
+                        </span>
+                      ) : (
+                        <span className="text-green-500 text-xs">✓</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
+
+          {/* Quick actions footer */}
+          <div className="border-t px-2 py-1.5 bg-gray-50 flex items-center gap-2 text-xs text-gray-500">
+            <button
+              onClick={() =>
+                onChange(
+                  rows.map((r) => ({
+                    ...r,
+                    selected: r.isValid,
+                  }))
+                )
+              }
+              className="hover:text-blue-600 transition-colors"
+            >
+              ✓ Solo válidas
+            </button>
+            <button
+              onClick={() =>
+                onChange(rows.map((r) => ({ ...r, selected: true })))
+              }
+              className="hover:text-blue-600 transition-colors"
+            >
+              ✓ Todas
+            </button>
+            <button
+              onClick={() =>
+                onChange(rows.map((r) => ({ ...r, selected: false })))
+              }
+              className="hover:text-red-600 transition-colors"
+            >
+              ✗ Ninguna
+            </button>
+          </div>
         </div>
 
-        {/* Right: Map */}
+        {/* ─── Right: Map ─── */}
         <div className="lg:col-span-3 card-base overflow-hidden">
-          <div className="card-header">Mapa interactivo — arrastra los marcadores</div>
-          <LocationMap
-            rows={rows}
-            onMarkerDrag={handleMarkerDrag}
-          />
+          <div className="card-header">
+            Mapa interactivo — arrastra los marcadores
+          </div>
+          <div className="card-body p-0" style={{ height: "calc(70vh - 45px)" }}>
+            <LocationMapEditor rows={rows} onMarkerDrag={onMarkerDrag} />
+          </div>
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center justify-between">
+      {/* ─── Actions bar ─── */}
+      <div className="flex items-center justify-between border-t pt-4">
         <button onClick={onBack} className="btn-secondary">
           ← Volver a columnas
         </button>
+
         <div className="text-sm text-gray-500">
-          {selectedCount} ubicación{selectedCount !== 1 ? "es" : ""} lista
-          {selectedCount !== 1 ? "s" : ""} para optimizar
+          {selectedCount === 0
+            ? "Seleccioná al menos una ubicación"
+            : `${selectedCount} ubicación${selectedCount !== 1 ? "es" : ""} lista${selectedCount !== 1 ? "s" : ""} para optimizar`}
         </div>
+
         <button
           onClick={handleConfirm}
           disabled={selectedCount === 0}
           className="btn-primary"
         >
           {selectedCount > 0
-            ? `Confirmar ${selectedCount} y configurar ruta →`
+            ? `Confirmar ${selectedCount} →`
             : "Selecciona al menos una"}
         </button>
       </div>
     </div>
-  );
-}
-
-// ─── Inner map component (isolated lifecycle) ────────────────
-
-function LocationMap({
-  rows,
-  onMarkerDrag,
-}: {
-  rows: ValidatedRow[];
-  onMarkerDrag: (id: string, lat: number, lng: number) => void;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<maplibregl.Map | null>(null);
-  const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
-  const initializedRef = useRef(false);
-
-  // Init map once
-  useEffect(() => {
-    if (containerRef.current && !initializedRef.current) {
-      initializedRef.current = true;
-      const map = new maplibregl.Map({
-        container: containerRef.current,
-        style: "https://tiles.openfreemap.org/styles/liberty",
-        center: [0, 0],
-        zoom: 2,
-        attributionControl: false,
-      });
-      map.addControl(new maplibregl.NavigationControl(), "top-right");
-      map.addControl(new maplibregl.AttributionControl({ compact: true }));
-      mapRef.current = map;
-    }
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-        initializedRef.current = false;
-      }
-    };
-  }, []);
-
-  // Sync markers with rows
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const markers = markersRef.current;
-    const activeIds = new Set<string>();
-
-    const validRows = rows.filter((r) => r.lat !== null && r.lng !== null);
-
-    // Create or update markers
-    for (const row of validRows) {
-      activeIds.add(row.id);
-      const existing = markers.get(row.id);
-
-      if (existing) {
-        // Update position if row data changed (and marker wasn't just dragged)
-        const pos = existing.getLngLat();
-        if (pos.lat !== row.lat || pos.lng !== row.lng) {
-          existing.setLngLat([row.lng!, row.lat!]);
-        }
-      } else {
-        // Create new draggable marker
-        const el = document.createElement("div");
-        el.className =
-          "flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white shadow-md cursor-grab active:cursor-grabbing";
-        el.style.backgroundColor = row.selected ? "#3b82f6" : "#9ca3af";
-        el.style.opacity = row.selected ? "1" : "0.5";
-        el.textContent = String(rows.indexOf(row) + 1);
-
-        const marker = new maplibregl.Marker({
-          element: el,
-          draggable: row.selected && row.isValid,
-        })
-          .setLngLat([row.lng!, row.lat!])
-          .addTo(map);
-
-        marker.on("dragend", () => {
-          const pos = marker.getLngLat();
-          onMarkerDrag(row.id, pos.lat, pos.lng);
-        });
-
-        markers.set(row.id, marker);
-      }
-    }
-
-    // Remove stale markers
-    for (const [id, marker] of markers) {
-      if (!activeIds.has(id)) {
-        marker.remove();
-        markers.delete(id);
-      }
-    }
-
-    // Fit bounds
-    const coords: [number, number][] = validRows
-      .filter((r) => r.selected)
-      .map((r) => [r.lng!, r.lat!]);
-
-    if (coords.length > 0) {
-      const bounds = coords.reduce(
-        (b, c) => b.extend(c),
-        new maplibregl.LngLatBounds(coords[0], coords[0])
-      );
-      map.fitBounds(bounds, {
-        padding: 60,
-        maxZoom: 16,
-        duration: 300,
-      });
-    }
-  }, [rows, onMarkerDrag]);
-
-  // Update marker appearance when selection changes
-  useEffect(() => {
-    for (const row of rows) {
-      const marker = markersRef.current.get(row.id);
-      if (marker && marker.getElement()) {
-        const el = marker.getElement();
-        el.style.backgroundColor = row.selected ? "#3b82f6" : "#9ca3af";
-        el.style.opacity = row.selected ? "1" : "0.5";
-        marker.setDraggable(row.selected && row.isValid);
-      }
-    }
-  }, [rows]);
-
-  return (
-    <div
-      ref={containerRef}
-      className="map-container"
-      style={{ width: "100%", height: "100%", minHeight: "500px" }}
-    />
   );
 }
