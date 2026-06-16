@@ -9,6 +9,8 @@ interface ResultsPanelProps {
   totalDistance: number;
   totalDays: number;
   totalLocations: number;
+  hiddenDays?: Set<number>;
+  onToggleDay?: (day: number) => void;
 }
 
 export default function ResultsPanel({
@@ -16,6 +18,8 @@ export default function ResultsPanel({
   totalDistance,
   totalDays,
   totalLocations,
+  hiddenDays,
+  onToggleDay,
 }: ResultsPanelProps) {
   const [expandedDay, setExpandedDay] = useState<number>(1);
 
@@ -58,39 +62,60 @@ export default function ResultsPanel({
               }
               className="w-full text-left"
             >
-              <div
-                className="card-header flex items-center justify-between hover:bg-gray-50 transition-colors"
+          <div
+            className="card-header flex items-center justify-between hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className="w-3 h-3 rounded-full inline-block"
+                style={{ backgroundColor: color }}
+              />
+              <span className="font-semibold">Día {day.day}</span>
+              <span className="text-xs text-gray-400">
+                {visitStops.length} paradas
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-gray-500">
+              {/* Toggle visibility */}
+              {onToggleDay && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleDay(day.day);
+                  }}
+                  className={`px-2 py-0.5 rounded-full border transition-colors ${
+                    hiddenDays?.has(day.day)
+                      ? "border-gray-200 text-gray-300"
+                      : "border-blue-200 text-blue-600 bg-blue-50"
+                  }`}
+                  title={
+                    hiddenDays?.has(day.day)
+                      ? "Mostrar en mapa"
+                      : "Ocultar en mapa"
+                  }
+                >
+                  {hiddenDays?.has(day.day) ? "👁‍🗨" : "👁"} Mapa
+                </button>
+              )}
+              <span>{formatDistance(day.totalDistance)}</span>
+              <span>{formatDuration(day.totalTime)}</span>
+              <svg
+                className={`w-4 h-4 transition-transform ${
+                  isExpanded ? "rotate-180" : ""
+                }`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
               >
-                <div className="flex items-center gap-3">
-                  <span
-                    className="w-3 h-3 rounded-full inline-block"
-                    style={{ backgroundColor: color }}
-                  />
-                  <span className="font-semibold">Día {day.day}</span>
-                  <span className="text-xs text-gray-400">
-                    {visitStops.length} paradas
-                  </span>
-                </div>
-                <div className="flex items-center gap-4 text-xs text-gray-500">
-                  <span>{formatDistance(day.totalDistance)}</span>
-                  <span>{formatDuration(day.totalTime)}</span>
-                  <svg
-                    className={`w-4 h-4 transition-transform ${
-                      isExpanded ? "rotate-180" : ""
-                    }`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </div>
-              </div>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+            </div>
+          </div>
             </button>
 
             {isExpanded && (

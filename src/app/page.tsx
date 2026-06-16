@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useMemo } from "react";
+import { useCallback, useState, useMemo, useRef } from "react";
 import {
   Location,
   Config,
@@ -9,7 +9,7 @@ import {
   ValidatedRow,
   ColumnMapping,
 } from "@/types";
-import { applyMapping, validatedToLocations } from "@/utils/parser";
+import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
 
 import FileUpload from "@/components/FileUpload";
@@ -57,6 +57,8 @@ export default function Home() {
   const [result, setResult] = useState<OptimizeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [placementMode, setPlacementMode] = useState<"home" | null>(null);
+  const [hiddenDays, setHiddenDays] = useState<Set<number>>(new Set());
 
   // ── Map data (derived) ──
   const mapData = useMemo((): MapViewData => {
@@ -70,7 +72,7 @@ export default function Home() {
     }
 
     if (phase === "results" && result) {
-      return { routes: result.days, locations, home };
+      return { routes: result.days, locations, home, hiddenDays };
     }
 
     if (phase === "config") {
@@ -150,6 +152,25 @@ export default function Home() {
     }
   }, [locations, config]);
 
+  const handlePlaceHome = useCallback(
+    (lat: number, lng: number) => {
+      setConfig((prev) => ({ ...prev, homeLat: lat, homeLng: lng }));
+      setPlacementMode(null); // exit placement mode after placing
+    },
+    []
+  );
+
+  const handleDragHome = useCallback(
+    (lat: number, lng: number) => {
+      setConfig((prev) => ({ ...prev, homeLat: lat, homeLng: lng }));
+    },
+    []
+  );
+
+  const handleTogglePlaceHome = useCallback(() => {
+    setPlacementMode((prev) => (prev === "home" ? null : "home"));
+  }, []);
+
   const handleReset = useCallback(() => {
     setRawData(null);
     setValidatedRows([]);
@@ -158,6 +179,8 @@ export default function Home() {
     setError(null);
     setPhase("upload");
     setSidebarOpen(true);
+    setPlacementMode(null);
+    setHiddenDays(new Set());
   }, []);
 
   // ── Steps bar — shown inside the sidebar header ──
@@ -238,6 +261,8 @@ export default function Home() {
                 config={config}
                 onChange={setConfig}
                 locationCount={locations.length}
+                placingHome={placementMode === "home"}
+                onTogglePlaceHome={handleTogglePlaceHome}
               />
               <OptimizeButton
                 onClick={handleOptimize}
@@ -265,6 +290,15 @@ export default function Home() {
                 totalDistance={result.totalDistance}
                 totalDays={result.totalDays}
                 totalLocations={result.totalLocations}
+                hiddenDays={hiddenDays}
+                onToggleDay={(day) =>
+                  setHiddenDays((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(day)) next.delete(day);
+                    else next.add(day);
+                    return next;
+                  })
+                }
               />
 
               <div className="mt-4 flex flex-col gap-2">
@@ -294,7 +328,12 @@ export default function Home() {
   return (
     <div className="h-screen w-screen overflow-hidden relative bg-gray-100">
       {/* ── Full-screen map ── */}
-      <MapView data={mapData} />
+      <MapView
+        data={mapData}
+        placementMode={placementMode}
+        onPlaceHome={handlePlaceHome}
+        onDragHome={handleDragHome}
+      />
 
       {/* ── Error toast ── */}
       {error && (
