@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useRef, useEffect } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ValidatedRow, Location } from "@/types";
 import { cn } from "@/lib/utils";
-import LocationMapEditor from "./LocationMapEditor";
 
 interface DataEditorProps {
   rows: ValidatedRow[];
@@ -12,16 +11,54 @@ interface DataEditorProps {
   onBack: () => void;
 }
 
+type FilterOption = "all" | "valid" | "invalid" | "selected" | "unselected";
+
 export default function DataEditor({
   rows,
   onChange,
   onConfirm,
   onBack,
 }: DataEditorProps) {
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<FilterOption>("all");
+
   const selectedCount = rows.filter((r) => r.selected && r.isValid).length;
 
-  // ── Toggle row selection ──
+  // ── Filtered rows ──
+  const filteredRows = useMemo(() => {
+    let result = rows;
 
+    // Search by name
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (r) =>
+          r.name.toLowerCase().includes(q) ||
+          r.rawLat.includes(q) ||
+          r.rawLng.includes(q)
+      );
+    }
+
+    // Filter by status
+    switch (filter) {
+      case "valid":
+        result = result.filter((r) => r.isValid);
+        break;
+      case "invalid":
+        result = result.filter((r) => !r.isValid);
+        break;
+      case "selected":
+        result = result.filter((r) => r.selected);
+        break;
+      case "unselected":
+        result = result.filter((r) => !r.selected);
+        break;
+    }
+
+    return result;
+  }, [rows, search, filter]);
+
+  // ── Row toggle ──
   const handleToggleRow = useCallback(
     (id: string) => {
       onChange(
@@ -31,8 +68,7 @@ export default function DataEditor({
     [rows, onChange]
   );
 
-  // ── Edit a single field ──
-
+  // ── Edit field ──
   const handleEditField = useCallback(
     (id: string, field: "name" | "lat" | "lng", value: string) => {
       onChange(
@@ -44,34 +80,34 @@ export default function DataEditor({
           let newLng = r.lng;
           let newRawLat = r.rawLat;
           let newRawLng = r.rawLng;
-          const newErrors: string[] = [];
+          const errors: string[] = [];
 
           if (field === "name") {
             newName = value.trim();
-            if (!newName) newErrors.push("Nombre vacío");
+            if (!newName) errors.push("Nombre vacío");
           } else if (field === "lat") {
             newRawLat = value;
-            const parsed = parseFloat(value.replace(",", "."));
-            if (isNaN(parsed)) {
-              newErrors.push("Latitud inválida");
+            const p = parseFloat(value.replace(",", "."));
+            if (isNaN(p)) {
+              errors.push("Latitud inválida");
               newLat = null;
-            } else if (parsed < -90 || parsed > 90) {
-              newErrors.push("Latitud fuera de rango");
-              newLat = parsed;
+            } else if (p < -90 || p > 90) {
+              errors.push("Latitud fuera de rango");
+              newLat = p;
             } else {
-              newLat = parsed;
+              newLat = p;
             }
           } else if (field === "lng") {
             newRawLng = value;
-            const parsed = parseFloat(value.replace(",", "."));
-            if (isNaN(parsed)) {
-              newErrors.push("Longitud inválida");
+            const p = parseFloat(value.replace(",", "."));
+            if (isNaN(p)) {
+              errors.push("Longitud inválida");
               newLng = null;
-            } else if (parsed < -180 || parsed > 180) {
-              newErrors.push("Longitud fuera de rango");
-              newLng = parsed;
+            } else if (p < -180 || p > 180) {
+              errors.push("Longitud fuera de rango");
+              newLng = p;
             } else {
-              newLng = parsed;
+              newLng = p;
             }
           }
 
@@ -82,9 +118,8 @@ export default function DataEditor({
             lng: newLng,
             rawLat: newRawLat,
             rawLng: newRawLng,
-            isValid: newErrors.length === 0,
-            validationError:
-              newErrors.length > 0 ? newErrors.join("; ") : undefined,
+            isValid: errors.length === 0,
+            validationError: errors.length > 0 ? errors.join("; ") : undefined,
             edited: true,
           };
         })
@@ -93,247 +128,202 @@ export default function DataEditor({
     [rows, onChange]
   );
 
-  // ── Marker drag callback ──
-  // Stable ref-based — never changes.
-
-  const onMarkerDrag = useCallback(
-    (id: string, lat: number, lng: number) => {
-      onChange(
-        rows.map((r) =>
-          r.id === id
-            ? {
-                ...r,
-                lat,
-                lng,
-                rawLat: String(lat),
-                rawLng: String(lng),
-                isValid: true,
-                validationError: undefined,
-                edited: true,
-              }
-            : r
-        )
-      );
-    },
-    [rows, onChange]
-  );
-
-  // ── Confirm → emit locations ──
-
+  // ── Confirm ──
   const handleConfirm = useCallback(() => {
-    const locations: Location[] = rows
-      .filter(
-        (r) => r.selected && r.isValid && r.lat !== null && r.lng !== null
-      )
+    const locations = rows
+      .filter((r) => r.selected && r.isValid && r.lat !== null && r.lng !== null)
       .map((r) => ({ name: r.name, lat: r.lat!, lng: r.lng! }));
     onConfirm(locations);
   }, [rows, onConfirm]);
 
-  // ── Keyboard shortcuts ──
-
-  const tableRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = tableRef.current;
-    if (!el) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Space on a checkbox-like context toggles selection
-      if (e.key === " " && e.target instanceof HTMLInputElement) {
-        // Let the native checkbox handle space
-        return;
-      }
-    };
-    el.addEventListener("keydown", handleKeyDown);
-    return () => el.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  // ── Render ──
+  // ── Quick actions ──
+  const bulkSelect = useCallback(
+    (predicate: (r: ValidatedRow) => boolean) => {
+      onChange(rows.map((r) => ({ ...r, selected: predicate(r) })));
+    },
+    [rows, onChange]
+  );
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-gray-900">
-          Revisa y ajusta las ubicaciones
-        </h2>
-        <span className="text-sm text-gray-500">
-          {rows.length} filas &middot; {selectedCount} seleccionadas
-        </span>
+    <div className="flex flex-col h-full gap-3">
+      {/* ── Search + filters ── */}
+      <div className="space-y-2">
+        <div className="relative">
+          <svg
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
+          </svg>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nombre o coordenada..."
+            className="input-field pl-8 text-sm"
+          />
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {(
+            [
+              ["all", "Todas"],
+              ["valid", "Válidas"],
+              ["invalid", "Inválidas"],
+              ["selected", "Seleccionadas"],
+              ["unselected", "No seleccionadas"],
+            ] as [FilterOption, string][]
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setFilter(key)}
+              className={cn(
+                "text-xs px-2.5 py-1 rounded-full border transition-colors",
+                filter === key
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "bg-white text-gray-500 border-gray-200 hover:border-blue-300"
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-gray-400">
+          <button
+            onClick={() => bulkSelect((r) => r.isValid)}
+            className="hover:text-blue-600 transition-colors"
+          >
+            ✓ Solo válidas
+          </button>
+          <span>·</span>
+          <button
+            onClick={() => bulkSelect(() => true)}
+            className="hover:text-blue-600 transition-colors"
+          >
+            ✓ Todas
+          </button>
+          <span>·</span>
+          <button
+            onClick={() => bulkSelect(() => false)}
+            className="hover:text-red-500 transition-colors"
+          >
+            ✗ Ninguna
+          </button>
+        </div>
       </div>
 
-      <div
-        className="grid grid-cols-1 lg:grid-cols-5 gap-4"
-        style={{ minHeight: "70vh" }}
-      >
-        {/* ─── Left: Table ─── */}
-        <div className="lg:col-span-2 card-base overflow-hidden flex flex-col">
-          <div className="card-header flex items-center justify-between">
-            <span>Tabla de datos</span>
-            <span className="text-xs text-gray-400">
-              Arrastra en el mapa o edita aquí
-            </span>
-          </div>
-          <div ref={tableRef} className="flex-1 overflow-auto">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-white z-10">
-                <tr className="border-b text-left text-gray-500 text-xs">
-                  <th className="p-2 w-8"></th>
-                  <th className="p-2 font-medium">Nombre</th>
-                  <th className="p-2 font-medium">Latitud</th>
-                  <th className="p-2 font-medium">Longitud</th>
-                  <th className="p-2 w-6"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="p-8 text-center text-sm text-gray-400"
-                    >
-                      No hay filas para mostrar
-                    </td>
-                  </tr>
+      {/* ── Row count ── */}
+      <div className="text-xs text-gray-400">
+        Mostrando {filteredRows.length} de {rows.length} filas
+        &middot; {selectedCount} seleccionadas
+      </div>
+
+      {/* ── Table ── */}
+      <div className="flex-1 overflow-y-auto border rounded-lg">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-white z-10">
+            <tr className="border-b text-left text-gray-500 text-xs">
+              <th className="p-2 w-8"></th>
+              <th className="p-2 font-medium">Nombre</th>
+              <th className="p-2 font-medium">Lat</th>
+              <th className="p-2 font-medium">Lng</th>
+              <th className="p-2 w-6"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredRows.length === 0 && (
+              <tr>
+                <td colSpan={5} className="p-6 text-center text-sm text-gray-400">
+                  {search
+                    ? "Sin resultados para esa búsqueda"
+                    : "No hay filas para mostrar"}
+                </td>
+              </tr>
+            )}
+            {filteredRows.map((row) => (
+              <tr
+                key={row.id}
+                className={cn(
+                  "border-b last:border-0 transition-colors hover:bg-gray-50",
+                  !row.selected && "opacity-40"
                 )}
-                {rows.map((row) => (
-                  <tr
-                    key={row.id}
+              >
+                <td className="p-1.5 pl-2">
+                  <input
+                    type="checkbox"
+                    checked={row.selected}
+                    onChange={() => handleToggleRow(row.id)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </td>
+                <td className="p-1.5">
+                  <input
+                    value={row.name}
+                    onChange={(e) =>
+                      handleEditField(row.id, "name", e.target.value)
+                    }
+                    className="w-full bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none px-1 py-0.5"
+                    placeholder="Sin nombre"
+                  />
+                </td>
+                <td className="p-1.5">
+                  <input
+                    value={row.rawLat}
+                    onChange={(e) =>
+                      handleEditField(row.id, "lat", e.target.value)
+                    }
                     className={cn(
-                      "border-b last:border-0 transition-colors",
-                      !row.selected && "opacity-40",
-                      "hover:bg-gray-50"
+                      "w-full bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none px-1 py-0.5 font-mono text-xs",
+                      row.lat === null && "text-red-400"
                     )}
-                  >
-                    {/* Checkbox */}
-                    <td className="p-2">
-                      <input
-                        type="checkbox"
-                        checked={row.selected}
-                        onChange={() => handleToggleRow(row.id)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                    </td>
-
-                    {/* Name */}
-                    <td className="p-2">
-                      <input
-                        value={row.name}
-                        onChange={(e) =>
-                          handleEditField(row.id, "name", e.target.value)
-                        }
-                        className="w-full bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none px-1 py-0.5"
-                        placeholder="Sin nombre"
-                      />
-                    </td>
-
-                    {/* Lat */}
-                    <td className="p-2">
-                      <input
-                        value={row.rawLat}
-                        onChange={(e) =>
-                          handleEditField(row.id, "lat", e.target.value)
-                        }
-                        className={cn(
-                          "w-full bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none px-1 py-0.5 font-mono text-xs",
-                          row.lat === null && "text-red-400"
-                        )}
-                      />
-                    </td>
-
-                    {/* Lng */}
-                    <td className="p-2">
-                      <input
-                        value={row.rawLng}
-                        onChange={(e) =>
-                          handleEditField(row.id, "lng", e.target.value)
-                        }
-                        className={cn(
-                          "w-full bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none px-1 py-0.5 font-mono text-xs",
-                          row.lng === null && "text-red-400"
-                        )}
-                      />
-                    </td>
-
-                    {/* Status */}
-                    <td className="p-2">
-                      {row.validationError ? (
-                        <span
-                          className="text-red-500 cursor-help text-xs"
-                          title={row.validationError}
-                        >
-                          ✗
-                        </span>
-                      ) : (
-                        <span className="text-green-500 text-xs">✓</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Quick actions footer */}
-          <div className="border-t px-2 py-1.5 bg-gray-50 flex items-center gap-2 text-xs text-gray-500">
-            <button
-              onClick={() =>
-                onChange(
-                  rows.map((r) => ({
-                    ...r,
-                    selected: r.isValid,
-                  }))
-                )
-              }
-              className="hover:text-blue-600 transition-colors"
-            >
-              ✓ Solo válidas
-            </button>
-            <button
-              onClick={() =>
-                onChange(rows.map((r) => ({ ...r, selected: true })))
-              }
-              className="hover:text-blue-600 transition-colors"
-            >
-              ✓ Todas
-            </button>
-            <button
-              onClick={() =>
-                onChange(rows.map((r) => ({ ...r, selected: false })))
-              }
-              className="hover:text-red-600 transition-colors"
-            >
-              ✗ Ninguna
-            </button>
-          </div>
-        </div>
-
-        {/* ─── Right: Map ─── */}
-        <div className="lg:col-span-3 card-base overflow-hidden">
-          <div className="card-header">
-            Mapa interactivo — arrastra los marcadores
-          </div>
-          <div className="card-body p-0" style={{ height: "calc(70vh - 45px)" }}>
-            <LocationMapEditor rows={rows} onMarkerDrag={onMarkerDrag} />
-          </div>
-        </div>
+                  />
+                </td>
+                <td className="p-1.5">
+                  <input
+                    value={row.rawLng}
+                    onChange={(e) =>
+                      handleEditField(row.id, "lng", e.target.value)
+                    }
+                    className={cn(
+                      "w-full bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none px-1 py-0.5 font-mono text-xs",
+                      row.lng === null && "text-red-400"
+                    )}
+                  />
+                </td>
+                <td className="p-1.5 pr-2">
+                  {row.validationError ? (
+                    <span
+                      className="text-red-500 cursor-help text-xs"
+                      title={row.validationError}
+                    >
+                      ✗
+                    </span>
+                  ) : (
+                    <span className="text-green-500 text-xs">✓</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* ─── Actions bar ─── */}
-      <div className="flex items-center justify-between border-t pt-4">
-        <button onClick={onBack} className="btn-secondary">
-          ← Volver a columnas
+      {/* ── Actions ── */}
+      <div className="flex items-center justify-between border-t pt-3">
+        <button onClick={onBack} className="btn-secondary text-sm">
+          ← Columnas
         </button>
-
-        <div className="text-sm text-gray-500">
-          {selectedCount === 0
-            ? "Seleccioná al menos una ubicación"
-            : `${selectedCount} ubicación${selectedCount !== 1 ? "es" : ""} lista${selectedCount !== 1 ? "s" : ""} para optimizar`}
-        </div>
-
         <button
           onClick={handleConfirm}
           disabled={selectedCount === 0}
-          className="btn-primary"
+          className="btn-primary text-sm"
         >
           {selectedCount > 0
             ? `Confirmar ${selectedCount} →`

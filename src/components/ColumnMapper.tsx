@@ -109,96 +109,73 @@ export default function ColumnMapper({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
-          Selecciona las columnas
-        </h2>
+    <div className="space-y-4">
+      <div>
         <p className="text-sm text-gray-500">
           Archivo: <span className="font-medium">{data.fileName}</span>
-          &nbsp;·&nbsp; {effectiveData.columns.length} columnas,{" "}
+          &nbsp;·&nbsp; {effectiveData.columns.length} col,{" "}
           {effectiveData.rows.length} filas
         </p>
       </div>
 
       {/* Header row detection banner */}
       {headerCheck.isHeader && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <span className="text-lg">🔍</span>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-amber-800">
-                Se detectaron nombres de columna en la primera fila
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <div className="flex items-start gap-2">
+            <span>🔍</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-amber-800">
+                Nombres detectados en la primera fila
               </p>
-              <p className="text-xs text-amber-600 mt-1">
-                El archivo tiene celdas combinadas. Los nombres reales de las
-                columnas están en la primera fila de datos.
-              </p>
-              <div className="mt-2 flex items-center gap-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={useFirstRowAsHeaders}
-                    onChange={(e) => handleReheader(e.target.checked)}
-                    className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
-                  />
-                  <span className="text-sm text-amber-700">
-                    Usar primera fila como nombres de columna
-                  </span>
-                </label>
-                {useFirstRowAsHeaders && (
-                  <span className="text-xs text-green-600">
-                    ✓ Nombres detectados:{" "}
-                    {headerCheck.suggestedNames
-                      .filter((n) => n)
-                      .slice(0, 5)
-                      .join(", ")}
-                    {headerCheck.suggestedNames.filter((n) => n).length > 5
-                      ? "..."
-                      : ""}
-                  </span>
-                )}
-              </div>
+              <label className="flex items-center gap-2 cursor-pointer mt-1">
+                <input
+                  type="checkbox"
+                  checked={useFirstRowAsHeaders}
+                  onChange={(e) => handleReheader(e.target.checked)}
+                  className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                />
+                <span className="text-xs text-amber-700">
+                  Usar como nombres de columna
+                </span>
+              </label>
+              {useFirstRowAsHeaders && (
+                <p className="text-xs text-green-600 mt-1 truncate">
+                  ✓ {headerCheck.suggestedNames.filter((n) => n).join(", ")}
+                </p>
+              )}
             </div>
           </div>
         </div>
       )}
 
       {/* DMS format banner */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
-        <span className="font-medium">📐</span> Se aceptan coordenadas en
-        formato decimal (<code>-15.744</code>) y grados-minutos-segundos (
-        <code>15°02&apos;51.6&apos;&apos;S</code>).
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-xs text-blue-700">
+        <span className="font-medium">📐</span> Decimal (<code>-15.744</code>) y
+        DMS (<code>15°02&apos;51.6&apos;&apos;S</code>)
       </div>
 
       {/* Column selectors */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="space-y-2">
         {(Object.keys(FIELD_LABELS) as FieldKey[]).map((field) => (
-          <div key={field} className="card-base">
-            <div className="card-header">
+          <div key={field}>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
               {FIELD_ICONS[field]} {FIELD_LABELS[field]}
-            </div>
-            <div className="card-body">
-              <select
-                value={mapping[field]}
-                onChange={(e) => setField(field, e.target.value)}
-                className="input-field"
-              >
-                <option value="">— Seleccionar columna —</option>
-                {effectiveData.columns.map((col) => {
-                  const isSuggested = suggested?.[field] === col;
-                  return (
-                    <option key={col} value={col}>
-                      {col} {col === suggested?.[field] ? "✓" : ""}
-                    </option>
-                  );
-                })}
-              </select>
-
-              {!touched && suggested?.[field] && (
-                <p className="text-xs text-green-600 mt-1">✓ Detectado</p>
-              )}
-            </div>
+            </label>
+            <select
+              value={mapping[field]}
+              onChange={(e) => setField(field, e.target.value)}
+              className="input-field text-sm"
+            >
+              <option value="">— Seleccionar —</option>
+              {effectiveData.columns.map((col) => (
+                <option key={col} value={col}>
+                  {col} {col === suggested?.[field] ? "✓" : ""}
+                </option>
+              ))}
+            </select>
+            {!touched && suggested?.[field] && (
+              <p className="text-xs text-green-600 mt-0.5">✓ Detectado</p>
+            )}
           </div>
         ))}
       </div>
