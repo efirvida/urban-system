@@ -11,7 +11,7 @@ import {
 } from "@/types";
 import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
-import { buildDistanceMatrices, MatrixProgress } from "@/utils/clientRouting";
+import { buildDistanceMatrices, fetchRouteGeometries, MatrixProgress } from "@/utils/clientRouting";
 
 import FileUpload from "@/components/FileUpload";
 import ColumnMapper from "@/components/ColumnMapper";
@@ -155,15 +155,12 @@ export default function Home() {
     try {
       // ── Phase 1: Build distance matrices (client-side) ──
       setOptimizePhase("matrix");
-      const { osrmMatrix, haversineMatrix, osrmGeometry } = await buildDistanceMatrices(
+      const { osrmMatrix, haversineMatrix } = await buildDistanceMatrices(
         config.homeLat,
         config.homeLng,
         locations,
         setMatrixProgress
       );
-
-      // Store road geometry for map visualization
-      setRouteGeometry(osrmGeometry);
 
       // Convert Maps to plain objects for JSON serialization
       const osrmObj: Record<string, number> = {};
@@ -206,6 +203,26 @@ export default function Home() {
           osrmResult.days.slice(1).map((d) => d.day)
         )
       );
+
+      // ── Phase 3: Fetch road geometry for visualization ──
+      // Only for visible route segments (not all N² pairs)
+      const routeStops = osrmResult.days.map((d) => d.stops);
+      fetchRouteGeometries(routeStops, (current, total) => {
+        setMatrixProgress({
+          phase: "matrix",
+          stage: `Cargando geometría de rutas (${current}/${total})...`,
+          current,
+          total,
+          percent: Math.round((current / total) * 100),
+          etaSeconds: 0,
+          realCount: current,
+          haversineCount: 0,
+        });
+      }).then((geo) => {
+        setRouteGeometry(geo);
+        setMatrixProgress(null);
+      });
+
       setPhase("results");
       setSidebarOpen(true);
     } catch (err) {
