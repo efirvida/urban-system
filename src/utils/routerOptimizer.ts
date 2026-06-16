@@ -1,35 +1,88 @@
 import { Location, Config, DayRoute, Stop } from "@/types";
 import { haversineDistance } from "./haversine";
+import { drivingDistance } from "./routing";
 
 // ─── Internal types ───────────────────────────────────────────
 
 interface SavingsPair {
-  i: number; // index in locations array
-  j: number; // index in locations array
+  i: number;
+  j: number;
   savings: number;
 }
 
 interface RouteCluster {
-  indices: number[]; // indices into the original locations array
-  totalTravelKm: number;
-  totalVisitTimeMin: number;
+  indices: number[];
+}
+
+// ─── Distance cache ───────────────────────────────────────────
+
+/**
+ * Pre-computed distance matrix.
+ * dist[i][j] = road distance between locations i and j (km).
+ * Index -1 = home.
+ */
+class DistanceMatrix {
+  private n: number;
+  private d: number[][];
+  private real: boolean[][]; // whether it's a real (OSRM) distance
+
+  constructor(n: number) {
+    this.n = n;
+    this.d = Array.from({ length: n + 1 }, () => new Array(n + 1).fill(0));
+    this.real = Array.from({ length: n + 1 }, () => new Array(n + 1).fill(false));
+  }
+
+  private idx(locationIdx: number): number {
+    return locationIdx + 1; // 0 → home (index -1 → 0), 1..n → 1..n
+  }
+
+  async set(
+    coords: { lat: number; lng: number }[],
+    i: number,
+    j: number
+  ): Promise<void> {
+    const a = this.idx(i);
+    const b = this.idx(j);
+    const p1 = i === -1 ? coords[0] : coords[i]; // home is first
+    const p2 = j === -1 ? coords[0] : coords[j]; // home is first
+
+    // For tiny distances (same point), Haversine is fine
+    const H = haversineDistance(p1.lat, p1.lng, p2.lat, p2.lng);
+    if (H < 0.01) {
+      this.d[a][b] = H;
+      this.d[b][a] = H;
+      return;
+    }
+
+    const real = await drivingDistance(p1.lat, p1.lng, p2.lat, p2.lng);
+    const isReal = Math.abs(real - H) > 0.1;
+
+    this.d[a][b] = real;
+    this.d[b][a] = real;
+    this.real[a][b] = isReal;
+    this.real[b][a] = isReal;
+  }
+
+  get(i: number, j: number): number {
+    return this.d[this.idx(i)][this.idx(j)];
+  }
+
+  isReal(i: number, j: number): boolean {
+    return this.real[this.idx(i)][this.idx(j)];
+  }
 }
 
 // ─── Public API ───────────────────────────────────────────────
 
 /**
- * Main entry point: given a list of locations and user configuration,
- * group them into daily routes respecting the constraint.
- *
- * Algorithm: Clarke & Wright Savings for clustering,
- * Nearest Neighbor for intra-route ordering.
+ * Main entry point — async version that uses road distances.
  */
-export function optimizeRoutes(
+export async function optimizeRoutes(
   locations: Location[],
   config: Config
-): { days: DayRoute[]; totalDistance: number } {
+): Promise<{ days: DayRoute[]; totalDistance: number; osrmPairs: number; totalPairs: number }> {
   if (locations.length === 0) {
-    return { days: [], totalDistance: 0 };
+    return { days: [], totalDistance: 0, osrmPairs: 0, totalPairs: 0 };
   }
 
   const home: Location = {
@@ -38,266 +91,195 @@ export function optimizeRoutes(
     lng: config.homeLng,
   };
 
-  // Step 1: Calculate savings for every pair of locations
-  const savings = calculateSavings(locations, home);
+  // All coords: [home, ...locations]
+  const allCoords = [home, ...locations];
 
-  // Step 2: Build route clusters respecting the daily constraint
-  const clusters = buildClusters(locations, home, savings, config);
+  // ── Pre-compute distance matrix ──
+  const matrix = new DistanceMatrix(locations.length);
+  let pairsDone = 0;
+  const totalPairs = (locations.length * (locations.length + 1)) / 2; // includes home pairs
 
-  // Step 3: Order each cluster's stops using Nearest Neighbor
-  const days = orderClusters(clusters, locations, home, config);
+  // Home → each location
+  for (let i = 0; i < locations.length; i++) {
+    await matrix.set(allCoords, -1, i);
+    pairsDone++;
+  }
+
+  // Location ↔ Location
+  for (let i = 0; i < locations.length; i++) {
+    for (let j = i + 1; j < locations.length; j++) {
+      await matrix.set(allCoords, i, j);
+      pairsDone++;
+    }
+  }
+
+  // Count real vs estimated
+  let osrmPairs = 0;
+  for (let i = -1; i < locations.length; i++) {
+    for (let j = i + 1; j < locations.length; j++) {
+      if (i === -1 && j === -1) continue;
+      if (matrix.isReal(i, j)) osrmPairs++;
+    }
+  }
+
+  // ── Algorithm ──
+  const savings = calculateSavings(locations, matrix);
+  const clusters = buildClusters(locations, home, matrix, savings, config);
+  const days = orderClusters(clusters, locations, home, config, matrix);
 
   const totalDistance = days.reduce((sum, d) => sum + d.totalDistance, 0);
 
-  return { days, totalDistance };
+  return { days, totalDistance, osrmPairs, totalPairs };
 }
 
-// ─── Step 1: Savings Calculation (Clarke & Wright) ────────────
+// ─── Step 1: Savings ─────────────────────────────────────────
 
-function calculateSavings(
-  locations: Location[],
-  home: Location
-): SavingsPair[] {
+function calculateSavings(locations: Location[], matrix: DistanceMatrix): SavingsPair[] {
   const pairs: SavingsPair[] = [];
 
   for (let i = 0; i < locations.length; i++) {
     for (let j = i + 1; j < locations.length; j++) {
-      const dHomeToI = haversineDistance(
-        home.lat, home.lng,
-        locations[i].lat, locations[i].lng
-      );
-      const dHomeToJ = haversineDistance(
-        home.lat, home.lng,
-        locations[j].lat, locations[j].lng
-      );
-      const dIToJ = haversineDistance(
-        locations[i].lat, locations[i].lng,
-        locations[j].lat, locations[j].lng
-      );
-
-      // Savings: S(i,j) = D(home,i) + D(home,j) - D(i,j)
+      const dHomeToI = matrix.get(-1, i);
+      const dHomeToJ = matrix.get(-1, j);
+      const dIToJ = matrix.get(i, j);
       const savings = dHomeToI + dHomeToJ - dIToJ;
-
       pairs.push({ i, j, savings });
     }
   }
 
-  // Sort descending by savings
   pairs.sort((a, b) => b.savings - a.savings);
-
   return pairs;
 }
 
-// ─── Step 2: Cluster Building ─────────────────────────────────
+// ─── Step 2: Clusters ────────────────────────────────────────
 
 function buildClusters(
   locations: Location[],
   home: Location,
+  matrix: DistanceMatrix,
   savings: SavingsPair[],
   config: Config
 ): RouteCluster[] {
   const n = locations.length;
-  // Track which cluster each location belongs to (-1 = unassigned)
   const assignment = new Array<number>(n).fill(-1);
   const clusters: RouteCluster[] = [];
 
-  // Helper: check if adding a location to a cluster would violate the constraint
-  function canAddToCluster(
-    cluster: RouteCluster,
-    locationIdx: number
-  ): boolean {
-    return !wouldViolateConstraint(
-      cluster,
-      locationIdx,
-      locations,
-      home,
-      config
-    );
-  }
-
-  // Process savings pairs from highest to lowest
   for (const pair of savings) {
     const assignedI = assignment[pair.i];
     const assignedJ = assignment[pair.j];
 
     if (assignedI === -1 && assignedJ === -1) {
-      // Neither is assigned — create a new cluster
-      const newCluster: RouteCluster = {
-        indices: [pair.i, pair.j],
-        totalTravelKm: 0,
-        totalVisitTimeMin: 0,
-      };
-      // Verify constraint
-      if (!wouldClusterViolateConstraint(newCluster, locations, home, config)) {
-        clusters.push(newCluster);
+      const cluster: RouteCluster = { indices: [pair.i, pair.j] };
+      if (!wouldViolateCluster(cluster, locations, home, matrix, config)) {
+        clusters.push(cluster);
         assignment[pair.i] = clusters.length - 1;
         assignment[pair.j] = clusters.length - 1;
       }
     } else if (assignedI !== -1 && assignedJ === -1) {
-      // i is in a cluster, j is free — try to add j to i's cluster
       const cluster = clusters[assignedI];
-      if (canAddToCluster(cluster, pair.j)) {
+      if (!wouldViolateAddition(cluster, pair.j, locations, home, matrix, config)) {
         cluster.indices.push(pair.j);
         assignment[pair.j] = assignedI;
       }
     } else if (assignedI === -1 && assignedJ !== -1) {
-      // j is in a cluster, i is free — try to add i to j's cluster
       const cluster = clusters[assignedJ];
-      if (canAddToCluster(cluster, pair.i)) {
+      if (!wouldViolateAddition(cluster, pair.i, locations, home, matrix, config)) {
         cluster.indices.push(pair.i);
         assignment[pair.i] = assignedJ;
       }
     }
-    // Both already assigned — skip (merging clusters would be complex)
   }
 
-  // Assign any remaining unassigned locations to their own clusters
+  // Unassigned → solo clusters
   for (let i = 0; i < n; i++) {
     if (assignment[i] === -1) {
-      const soloCluster: RouteCluster = {
-        indices: [i],
-        totalTravelKm: 0,
-        totalVisitTimeMin: 0,
-      };
-      if (!wouldClusterViolateConstraint(soloCluster, locations, home, config)) {
-        clusters.push(soloCluster);
-        assignment[i] = clusters.length - 1;
-      } else {
-        // This location alone exceeds the daily limit — that's an edge case
-        // We still add it as its own day (user will need to adjust constraints)
-        clusters.push(soloCluster);
-        assignment[i] = clusters.length - 1;
-      }
+      clusters.push({ indices: [i] });
+      assignment[i] = clusters.length - 1;
     }
   }
 
   return clusters;
 }
 
-// ─── Constraint Check ─────────────────────────────────────────
+// ─── Constraint checks ───────────────────────────────────────
 
-function wouldClusterViolateConstraint(
+function estimateRouteKm(
+  indices: number[],
+  locations: Location[],
+  home: Location,
+  matrix: DistanceMatrix
+): number {
+  if (indices.length === 0) return 0;
+  if (indices.length === 1) {
+    return matrix.get(-1, indices[0]) * 2; // home → loc → home
+  }
+
+  const distsFromHome = indices.map((idx) => matrix.get(-1, idx));
+  const farthest = Math.max(...distsFromHome);
+  const nearest = Math.min(...distsFromHome);
+
+  let internal = 0;
+  for (let k = 0; k < indices.length - 1; k++) {
+    internal += matrix.get(indices[k], indices[k + 1]);
+  }
+
+  return farthest + internal + nearest;
+}
+
+function wouldViolateCluster(
   cluster: RouteCluster,
   locations: Location[],
   home: Location,
+  matrix: DistanceMatrix,
   config: Config
 ): boolean {
-  // Calculate round-trip distance for this cluster
-  // Use a simple estimate: home → farthest point × 2 + some internal travel
-  // For exact check, we'd need the ordered route, but this is a heuristic
-  const indices = cluster.indices;
-
-  if (indices.length === 0) return false;
-
-  // Sum of distances from home to each location and back (worst case)
-  // This is a conservative estimate
-  let totalDistance = 0;
-  for (const idx of indices) {
-    totalDistance +=
-      haversineDistance(home.lat, home.lng, locations[idx].lat, locations[idx].lng) * 2;
-  }
-
-  // More accurate: approximate as home → farthest + internal + home from farthest
-  const distsFromHome = indices.map((idx) =>
-    haversineDistance(home.lat, home.lng, locations[idx].lat, locations[idx].lng)
-  );
-  const maxDistFromHome = Math.max(...distsFromHome);
-  const minDistFromHome = Math.min(...distsFromHome);
-
-  // Rough internal travel: average distance between consecutive points
-  let internalTravel = 0;
-  if (indices.length > 1) {
-    for (let k = 0; k < indices.length - 1; k++) {
-      internalTravel += haversineDistance(
-        locations[indices[k]].lat, locations[indices[k]].lng,
-        locations[indices[k + 1]].lat, locations[indices[k + 1]].lng
-      );
-    }
-  }
-
-  // Best estimate: go to farthest via nearest points, then back
-  const estimatedRouteDistance = maxDistFromHome + internalTravel + minDistFromHome;
-
-  return checkConstraint(
-    estimatedRouteDistance,
-    indices.length,
-    config
-  );
+  return checkConstraint(estimateRouteKm(cluster.indices, locations, home, matrix), cluster.indices.length, config);
 }
 
-function wouldViolateConstraint(
+function wouldViolateAddition(
   cluster: RouteCluster,
-  newLocationIdx: number,
+  newIdx: number,
   locations: Location[],
   home: Location,
+  matrix: DistanceMatrix,
   config: Config
 ): boolean {
-  const proposedIndices = [...cluster.indices, newLocationIdx];
-  const n = proposedIndices.length;
-
-  // Estimate route distance with the new point included
-  const distsFromHome = proposedIndices.map((idx) =>
-    haversineDistance(home.lat, home.lng, locations[idx].lat, locations[idx].lng)
-  );
-  const maxDistFromHome = Math.max(...distsFromHome);
-  const minDistFromHome = Math.min(...distsFromHome);
-
-  let internalTravel = 0;
-  if (n > 1) {
-    for (let k = 0; k < n - 1; k++) {
-      internalTravel += haversineDistance(
-        locations[proposedIndices[k]].lat, locations[proposedIndices[k]].lng,
-        locations[proposedIndices[k + 1]].lat, locations[proposedIndices[k + 1]].lng
-      );
-    }
-  }
-
-  const estimatedRouteDistance = maxDistFromHome + internalTravel + minDistFromHome;
-
-  return checkConstraint(estimatedRouteDistance, n, config);
+  const proposed = [...cluster.indices, newIdx];
+  return checkConstraint(estimateRouteKm(proposed, locations, home, matrix), proposed.length, config);
 }
 
-function checkConstraint(
-  routeDistanceKm: number,
-  numStops: number,
-  config: Config
-): boolean {
+function checkConstraint(km: number, stops: number, config: Config): boolean {
   switch (config.constraintType) {
     case "hours": {
-      // Travel time = distance / speed (hours)
-      // Visit time = numStops * visitTime (minutes converted to hours)
-      const travelHours = routeDistanceKm / config.avgSpeed;
-      const visitHours = (numStops * config.visitTime) / 60;
-      const totalHours = travelHours + visitHours;
-      return totalHours > config.constraintValue;
+      const travelHours = km / config.avgSpeed;
+      const visitHours = (stops * config.visitTime) / 60;
+      return travelHours + visitHours > config.constraintValue;
     }
     case "visits":
-      return numStops > config.constraintValue;
+      return stops > config.constraintValue;
     case "capacity":
-      return numStops > config.constraintValue;
+      return stops > config.constraintValue;
     default:
       return false;
   }
 }
 
-// ─── Step 3: Intra-route Ordering (Nearest Neighbor) ──────────
+// ─── Step 3: Intra-route ordering ────────────────────────────
 
 function orderClusters(
   clusters: RouteCluster[],
   locations: Location[],
   home: Location,
-  config: Config
+  config: Config,
+  matrix: DistanceMatrix
 ): DayRoute[] {
   return clusters.map((cluster, dayIdx) => {
-    // Nearest Neighbor starting from home
-    const ordered = nearestNeighborOrder(cluster.indices, locations, home);
+    const ordered = nearestNeighbor(cluster.indices, locations, home, matrix);
 
-    // Build stop list
     const stops: Stop[] = [];
     let cumulativeDist = 0;
     let cumulativeTime = 0;
 
-    // Start at home
     stops.push({
       sequence: 0,
       name: home.name,
@@ -309,14 +291,13 @@ function orderClusters(
       isHome: true,
     });
 
-    let prevLat = home.lat;
-    let prevLng = home.lng;
+    let prevIdx = -1; // home
 
     for (const idx of ordered) {
-      const d = haversineDistance(prevLat, prevLng, locations[idx].lat, locations[idx].lng);
-      const t = d / config.avgSpeed; // travel hours
+      const d = matrix.get(prevIdx, idx);
+      const t = d / config.avgSpeed;
       cumulativeDist += d;
-      cumulativeTime += t + config.visitTime / 60; // travel + visit
+      cumulativeTime += t + config.visitTime / 60;
 
       stops.push({
         sequence: stops.length,
@@ -329,12 +310,11 @@ function orderClusters(
         isHome: false,
       });
 
-      prevLat = locations[idx].lat;
-      prevLng = locations[idx].lng;
+      prevIdx = idx;
     }
 
     // Return to home
-    const returnDist = haversineDistance(prevLat, prevLng, home.lat, home.lng);
+    const returnDist = matrix.get(prevIdx, -1);
     const returnTime = returnDist / config.avgSpeed;
     cumulativeDist += returnDist;
     cumulativeTime += returnTime;
@@ -360,45 +340,34 @@ function orderClusters(
   });
 }
 
-/**
- * Nearest Neighbor heuristic: starting from home, repeatedly visit
- * the closest unvisited location.
- */
-function nearestNeighborOrder(
+function nearestNeighbor(
   indices: number[],
   locations: Location[],
-  home: Location
+  home: Location,
+  matrix: DistanceMatrix
 ): number[] {
-  if (indices.length === 0) return [];
-  if (indices.length === 1) return [indices[0]];
+  if (indices.length <= 1) return indices;
 
   const unvisited = new Set(indices);
   const ordered: number[] = [];
-  let currentLat = home.lat;
-  let currentLng = home.lng;
+  let currentIdx = -1; // home
 
   while (unvisited.size > 0) {
-    let nearestIdx: number | null = null;
+    let nearest: number | null = null;
     let nearestDist = Infinity;
 
-    for (const idx of Array.from(unvisited)) {
-      const d = haversineDistance(
-        currentLat,
-        currentLng,
-        locations[idx].lat,
-        locations[idx].lng
-      );
+    for (const idx of unvisited) {
+      const d = matrix.get(currentIdx, idx);
       if (d < nearestDist) {
         nearestDist = d;
-        nearestIdx = idx;
+        nearest = idx;
       }
     }
 
-    if (nearestIdx !== null) {
-      ordered.push(nearestIdx);
-      currentLat = locations[nearestIdx].lat;
-      currentLng = locations[nearestIdx].lng;
-      unvisited.delete(nearestIdx);
+    if (nearest !== null) {
+      ordered.push(nearest);
+      currentIdx = nearest;
+      unvisited.delete(nearest);
     }
   }
 

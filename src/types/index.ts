@@ -82,6 +82,12 @@ export interface OptimizeResponse {
   totalDistance: number;
   totalDays: number;
   totalLocations: number;
+  _meta?: {
+    elapsedMs: number;
+    osrmPairs: number;
+    totalPairs: number;
+    routingMode: "osrm" | "haversine";
+  };
 }
 
 /** Error response */

@@ -26,7 +26,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate config
     if (
       typeof config.homeLat !== "number" ||
       typeof config.homeLng !== "number"
@@ -75,22 +74,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Set defaults
     const normalizedConfig: Config = {
       ...config,
       avgSpeed: config.avgSpeed || 60,
       visitTime: config.visitTime || 30,
     };
 
-    // ─── Validate locations ─────────────────────────────────
-
+    // Validate locations
     for (let i = 0; i < locations.length; i++) {
       const loc = locations[i];
       if (!loc.name || typeof loc.name !== "string") {
         return NextResponse.json(
-          {
-            error: `Ubicación ${i + 1}: nombre inválido.`,
-          } satisfies ApiError,
+          { error: `Ubicación ${i + 1}: nombre inválido.` } satisfies ApiError,
           { status: 400 }
         );
       }
@@ -106,13 +101,22 @@ export async function POST(request: NextRequest) {
 
     // ─── Optimize ───────────────────────────────────────────
 
-    const result = optimizeRoutes(locations, normalizedConfig);
+    const startTime = Date.now();
+    const result = await optimizeRoutes(locations, normalizedConfig);
+    const elapsed = Date.now() - startTime;
 
     const response: OptimizeResponse = {
       days: result.days,
       totalDistance: Math.round(result.totalDistance * 100) / 100,
       totalDays: result.days.length,
       totalLocations: locations.length,
+      _meta: {
+        elapsedMs: elapsed,
+        osrmPairs: result.osrmPairs,
+        totalPairs: result.totalPairs,
+        routingMode:
+          result.osrmPairs > result.totalPairs * 0.5 ? "osrm" : "haversine",
+      },
     };
 
     return NextResponse.json(response);
