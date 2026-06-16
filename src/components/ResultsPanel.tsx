@@ -65,16 +65,13 @@ export default function ResultsPanel({
 
         return (
           <div key={day.day} className="card-base overflow-hidden">
-            <button
-              onClick={() => {
-                const newDay = isExpanded ? -1 : day.day;
-                setExpandedDay(newDay);
-                if (newDay !== -1 && onExpandDay) onExpandDay(newDay);
-              }}
-              className="w-full text-left"
-            >
           <div
-            className="card-header flex items-center justify-between hover:bg-gray-50 transition-colors"
+            className="card-header flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer"
+            onClick={() => {
+              const newDay = isExpanded ? -1 : day.day;
+              setExpandedDay(newDay);
+              if (newDay !== -1 && onExpandDay) onExpandDay(newDay);
+            }}
           >
             <div className="flex items-center gap-3">
               <span
@@ -126,8 +123,7 @@ export default function ResultsPanel({
                 />
               </svg>
             </div>
-          </div>
-            </button>
+            </div>
 
             {isExpanded && (
               <div className="card-body p-0">
