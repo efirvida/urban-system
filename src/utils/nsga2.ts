@@ -15,6 +15,11 @@ import { haversineDistance } from "./haversine";
 interface Individual {
   /** Permutation of location indices (giant tour order) */
   perm: number[];
+  /** Load factor: 0.4-1.0 — fraction of constraint to use per day.
+   *  Lower = fewer stops/day = more days, shorter per-day distance.
+   *  Higher = more stops/day = fewer days, longer per-day distance.
+   */
+  loadFactor: number;
   /** Decoded daily routes (indices per day, in visit order) */
   routes: number[][];
   /** Objective values: [totalDistance, numberOfDays] */
@@ -70,9 +75,10 @@ function routeDistance(route: number[]): number {
 
 // ─── Decoder: permutation → daily routes ──────────────────
 
-function decode(perm: number[]): number[][] {
+function decode(perm: number[], loadFactor: number): number[][] {
   const routes: number[][] = [];
   let i = 0;
+  const effectiveMax = _config.constraintValue * loadFactor;
 
   while (i < perm.length) {
     const day: number[] = [];
@@ -85,11 +91,11 @@ function decode(perm: number[]): number[][] {
       switch (_config.constraintType) {
         case "hours": {
           const h = km / _config.avgSpeed + proposed.length * _config.visitTime / 60;
-          if (h > _config.constraintValue) violation = true;
+          if (h > effectiveMax) violation = true;
           break;
         }
-        case "visits": if (proposed.length > _config.constraintValue) violation = true; break;
-        case "capacity": if (proposed.length > _config.constraintValue) violation = true; break;
+        case "visits": if (proposed.length > Math.floor(effectiveMax)) violation = true; break;
+        case "capacity": if (proposed.length > Math.floor(effectiveMax)) violation = true; break;
       }
 
       if (violation) break;
@@ -158,9 +164,11 @@ function initPopulation(): Individual[] {
 
   for (let i = 0; i < DEFAULT_PARAMS.populationSize; i++) {
     const perm = i < nnCount ? nnPermutation() : randomPermutation(n);
-    const routes = decode(perm);
+    // Random load factor: 0.5-1.0 (uniform distribution)
+    const loadFactor = 0.5 + Math.random() * 0.5;
+    const routes = decode(perm, loadFactor);
     const objectives = computeObjectives(routes);
-    pop.push({ perm, routes, objectives, rank: 0, crowdingDist: 0 });
+    pop.push({ perm, loadFactor, routes, objectives, rank: 0, crowdingDist: 0 });
   }
 
   return pop;
@@ -378,8 +386,15 @@ export function runNSGA2(
       const parent2 = tournamentSelect(pop);
 
       let childPerm1: number[], childPerm2: number[];
+      let loadFactor1 = parent1.loadFactor;
+      let loadFactor2 = parent2.loadFactor;
+
       if (Math.random() < p.crossoverRate) {
         [childPerm1, childPerm2] = crossover(parent1.perm, parent2.perm);
+        // Blend crossover for load factor
+        const alpha = Math.random();
+        loadFactor1 = alpha * parent1.loadFactor + (1 - alpha) * parent2.loadFactor;
+        loadFactor2 = (1 - alpha) * parent1.loadFactor + alpha * parent2.loadFactor;
       } else {
         childPerm1 = [...parent1.perm];
         childPerm2 = [...parent2.perm];
@@ -387,12 +402,19 @@ export function runNSGA2(
 
       if (Math.random() < p.mutationRate) childPerm1 = mutate(childPerm1);
       if (Math.random() < p.mutationRate) childPerm2 = mutate(childPerm2);
+      // Mutate load factor (gaussian perturbation)
+      if (Math.random() < p.mutationRate) {
+        loadFactor1 = Math.max(0.4, Math.min(1.0, loadFactor1 + (Math.random() - 0.5) * 0.2));
+      }
+      if (Math.random() < p.mutationRate) {
+        loadFactor2 = Math.max(0.4, Math.min(1.0, loadFactor2 + (Math.random() - 0.5) * 0.2));
+      }
 
-      const routes1 = decode(childPerm1);
-      const routes2 = decode(childPerm2);
-      offspring.push({ perm: childPerm1, routes: routes1, objectives: computeObjectives(routes1), rank: 0, crowdingDist: 0 });
+      const routes1 = decode(childPerm1, loadFactor1);
+      const routes2 = decode(childPerm2, loadFactor2);
+      offspring.push({ perm: childPerm1, loadFactor: loadFactor1, routes: routes1, objectives: computeObjectives(routes1), rank: 0, crowdingDist: 0 });
       if (offspring.length < p.populationSize) {
-        offspring.push({ perm: childPerm2, routes: routes2, objectives: computeObjectives(routes2), rank: 0, crowdingDist: 0 });
+        offspring.push({ perm: childPerm2, loadFactor: loadFactor2, routes: routes2, objectives: computeObjectives(routes2), rank: 0, crowdingDist: 0 });
       }
     }
 

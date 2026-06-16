@@ -118,6 +118,7 @@ export async function POST(request: NextRequest) {
         balanced: nsgaResult.balanced,
         generations: nsgaResult.generations,
         populationSize: nsgaResult.populationSize,
+        _debug: nsgaResult._debug,
       };
 
       return NextResponse.json(response);
