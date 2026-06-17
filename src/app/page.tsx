@@ -1,19 +1,17 @@
 "use client";
 
-import { useCallback, useState, useMemo, useRef, useEffect } from "react";
+import { useCallback, useState, useMemo } from "react";
 import {
   Location,
   Config,
-  DayRoute,
   OptimizeResponse,
-  NSGAResponse,
   RawFileData,
   ValidatedRow,
   ColumnMapping,
 } from "@/types";
 import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
-import { buildDistanceMatrices, fetchRouteGeometries, MatrixProgress } from "@/utils/clientRouting";
+import { buildDistanceMatrices, MatrixProgress } from "@/utils/clientRouting";
 
 import FileUpload from "@/components/FileUpload";
 import ColumnMapper from "@/components/ColumnMapper";
@@ -64,23 +62,11 @@ export default function Home() {
   const [placementMode, setPlacementMode] = useState<"home" | null>(null);
   const [hiddenDays, setHiddenDays] = useState<Set<number>>(new Set());
 
-  // Optimization progress & dual results
+  // Optimization progress
   const [optimizePhase, setOptimizePhase] = useState<"idle" | "matrix" | "algorithm" | "done" | "error">("idle");
   const [matrixProgress, setMatrixProgress] = useState<MatrixProgress | null>(null);
-  const [resultHaversine, setResultHaversine] = useState<OptimizeResponse | null>(null);
-  /** "osrm" = real roads, "haversine" = straight lines */
   const [routingMode, setRoutingMode] = useState<"osrm" | "haversine">("osrm");
-  /** Road-following geometry from OSRM: "i,j" → [lng,lat][], where 0=home */
   const [routeGeometry, setRouteGeometry] = useState<Map<string, [number, number][]> | null>(null);
-
-  // NSGA-II
-  const [algorithm, setAlgorithm] = useState<"deterministic" | "nsga2">("nsga2");
-  const [nsgaSolutions, setNsgaSolutions] = useState<{
-    minDistance: NSGAResponse["minDistance"];
-    minDays: NSGAResponse["minDays"];
-    balanced: NSGAResponse["balanced"];
-  } | null>(null);
-  const [selectedNsgaMode, setSelectedNsgaMode] = useState<"minDistance" | "minDays" | "balanced">("balanced");
 
   // ── Map data (derived) ──
   const mapData = useMemo((): MapViewData => {
@@ -93,10 +79,9 @@ export default function Home() {
       return { markers: validatedRows };
     }
 
-    if (phase === "results" && (result || resultHaversine)) {
-      const activeResult = routingMode === "osrm" ? result : resultHaversine;
+    if (phase === "results" && result) {
       return {
-        routes: activeResult?.days,
+        routes: result.days,
         locations,
         home,
         hiddenDays,
@@ -110,60 +95,14 @@ export default function Home() {
     }
 
     return {};
-  }, [phase, validatedRows, locations, config, result, resultHaversine, hiddenDays, routingMode, routeGeometry]);
+  }, [phase, validatedRows, locations, config, result, hiddenDays, routingMode, routeGeometry]);
 
-  // ── Track geometry loading for visible routes ──
-  const busyGeometryRef = useRef(false);
-  const prevHiddenKeyRef = useRef("");
-
-  // ── Auto-fetch geometry when visible days change ──
-  useEffect(() => {
-    if (phase === "results") {
-      const active = routingMode === "osrm" ? result : resultHaversine;
-      if (active) fetchGeometryForVisible(active.days, hiddenDays);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, hiddenDays, routingMode, result, resultHaversine]);
-
-  /**
-   * Fetch OSRM geometry for days that are currently visible on the map.
-   * Skips segments already in cache. Merges new geometry with existing.
-   */
+  /** Fetch OSRM geometry for visible days (lazy, cached) */
   const fetchGeometryForVisible = useCallback(
-    (days: DayRoute[], hidden: Set<number>) => {
-      if (!days?.length || busyGeometryRef.current) return;
-
-      const visibleStops = days
-        .filter((d) => !hidden.has(d.day))
-        .map((d) => d.stops);
-      if (visibleStops.length === 0) return;
-
-      // Check cache: count missing segments
-      const currentGeo = routeGeometry;
-      let missing = 0;
-      for (const stops of visibleStops) {
-        for (let i = 0; i < stops.length - 1; i++) {
-          const a = stops[i], b = stops[i + 1];
-          const aK = `${a.lat.toFixed(6)},${a.lng.toFixed(6)}`;
-          const bK = `${b.lat.toFixed(6)},${b.lng.toFixed(6)}`;
-          if (!currentGeo?.has(aK < bK ? `${aK}|${bK}` : `${bK}|${aK}`)) missing++;
-        }
-      }
-      if (missing === 0) return; // all cached
-
-      busyGeometryRef.current = true;
-      fetchRouteGeometries(visibleStops, () => {}).then((newGeo) => {
-        if (routeGeometry) {
-          const merged = new Map(routeGeometry);
-          newGeo.forEach((v, k) => merged.set(k, v));
-          setRouteGeometry(merged);
-        } else {
-          setRouteGeometry(newGeo);
-        }
-        busyGeometryRef.current = false;
-      });
+    (_days: any[], _hidden: Set<number>) => {
+      // Geometry fetching removed to simplify — real routes shown via Google Maps link
     },
-    [routeGeometry]
+    []
   );
 
   // ── Handlers ──
@@ -233,77 +172,22 @@ export default function Home() {
       const havObj: Record<string, number> = {};
       haversineMatrix.forEach((v, k) => { havObj[k] = v; });
 
-      // ── Phase 2: Run algorithm ──
+      // ── Phase 2: Run deterministic optimizer ──
       setOptimizePhase("algorithm");
       setMatrixProgress(null);
 
-      if (algorithm === "nsga2") {
-        // ── NSGA-II: single call, returns 3 solutions ──
-        const res = await fetch("/api/optimize", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ locations, config, distanceMatrix: osrmObj, algorithm }),
-        });
-        if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+      const res = await fetch("/api/optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locations, config, distanceMatrix: osrmObj }),
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
 
-        const nsgaData: NSGAResponse = await res.json();
-        // Debug NSGA-II
-        console.log("[NSGA2] minDistance:", nsgaData.minDistance?.days, "d", nsgaData.minDistance?.totalDistance, "km");
-        console.log("[NSGA2] minDays:", nsgaData.minDays?.days, "d", nsgaData.minDays?.totalDistance, "km");
-        console.log("[NSGA2] balanced:", nsgaData.balanced?.days, "d", nsgaData.balanced?.totalDistance, "km");
-        setNsgaSolutions({
-          minDistance: nsgaData.minDistance,
-          minDays: nsgaData.minDays,
-          balanced: nsgaData.balanced,
-        });
-        setSelectedNsgaMode("balanced");
-
-        // Use balanced as initial result
-        setResult({
-          days: nsgaData.balanced.dayRoutes,
-          totalDistance: nsgaData.balanced.totalDistance,
-          totalDays: nsgaData.balanced.days,
-          totalLocations: locations.length,
-          _meta: nsgaData._meta,
-        });
-        setResultHaversine(null);
-        setRoutingMode("osrm");
-        setOptimizePhase("done");
-        setHiddenDays(new Set(nsgaData.balanced.dayRoutes.slice(1).map((d) => d.day)));
-
-        // Only fetch geometry for Day 1 (visible by default)
-        const visibleStops = [nsgaData.balanced.dayRoutes[0]?.stops].filter(Boolean);
-        fetchRouteGeometries(visibleStops, (cur, tot) => {
-          setMatrixProgress({ phase: "matrix", stage: `Ruta real (${cur}/${tot})...`, current: cur, total: tot, percent: Math.round(cur/tot*100), etaSeconds: 0, realCount: cur, haversineCount: 0 });
-        }).then((geo) => { setRouteGeometry(geo); setMatrixProgress(null); });
-      } else {
-        // ── Deterministic: two calls (OSRM + Haversine) ──
-        const resOSRM = await fetch("/api/optimize", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ locations, config, distanceMatrix: osrmObj }),
-        });
-        const resHav = await fetch("/api/optimize", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ locations, config, distanceMatrix: havObj }),
-        });
-        if (!resOSRM.ok) { const err = await resOSRM.json(); throw new Error(err.error); }
-
-        const osrmResult: OptimizeResponse = await resOSRM.json();
-        const havResult: OptimizeResponse = await resHav.json();
-        setResult(osrmResult);
-        setResultHaversine(havResult);
-        setRoutingMode("osrm");
-        setOptimizePhase("done");
-        setHiddenDays(new Set(osrmResult.days.slice(1).map((d) => d.day)));
-
-        // Only fetch geometry for Day 1 (visible by default)
-        const detVisibleStops = [osrmResult.days[0]?.stops].filter(Boolean);
-        fetchRouteGeometries(detVisibleStops, (cur, tot) => {
-          setMatrixProgress({ phase: "matrix", stage: `Ruta real (${cur}/${tot})...`, current: cur, total: tot, percent: Math.round(cur/tot*100), etaSeconds: 0, realCount: cur, haversineCount: 0 });
-        }).then((geo) => { setRouteGeometry(geo); setMatrixProgress(null); });
-      }
+      const optResult: OptimizeResponse = await res.json();
+      setResult(optResult);
+      setRoutingMode("osrm");
+      setOptimizePhase("done");
+      setHiddenDays(new Set(optResult.days.slice(1).map((d) => d.day)));
 
       setPhase("results");
       setSidebarOpen(true);
@@ -429,32 +313,6 @@ export default function Home() {
                     placingHome={placementMode === "home"}
                     onTogglePlaceHome={handleTogglePlaceHome}
                   />
-                  {/* Algorithm selector */}
-                  <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1 border">
-                    <button
-                      onClick={() => setAlgorithm("deterministic")}
-                      className={cn(
-                        "flex-1 text-xs py-1.5 px-2 rounded-md font-medium transition-colors",
-                        algorithm === "deterministic"
-                          ? "bg-white text-blue-700 shadow-sm border"
-                          : "text-gray-500 hover:text-gray-700"
-                      )}
-                    >
-                      🧠 Exacto
-                    </button>
-                    <button
-                      onClick={() => setAlgorithm("nsga2")}
-                      className={cn(
-                        "flex-1 text-xs py-1.5 px-2 rounded-md font-medium transition-colors",
-                        algorithm === "nsga2"
-                          ? "bg-white text-blue-700 shadow-sm border"
-                          : "text-gray-500 hover:text-gray-700"
-                      )}
-                    >
-                      🧬 NSGA-II
-                    </button>
-                  </div>
-
                   <OptimizeButton
                     onClick={handleOptimize}
                     loading={loading}
@@ -480,172 +338,57 @@ export default function Home() {
         );
 
       case "results":
-        return result ? (() => {
-          const activeResult = routingMode === "osrm" ? result : resultHaversine;
-          const activeDays = activeResult?.days ?? result.days;
-          const activeDistance = activeResult?.totalDistance ?? result.totalDistance;
-          const activeDaysCount = activeResult?.totalDays ?? result.totalDays;
-          const osrmMeta = result._meta;
-          const hasRealRoutes = (osrmMeta?.osrmPairs ?? 0) > 0;
-          const havDays = resultHaversine?.days.length ?? 0;
-          const diffClusters = hasRealRoutes && result.days.length !== havDays;
+        return result ? (
+          <>
+            {stepsNode}
+            <div className="mt-3 space-y-3">
+              <ResultsPanel
+                days={result.days}
+                totalDistance={result.totalDistance}
+                totalDays={result.totalDays}
+                totalLocations={result.totalLocations}
+                hiddenDays={hiddenDays}
+                onToggleDay={(day) =>
+                  setHiddenDays((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(day)) next.delete(day);
+                    else next.add(day);
+                    return next;
+                  })
+                }
+                onExpandDay={(day) =>
+                  setHiddenDays((prev) => {
+                    const allDays = result.days.map((d) => d.day);
+                    return new Set(allDays.filter((d) => d !== day));
+                  })
+                }
+                routingLabel="🚗 Rutas optimizadas"
+              />
 
-          return (
-            <>
-              {stepsNode}
-              <div className="mt-3 space-y-3">
-                {/* NSGA-II solution selector — always visible when nsga data exists */}
-              {nsgaSolutions && (() => {
-                const labels = { balanced: "⚖️ Balanceada", minDistance: "📏 Mínima distancia", minDays: "📅 Mínimos días" } as const;
-                return (
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3">
-                    <div className="text-xs font-semibold text-blue-700 mb-1">
-                      🧬 Solución NSGA-II
-                    </div>
-                    {(() => {
-                      const sameDist = nsgaSolutions.minDistance.totalDistance === nsgaSolutions.minDays.totalDistance;
-                      const sameDays = nsgaSolutions.minDistance.days === nsgaSolutions.minDays.days;
-                      const identical = sameDist && sameDays;
-                      const modes: Array<"balanced" | "minDistance" | "minDays"> = identical
-                        ? ["balanced"]
-                        : ["balanced", "minDistance", "minDays"];
-                      const labels = { balanced: "⚖️ Balanceada", minDistance: "📏 Mínima distancia", minDays: "📅 Mínimos días" } as const;
-                      return (
-                        <div className="flex flex-col gap-1.5">
-                          {modes.map((mode) => {
-                            const sol = nsgaSolutions[mode];
-                            const isActive = identical || selectedNsgaMode === mode;
-                            return (
-                              <button
-                                key={mode}
-                                onClick={() => {
-                                  setSelectedNsgaMode(mode);
-                                  setResult({
-                                    days: sol.dayRoutes,
-                                    totalDistance: sol.totalDistance,
-                                    totalDays: sol.days,
-                                    totalLocations: locations.length,
-                                    _meta: result._meta,
-                                  });
-                                  setHiddenDays(new Set(sol.dayRoutes.slice(1).map((d) => d.day)));
-                                }}
-                                className={cn(
-                                  "flex items-center justify-between w-full text-left px-3 py-2 rounded-md text-sm transition-all",
-                                  isActive
-                                    ? "bg-white text-blue-800 shadow-sm border border-blue-300 font-medium"
-                                    : "text-gray-600 hover:bg-white/70 hover:text-gray-800"
-                                )}
-                              >
-                                <span>{labels[mode] || mode}</span>
-                                <span className={cn("text-xs font-mono", isActive ? "text-blue-500" : "text-gray-400")}>
-                                  {identical && mode === "balanced"
-                                    ? `${sol.days}d · ${sol.totalDistance.toFixed(0)}km`
-                                    : `${sol.days}d · ${sol.totalDistance.toFixed(0)}km`
-                                  }
-                                </span>
-                              </button>
-                            );
-                          })}
-                          {identical && (
-                            <div className="text-[10px] text-gray-400 text-center mt-1">
-                              Las tres métricas convergen a la misma solución
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                );
-              })()}
+              <button
+                onClick={() => setHiddenDays(new Set())}
+                className="w-full text-xs text-center text-gray-400 hover:text-blue-600 transition-colors py-1"
+              >
+                👁 Ver todas las rutas en el mapa
+              </button>
 
-              {/* Routing mode toggle */}
-              {resultHaversine && hasRealRoutes && (
-                <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1 border">
-                    <button
-                      onClick={() => setRoutingMode("osrm")}
-                      className={cn(
-                        "flex-1 text-xs py-1.5 px-3 rounded-md font-medium transition-colors",
-                        routingMode === "osrm"
-                          ? "bg-white text-blue-700 shadow-sm border"
-                          : "text-gray-500 hover:text-gray-700"
-                      )}
-                    >
-                      🚗 Ruta real
-                    </button>
-                    <button
-                      onClick={() => setRoutingMode("haversine")}
-                      className={cn(
-                        "flex-1 text-xs py-1.5 px-3 rounded-md font-medium transition-colors",
-                        routingMode === "haversine"
-                          ? "bg-white text-blue-700 shadow-sm border"
-                          : "text-gray-500 hover:text-gray-700"
-                      )}
-                    >
-                      📏 Línea recta
-                    </button>
-                  </div>
-                )}
-
-                {!hasRealRoutes && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-xs text-amber-700 text-center">
-                    ⚠️ OSRM no disponible — usando distancias estimadas (Haversine)
-                  </div>
-                )}
-
-                {diffClusters && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-blue-700 text-center">
-                    📊 Ruta real: {result.days.length} días · Línea recta: {havDays} días
-                  </div>
-                )}
-
-                <ResultsPanel
-                  days={activeDays}
-                  totalDistance={activeDistance}
-                  totalDays={activeDaysCount}
-                  totalLocations={result.totalLocations}
-                  hiddenDays={hiddenDays}
-                  onToggleDay={(day) =>
-                    setHiddenDays((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(day)) next.delete(day);
-                      else next.add(day);
-                      return next;
-                    })
-                  }
-                  onExpandDay={(day) =>
-                    setHiddenDays((prev) => {
-                      const allDays = activeDays.map((d) => d.day);
-                      return new Set(allDays.filter((d) => d !== day));
-                    })
-                  }
-                  routingLabel={routingMode === "osrm" ? "🚗 Rutas reales" : "📏 Línea recta"}
-                />
-
+              <div className="flex flex-col gap-2">
                 <button
-                  onClick={() => setHiddenDays(new Set())}
-                  className="w-full text-xs text-center text-gray-400 hover:text-blue-600 transition-colors py-1"
+                  onClick={() => setPhase("config")}
+                  className="btn-secondary w-full text-sm"
                 >
-                  👁 Ver todas las rutas en el mapa
+                  ← Volver a configuración
                 </button>
-
-                <div className="flex flex-col gap-2">
-                  <button
-                    onClick={() => setPhase("config")}
-                    className="btn-secondary w-full text-sm"
-                  >
-                    ← Volver a configuración
-                  </button>
-                  <button
-                    onClick={handleReset}
-                    className="btn-secondary w-full text-sm"
-                  >
-                    🆕 Nueva optimización
-                  </button>
-                </div>
+                <button
+                  onClick={handleReset}
+                  className="btn-secondary w-full text-sm"
+                >
+                  🆕 Nueva optimización
+                </button>
               </div>
-            </>
-          );
-        })() : null;
+            </div>
+          </>
+        ) : null;
 
       default:
         return null;
