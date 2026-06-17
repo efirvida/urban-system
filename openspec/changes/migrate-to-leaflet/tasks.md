@@ -37,13 +37,13 @@ Chain strategy: pending
 
 ## Phase 2: Rewrite MapView.tsx
 
-- [ ] 2.1 Strip MapLibre import + state; replace with hook composition (~250 lines orchestration)
-- [ ] 2.2 Preserve `MapViewData` props interface and event callbacks (`onPOIClick`, `onPlaceHome`, `onDragHome`, etc.)
-- [ ] 2.3 POI pins: `marker.on('click', handler)` + `marker.bindPopup(html)` (no capture-phase workarounds)
-- [ ] 2.4 Home marker: draggable + `dragend` → `onDragHome(coords)`
-- [ ] 2.5 Wire placement mode: crosshair cursor + map click places home
-- [ ] 2.6 Wire `fitBounds` on data change; per-day hide/show + highlight
-- [ ] 2.7 `tsc --noEmit` + `next build` pass
+- [x] 2.1 Strip MapLibre import + state; replace with hook composition (~250 lines orchestration)
+- [x] 2.2 Preserve `MapViewData` props interface and event callbacks (`onPOIClick`, `onPlaceHome`, `onDragHome`, etc.)
+- [x] 2.3 POI pins: `marker.on('click', handler)` + `marker.bindPopup(html)` (no capture-phase workarounds)
+- [x] 2.4 Home marker: draggable + `dragend` → `onDragHome(coords)`
+- [x] 2.5 Wire placement mode: crosshair cursor + map click places home
+- [x] 2.6 Wire `fitBounds` on data change; per-day hide/show + highlight
+- [x] 2.7 `tsc --noEmit` + `next build` pass
 
 ## Phase 3: Rewrite RouteMap + LocationMapEditor
 

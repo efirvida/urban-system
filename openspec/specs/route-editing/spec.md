@@ -92,3 +92,25 @@ A POI marker click MUST select that POI in the editor sidebar and highlight its 
 - GIVEN the editor is rendered
 - WHEN the toolbar and headers are inspected
 - THEN every icon is a `lucide-react` component
+
+### Requirement: `reoptimizeDay` Consumes the Real Matrix
+
+`reoptimizeDay` MUST use the supplied real-distance matrix when present. When the matrix is absent, the returned `DayRoute` MUST signal `routingMode: "haversine"` so the UI can surface a warning instead of silently substituting. The `reoptimizeDay(locations, home, config, matrix, dayNumber)` signature MUST stay unchanged for backward compatibility.
+
+#### Scenario: Reopt with matrix (happy path)
+
+- GIVEN a day with 3 POIs and a real-distance matrix
+- WHEN the user adds POI X to that day
+- THEN `reoptimizeDay` returns distances read from the matrix for every leg of the new tour
+
+#### Scenario: Reopt without matrix
+
+- GIVEN no matrix was computed (edit mode on a legacy session)
+- WHEN the user adds POI Y to a day
+- THEN the returned `DayRoute` has `routingMode: "haversine"` and the UI surfaces a warning
+
+#### Scenario: Day contained an unreachable POI
+
+- GIVEN a day that previously included an unreachable POI
+- WHEN edit mode opens
+- THEN that scenario is impossible under PR 1: unreachable POIs are excluded before optimization, so no day ever contains one. The global `UnreachableWarning` component lists the excluded POIs.

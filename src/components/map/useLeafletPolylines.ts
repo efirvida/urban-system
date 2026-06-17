@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import L from "leaflet";
+import type { RouteSource } from "@/utils/clientRouting";
 
 interface PolylineOptions {
   routes?: Array<{
@@ -9,6 +10,8 @@ interface PolylineOptions {
     stops: Array<{ lat: number; lng: number; isHome?: boolean }>;
   }>;
   routeGeometry?: Map<number, [number, number][]>;
+  /** Per-day routing source: "real" → solid polyline, "haversine"/absent → dashed */
+  routeSource?: Map<number, RouteSource>;
   hiddenDays?: Set<number>;
   highlightDay?: number | null;
 }
@@ -43,8 +46,9 @@ export function useLeafletPolylines(
       // Build coordinates
       const coords: [number, number][] = [];
       const dayGeo = options.routeGeometry?.get(day.day);
+      const usedRealGeo = dayGeo !== undefined && dayGeo.length > 1;
 
-      if (dayGeo && dayGeo.length > 1) {
+      if (usedRealGeo) {
         coords.push(...dayGeo.map((c) => [c[1], c[0]] as [number, number]));
       } else {
         // Fallback: straight lines
@@ -55,6 +59,13 @@ export function useLeafletPolylines(
       }
 
       if (coords.length < 2) continue;
+
+      // ── Decide dash style ──
+      // A day is "estimated" (dashed) when: no real geometry, or source is haversine/absent
+      const daySource = usedRealGeo ? options.routeSource?.get(day.day) : "haversine";
+      const isEstimated = !usedRealGeo || daySource === "haversine" || daySource === undefined;
+      const dash = isEstimated ? ([2, 3] as number[]) : undefined;
+      const glowDashVal = isEstimated ? ([1, 4] as number[]) : undefined;
 
       let group = groups.get(day.day);
       if (!group) {
@@ -72,6 +83,7 @@ export function useLeafletPolylines(
         opacity: isHighlighted ? 0.3 : isDimmed ? 0.04 : 0.25,
         lineCap: "round",
         lineJoin: "round",
+        dashArray: glowDashVal,
       });
       group.addLayer(glow);
 
@@ -82,6 +94,7 @@ export function useLeafletPolylines(
         opacity: isHighlighted ? 1 : isDimmed ? 0.1 : 1,
         lineCap: "round",
         lineJoin: "round",
+        dashArray: dash,
       });
       group.addLayer(route);
 

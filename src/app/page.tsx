@@ -124,7 +124,14 @@ import ResultsPanel from "@/components/ResultsPanel";
 import OptimizeButton from "@/components/OptimizeButton";
 import OptimizeProgress from "@/components/OptimizeProgress";
 import UnreachableWarning from "@/components/UnreachableWarning";
-import MapView, { MapViewData } from "@/components/MapView";
+import dynamic from "next/dynamic";
+import type { MapViewData } from "@/components/MapView";
+// MapView imports Leaflet at module level, which crashes during Next.js
+// prerendering ("window is not defined"). `ssr: false` defers the import
+// to client-side execution. The map is inherently a client-only component
+// (needs the browser to render tiles), so this matches the pre-Leaflet
+// behavior where the map only appeared after hydration.
+const MapView = dynamic(() => import("@/components/MapView").then(m => m.default), { ssr: false });
 import Sidebar from "@/components/Sidebar";
 import RouteEditor, { RouteEditorHandle } from "@/components/RouteEditor";
 import MapPOIActionBar from "@/components/MapPOIActionBar";

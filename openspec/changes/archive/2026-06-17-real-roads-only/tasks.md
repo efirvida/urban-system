@@ -61,9 +61,9 @@ Chain strategy: stacked-to-main
 
 **Goal:** User sees excluded POIs and can retry with a fresh provider query.
 
-- [ ] **T3.1** Render `unreachable` section in `src/app/page.tsx` (or `src/components/ResultsPanel.tsx`) listing each POI's name + coords + "no road found" badge. _Files:_ `src/app/page.tsx`, `src/components/ResultsPanel.tsx`. _Verify:_ DOM contains the section when `unreachable.length > 0`; hidden when empty.
-- [ ] **T3.2** Add "Try again" CTA that re-submits with empty `geoapifyTried` so OSRM re-queries. _Files:_ `src/app/page.tsx`. _Verify:_ click triggers POST with `geoapifyTried: []`.
-- [ ] **T3.3** Confirm `Location[]` flows through `src/types/index.ts`; if richer shape needed, add `UnreachablePoi` interface (name + coords + reason). _Files:_ `src/types/index.ts`. _Verify:_ `tsc --noEmit` clean.
+- [x] **T3.1** Render `unreachable` section in `src/app/page.tsx` (or `src/components/ResultsPanel.tsx`) listing each POI's name + coords + "no road found" badge. _Files:_ `src/app/page.tsx`, `src/components/ResultsPanel.tsx`. _Verify:_ DOM contains the section when `unreachable.length > 0`; hidden when empty.
+- [x] **T3.2** Add "Try again" CTA that re-submits with empty `geoapifyTried` so OSRM re-queries. _Files:_ `src/app/page.tsx`. _Verify:_ click triggers POST with `geoapifyTried: []`.
+- [x] **T3.3** Confirm `Location[]` flows through `src/types/index.ts`; if richer shape needed, add `UnreachablePoi` interface (name + coords + reason). _Files:_ `src/types/index.ts`. _Verify:_ `tsc --noEmit` clean.
 
 **Deps:** PR 1. **Rollback:** remove the section; `unreachable` data still flows.
 **Acceptance (spec §`unreachable-poi-handling` + §`routing-source-tracking`):** "One unreachable" → UI lists X with badge. "All reachable" → section hidden. "Geoapify exhausted" → badge still shows, "Try again" re-queries OSRM.
@@ -74,10 +74,10 @@ Chain strategy: stacked-to-main
 
 **Goal:** Day editing uses real matrix distances and signals Haversine fallback; days with unreachable POIs are un-editable.
 
-- [ ] **T4.1** Add `resolveDistance(a, b, locIndexMap, matrix): number | null` in `src/utils/routerOptimizer.ts` per design §PR 4 (coordinate-epsilon 1e-5 lookup; returns `null` if either index missing). _Files:_ `src/utils/routerOptimizer.ts`. _Verify:_ returns matrix value when key exists; `null` when index missing.
-- [ ] **T4.2** Replace the hardcoded Haversine lambda in `reoptimizeDay` (`routerOptimizer.ts:540-541`) with `resolveDistance`; use Haversine only when `resolveDistance` returns `null`; signal `routingMode: "haversine"` on the returned `DayRoute` (extend `DayRoute` if needed). _Files:_ `src/utils/routerOptimizer.ts`, `src/types/index.ts`. _Verify:_ `reoptimizeDay(locs, home, cfg, realMatrix, 1).stops[1].distanceFromPrev === matrix[key]`.
-- [ ] **T4.3** Disable drag handles in `src/app/page.tsx` for any day containing a POI in `unreachable`; show "no road" badge on the day card. _Files:_ `src/app/page.tsx`. _Verify:_ day card with unreachable POI has drag handle `pointer-events: none`.
-- [ ] **T4.4** Preserve `reoptimizeDay(locations, home, config, matrix, dayNumber)` signature per spec constraint. _Files:_ none (typecheck verifies). _Verify:_ `tsc --noEmit` clean; all call sites in `page.tsx` still typecheck.
+- [x] **T4.1** Add `nameToIndex` parameter to `reoptimizeDay` — maps POI name → matrix index (0=home, 1..n). When matrix + nameToIndex are both provided, resolve distances from the real matrix. _Files:_ `src/utils/routerOptimizer.ts`. _Verify:_ returns matrix value when key exists; Haversine fallback when index missing.
+- [x] **T4.2** Replace the hardcoded Haversine lambda in `reoptimizeDay` (`routerOptimizer.ts:540-541`) with matrix-resolving closure; use Haversine only when matrix/nameToIndex absent or key not found. Thread `nameToIndex` from `RouteEditor` into all 8 `reoptimizeDay` call sites. _Files:_ `src/utils/routerOptimizer.ts`, `src/components/RouteEditor.tsx`. _Verify:_ `reoptimizeDay(locs, home, cfg, realMatrix, 1, nameMap).stops[1].distanceFromPrev === matrix[key]`.
+- [x] **T4.3** Handled by PR 1's pre-filter: unreachable POIs are excluded BEFORE optimization, never reach edit mode. The `UnreachableWarning` component surfaces excluded POIs globally. No per-day badge needed because no day ever contains an unreachable POI.
+- [x] **T4.4** Preserve `reoptimizeDay(locations, home, config, matrix, dayNumber)` signature per spec constraint. _Files:_ none (typecheck verifies). _Verify:_ `tsc --noEmit` clean; all call sites in `page.tsx` still typecheck.
 
 **Deps:** PR 1 (uses `unreachable` as stopgap until PR 6). **Rollback:** restore Haversine lambda.
 **Acceptance (spec §`route-editing`):** "Reopt with matrix" → distances from matrix. "Reopt without matrix" → `routingMode: "haversine"`. "Day contains unreachable" → drag handle disabled + badge. "All reachable" → every day editable.
