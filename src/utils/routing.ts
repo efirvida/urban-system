@@ -1,4 +1,6 @@
 import { haversineDistance } from "./haversine";
+import { RoutingSource } from "@/types";
+import { REAL_VS_ESTIMATED_KM, TINY_DISTANCE_KM } from "./constants";
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -214,4 +216,33 @@ export function isRealDistance(
 ): boolean {
   const H = haversineDistance(lat1, lng1, lat2, lng2);
   return Math.abs(distance - H) > 0.1;
+}
+
+/**
+ * PR 6 (real-roads-only): classify a single distance pair into one of
+ * the `RoutingSource` tags used by the discriminated `MatrixEntry`
+ * type. Replaces the boolean `isRealDistance` for callers that need
+ * the type-level source rather than a yes/no answer.
+ *
+ *   - `"unreachable"` — distance is `Infinity` or otherwise missing
+ *   - `"estimated"`   — sub-50m pair (Haversine is fine) OR the value
+ *                       is within `REAL_VS_ESTIMATED_KM` of the
+ *                       Haversine reference (provider returned null)
+ *   - `"real"`        — distance differs from Haversine by more than
+ *                       `REAL_VS_ESTIMATED_KM` (real road)
+ *
+ * `isRealDistance` is preserved for backward compatibility.
+ */
+export function classifyPair(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+  distance: number
+): RoutingSource {
+  if (!Number.isFinite(distance)) return "unreachable";
+  const H = haversineDistance(lat1, lng1, lat2, lng2);
+  if (H < TINY_DISTANCE_KM) return "estimated";
+  if (Math.abs(distance - H) < REAL_VS_ESTIMATED_KM) return "estimated";
+  return "real";
 }

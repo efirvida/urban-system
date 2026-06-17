@@ -6,6 +6,15 @@
  *
  * Requires: billing enabled, Routes API + Distance Matrix API activated.
  * Free tier: $200/month credit → ~20,000 optimizations for 47 locations.
+ *
+ * PR 6 (real-roads-only): this file is dead code at the moment
+ * (googleRouting.ts is not wired into the API route). The legacy
+ * `Record<string, number>` return type is preserved so the type
+ * migration in PR 6 does not break the compile. When this file is
+ * eventually activated, the builder should be updated to also return
+ * a `DistanceMatrix` (per-pair `MatrixEntry`) so the API can use the
+ * strict path; the underlying realCount/fallbackCount counters
+ * already align with the `real`/`estimated` source tags.
  */
 
 import { haversineDistance } from "./haversine";

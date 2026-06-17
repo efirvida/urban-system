@@ -7,7 +7,7 @@
  *   2. Minimize MAX DAY DURATION (hours)
  */
 
-import { Location, Config, DayRoute, Stop } from "@/types";
+import { Location, Config, DayRoute, Stop, DistanceMatrix } from "@/types";
 import { haversineDistance } from "./haversine";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -47,7 +47,8 @@ export async function runNSGA2(
   locations: Location[],
   home: Location,
   config: Config,
-  precomputed?: Record<string, number>
+  precomputed?: Record<string, number>,
+  strictMatrix?: DistanceMatrix
 ): Promise<NSGAResult> {
   // ── Functions capture these by closure, no module state ──
   const n = locations.length;
@@ -63,6 +64,18 @@ export async function runNSGA2(
 
   // ── Distance helpers ──
   function pd(a: number, b: number): number {
+    // PR 6: prefer the strict matrix when supplied. Falls back to
+    // the legacy `Record<string, number>` for back-compat.
+    if (strictMatrix) {
+      const ka = a === -1 ? 0 : a + 1;
+      const kb = b === -1 ? 0 : b + 1;
+      const k = ka < kb ? `${ka},${kb}` : `${kb},${ka}`;
+      if (strictMatrix[k] !== undefined) return strictMatrix[k].distance;
+      // Strict matrix was provided but this key is missing — propagate
+      // Infinity so NSGA-II naturally rejects the individual (no
+      // Haversine fallback when we promised a real-road matrix).
+      return Infinity;
+    }
     if (precomputed) {
       const ka = a === -1 ? 0 : a + 1;
       const kb = b === -1 ? 0 : b + 1;

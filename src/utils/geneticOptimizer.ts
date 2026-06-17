@@ -8,7 +8,7 @@
  * Decoder: same as routerOptimizer — splits by constraint + NN reorder.
  */
 
-import { Location, Config, DayRoute, Stop } from "@/types";
+import { Location, Config, DayRoute, Stop, DistanceMatrix } from "@/types";
 import { haversineDistance } from "./haversine";
 
 // ─── Distance helpers ────────────────────────────────────────
@@ -17,8 +17,21 @@ function pd(
   a: number, b: number,
   locs: Location[],
   home: Location,
-  pre?: Record<string, number>
+  pre?: Record<string, number>,
+  strict?: DistanceMatrix
 ): number {
+  // PR 6: prefer the strict matrix when supplied. Falls back to the
+  // legacy `Record<string, number>` path for back-compat.
+  if (strict) {
+    const ka = a === -1 ? 0 : a + 1;
+    const kb = b === -1 ? 0 : b + 1;
+    const k = ka < kb ? `${ka},${kb}` : `${kb},${ka}`;
+    if (strict[k] !== undefined) return strict[k].distance;
+    // Strict matrix was provided but this key is missing — propagate
+    // Infinity so the optimizer naturally rejects the candidate (no
+    // Haversine fallback when we promised a real-road matrix).
+    return Infinity;
+  }
   if (pre) {
     const ka = a === -1 ? 0 : a + 1;
     const kb = b === -1 ? 0 : b + 1;
@@ -38,22 +51,22 @@ function pd(
   );
 }
 
-function routeDist(route: number[], locs: Location[], home: Location, pre?: Record<string, number>): number {
+function routeDist(route: number[], locs: Location[], home: Location, pre?: Record<string, number>, strict?: DistanceMatrix): number {
   if (!route.length) return 0;
-  let d = pd(-1, route[0], locs, home, pre);
-  for (let i = 1; i < route.length; i++) d += pd(route[i - 1], route[i], locs, home, pre);
-  d += pd(route[route.length - 1], -1, locs, home, pre);
+  let d = pd(-1, route[0], locs, home, pre, strict);
+  for (let i = 1; i < route.length; i++) d += pd(route[i - 1], route[i], locs, home, pre, strict);
+  d += pd(route[route.length - 1], -1, locs, home, pre, strict);
   return d;
 }
 
-function decode(perm: number[], locs: Location[], home: Location, cfg: Config, pre?: Record<string, number>): number[][] {
+function decode(perm: number[], locs: Location[], home: Location, cfg: Config, pre?: Record<string, number>, strict?: DistanceMatrix): number[][] {
   const routes: number[][] = [];
   let i = 0;
   while (i < perm.length) {
     const day: number[] = [];
     while (i < perm.length) {
       const prop = [...day, perm[i]];
-      const km = routeDist(prop, locs, home, pre);
+      const km = routeDist(prop, locs, home, pre, strict);
       let v = false;
       switch (cfg.constraintType) {
         case "hours": { const h = km / cfg.avgSpeed + prop.length * cfg.visitTime / 60; if (h > cfg.constraintValue) v = true; break; }
@@ -71,7 +84,7 @@ function decode(perm: number[], locs: Location[], home: Location, cfg: Config, p
       let cur = -1;
       while (unvisited.size > 0) {
         let n = -1, md = Infinity;
-        for (const idx of unvisited) { const d = pd(cur, idx, locs, home, pre); if (d < md) { md = d; n = idx; } }
+        for (const idx of unvisited) { const d = pd(cur, idx, locs, home, pre, strict); if (d < md) { md = d; n = idx; } }
         if (n === -1) break;
         ordered.push(n); cur = n; unvisited.delete(n);
       }
@@ -81,8 +94,8 @@ function decode(perm: number[], locs: Location[], home: Location, cfg: Config, p
   return routes;
 }
 
-function totalDist(routes: number[][], locs: Location[], home: Location, pre?: Record<string, number>): number {
-  return routes.reduce((s, r) => s + routeDist(r, locs, home, pre), 0);
+function totalDist(routes: number[][], locs: Location[], home: Location, pre?: Record<string, number>, strict?: DistanceMatrix): number {
+  return routes.reduce((s, r) => s + routeDist(r, locs, home, pre, strict), 0);
 }
 
 // ─── GA Operators ────────────────────────────────────────────
@@ -134,19 +147,24 @@ export interface GAResult {
 /**
  * Run genetic algorithm to improve a VRP solution.
  * Starts from the given initial permutation (giant tour).
+ *
+ * PR 6: `strictMatrix` (optional `DistanceMatrix`) takes priority over
+ * `precomputed` when supplied. Behavior is bit-identical when both are
+ * absent (legacy Haversine path).
  */
 export async function improveWithGA(
   initialPerm: number[],
   locations: Location[],
   home: Location,
   config: Config,
-  precomputed?: Record<string, number>
+  precomputed?: Record<string, number>,
+  strictMatrix?: DistanceMatrix
 ): Promise<GAResult> {
   const n = locations.length;
   if (n < 3) {
-    const routes = decode(initialPerm, locations, home, config, precomputed);
-    const days = routesToDays(routes, locations, home, config, precomputed);
-    return { days, totalDistance: totalDist(routes, locations, home, precomputed), totalDays: routes.length, improvement: 0 };
+    const routes = decode(initialPerm, locations, home, config, precomputed, strictMatrix);
+    const days = routesToDays(routes, locations, home, config, precomputed, strictMatrix);
+    return { days, totalDistance: totalDist(routes, locations, home, precomputed, strictMatrix), totalDays: routes.length, improvement: 0 };
   }
 
   // Params
@@ -157,7 +175,7 @@ export async function improveWithGA(
 
   const FLOW = "[FLOW]";
   const tGa = Date.now();
-  console.log(`${FLOW}     GA start: n=${n}, pop=${POP}, gens=${GENS}`);
+  console.log(`${FLOW}     GA start: n=${n}, pop=${POP}, gens=${GENS}${strictMatrix ? " (strict matrix)" : ""}`);
 
   // Seed population: 20% from initial perm (mutated variants) + 80% random
   let pop: { perm: number[]; dist: number }[] = [];
@@ -171,8 +189,8 @@ export async function improveWithGA(
     } else {
       perm = randomPerm(n);
     }
-    const routes = decode(perm, locations, home, config, precomputed);
-    const dist = totalDist(routes, locations, home, precomputed);
+    const routes = decode(perm, locations, home, config, precomputed, strictMatrix);
+    const dist = totalDist(routes, locations, home, precomputed, strictMatrix);
     pop.push({ perm, dist });
   }
 
@@ -212,11 +230,11 @@ export async function improveWithGA(
       if (Math.random() < MR) c1 = mutate(c1);
       if (Math.random() < MR) c2 = mutate(c2);
 
-      const r1 = decode(c1, locations, home, config, precomputed);
-      const r2 = decode(c2, locations, home, config, precomputed);
-      offspring.push({ perm: c1, dist: totalDist(r1, locations, home, precomputed) });
+      const r1 = decode(c1, locations, home, config, precomputed, strictMatrix);
+      const r2 = decode(c2, locations, home, config, precomputed, strictMatrix);
+      offspring.push({ perm: c1, dist: totalDist(r1, locations, home, precomputed, strictMatrix) });
       if (offspring.length < POP) {
-        offspring.push({ perm: c2, dist: totalDist(r2, locations, home, precomputed) });
+        offspring.push({ perm: c2, dist: totalDist(r2, locations, home, precomputed, strictMatrix) });
       }
     }
 
@@ -231,9 +249,9 @@ export async function improveWithGA(
     }
   }
 
-  const finalRoutes = decode(bestPerm, locations, home, config, precomputed);
-  const initialDist = totalDist(decode(initialPerm, locations, home, config, precomputed), locations, home, precomputed);
-  const days = routesToDays(finalRoutes, locations, home, config, precomputed);
+  const finalRoutes = decode(bestPerm, locations, home, config, precomputed, strictMatrix);
+  const initialDist = totalDist(decode(initialPerm, locations, home, config, precomputed, strictMatrix), locations, home, precomputed, strictMatrix);
+  const days = routesToDays(finalRoutes, locations, home, config, precomputed, strictMatrix);
   const improvement = Math.round((initialDist - bestDist) * 100) / 100;
 
   console.log(`${FLOW}     GA done: ${Date.now() - tGa}ms, initial=${initialDist.toFixed(1)}km, best=${bestDist.toFixed(1)}km, improvement=${improvement}km, days=${finalRoutes.length}`);
@@ -253,7 +271,8 @@ function routesToDays(
   locs: Location[],
   home: Location,
   cfg: Config,
-  pre?: Record<string, number>
+  pre?: Record<string, number>,
+  strict?: DistanceMatrix
 ): DayRoute[] {
   return routes.map((indices, di) => {
     const stops: Stop[] = [];
@@ -261,11 +280,11 @@ function routesToDays(
     stops.push({ sequence: 0, name: home.name, lat: home.lat, lng: home.lng, distanceFromPrev: 0, cumulativeDistance: 0, cumulativeTime: 0, isHome: true });
     for (let i = 0; i < indices.length; i++) {
       const idx = indices[i];
-      const d = pd(i === 0 ? -1 : indices[i - 1], idx, locs, home, pre);
+      const d = pd(i === 0 ? -1 : indices[i - 1], idx, locs, home, pre, strict);
       cumD += d; cumT += d / cfg.avgSpeed + cfg.visitTime / 60;
       stops.push({ sequence: i + 1, name: locs[idx].name, lat: locs[idx].lat, lng: locs[idx].lng, distanceFromPrev: d, cumulativeDistance: cumD, cumulativeTime: cumT, isHome: false });
     }
-    const ret = pd(indices[indices.length - 1], -1, locs, home, pre);
+    const ret = pd(indices[indices.length - 1], -1, locs, home, pre, strict);
     cumD += ret; cumT += ret / cfg.avgSpeed;
     stops.push({ sequence: indices.length + 1, name: home.name, lat: home.lat, lng: home.lng, distanceFromPrev: ret, cumulativeDistance: cumD, cumulativeTime: cumT, isHome: true });
     return { day: di + 1, stops, totalDistance: cumD, totalTime: cumT, totalStops: indices.length };

@@ -5,6 +5,7 @@ import maplibregl from "maplibre-gl";
 import { Car, Ruler, MapPin } from "lucide-react";
 import { ValidatedRow, Location, DayRoute } from "@/types";
 import { getRouteColor } from "@/lib/utils";
+import type { RouteSource } from "@/utils/clientRouting";
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -19,6 +20,10 @@ export interface MapViewData {
   routingMode?: "osrm" | "haversine";
   /** Road-following geometry: dayNumber → [lng,lat][] for drawing real routes */
   routeGeometry?: Map<number, [number, number][]>;
+  /** Per-day routing source — drives dashed line styling for estimated routes.
+   *  When missing or "haversine", the day renders as dashed (estimated).
+   *  When "osrm" or "geoapify", the day renders as solid (real road). */
+  routeSource?: Map<number, RouteSource>;
 }
 
 interface MapViewProps {
@@ -41,6 +46,12 @@ interface MapViewProps {
 }
 
 // ─── OSM Style (guarantees road network visibility) ──────────
+
+// Dash patterns for estimated (Haversine) routes — applied to both the
+// route layer and the glow layer so the dashing is consistent. Glow uses
+// a sparser pattern so the gap regions still show a faint halo outline.
+const ROUTE_DASH: [number, number] = [2, 3];
+const GLOW_DASH: [number, number] = [1, 4];
 
 const OSM_STYLE: maplibregl.StyleSpecification = {
   version: 8,
@@ -217,7 +228,7 @@ export default function MapView({
     const map = mapRef.current;
     if (!map) return;
 
-    const { markers, locations, routes, home, hiddenDays, routeGeometry } = data;
+    const { markers, locations, routes, home, hiddenDays, routeGeometry, routeSource } = data;
     const markersMap = markersRef.current;
 
     // ── Collect all points for bounds ──
@@ -232,6 +243,7 @@ export default function MapView({
         const coords: [number, number][] = [];
         const hasOnlyHome = day.stops.every((s) => s.isHome);
 
+        let usedRealGeometry = false;
         if (!hasOnlyHome) {
           // Try day-level route geometry (full day's route in one polyline)
           const dayGeo = routeGeometry?.get(day.day);
@@ -240,6 +252,7 @@ export default function MapView({
             // The first/last coords may be snapped to the nearest road, but
             // the entire journey is road-following — use as-is.
             coords.push(...dayGeo);
+            usedRealGeometry = true;
           } else {
             // Fallback: straight lines between ALL consecutive stops (home → POIs → home)
             for (let s = 0; s < day.stops.length - 1; s++) {
@@ -254,6 +267,15 @@ export default function MapView({
         const layerId = `rl-${day.day}`;
         const sourceId = `rs-${day.day}`;
         const isHidden = hiddenDays?.has(day.day);
+
+        // ── Decide dash style ──
+        // A day is "estimated" (use dashed line) when:
+        //   - the geometry is the straight-line fallback (no routeGeometry), OR
+        //   - the source is "haversine", OR
+        //   - the source is unknown (conservative — render as estimated).
+        // Real-road routes ("osrm" / "geoapify") render as solid lines.
+        const daySource = usedRealGeometry ? routeSource?.get(day.day) : "haversine";
+        const isEstimated = !usedRealGeometry || daySource === "haversine" || daySource === undefined;
 
         // Create or update layer
         const existingSource = map.getSource(sourceId);
@@ -277,6 +299,8 @@ export default function MapView({
               "line-color": "#000000",
               "line-width": highlightDay && highlightDay === day.day ? 8 : 6,
               "line-opacity": highlightDay && highlightDay !== day.day ? 0.04 : 0.25,
+              // Glow uses a sparser dash so gaps in the route still show a halo
+              ...(isEstimated ? { "line-dasharray": GLOW_DASH } : {}),
             },
           });
           // Route layer (colored, thick)
@@ -289,6 +313,8 @@ export default function MapView({
               "line-color": color,
               "line-width": highlightDay && highlightDay === day.day ? 6 : highlightDay ? 2 : 4,
               "line-opacity": highlightDay && highlightDay !== day.day ? 0.1 : 1,
+              // Subtle dashes for estimated routes — visible but not distracting
+              ...(isEstimated ? { "line-dasharray": ROUTE_DASH } : {}),
             },
           });
           routeLayersRef.current.push(glowId, layerId);
@@ -301,6 +327,14 @@ export default function MapView({
               geometry: { type: "LineString", coordinates: coords },
             });
           } catch {}
+          // Keep the dash style in sync with the current source — covers
+          // re-optimization cases where a day switches between real/estimated
+          if (map.getLayer(layerId)) {
+            map.setPaintProperty(layerId, "line-dasharray", isEstimated ? ROUTE_DASH : undefined as any);
+          }
+          if (map.getLayer(glowId)) {
+            map.setPaintProperty(glowId, "line-dasharray", isEstimated ? GLOW_DASH : undefined as any);
+          }
           // Toggle visibility for both glow and route
           map.setLayoutProperty(layerId, "visibility", isHidden ? "none" : "visible");
           map.setLayoutProperty(glowId, "visibility", isHidden ? "none" : "visible");

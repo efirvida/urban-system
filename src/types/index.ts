@@ -52,7 +52,48 @@ export interface Config {
   maxVisits?: number; // used when constraintType is "visits" or "hours+visits"
   avgSpeed: number; // km/h, default 60
   visitTime: number; // minutes per stop, default 30
+  /**
+   * PR 6 (real-roads-only): when true, the API builds and propagates a
+   * `DistanceMatrix` (per-pair `MatrixEntry`) end-to-end. When false
+   * (default) the API and optimizers fall back to the legacy
+   * `Record<string, number>` shape — behavior is bit-identical to pre-PR-6.
+   */
+  useStrictMatrix?: boolean;
 }
+
+// ─── Distance matrix (PR 6) ──────────────────────────────────
+
+/** Source of a single distance matrix entry. */
+export type RoutingSource = "real" | "estimated" | "unreachable";
+
+/**
+ * Per-pair distance record. `distance` is in km; when `source` is
+ * `"unreachable"` the value is `Infinity` so that `matGet` propagates
+ * the missing key through the optimizer (rejects the candidate) instead
+ * of poisoning `totalDist` with a `0` fallback.
+ *
+ * The shape is a single interface (not a discriminated union) so legacy
+ * `Record<string, number>` consumers can opt in with a single
+ * `entry.distance` lookup and read `entry.source` only when needed.
+ */
+export interface MatrixEntry {
+  /** Distance in km (`Infinity` when `source === "unreachable"`). */
+  distance: number;
+  /** Per-pair source — distinguishes real roads from estimates at the type level. */
+  source: RoutingSource;
+}
+
+/**
+ * Distance matrix with per-pair source metadata.
+ *
+ * `key` is `"i,j"` with `i < j`. The matrix convention is:
+ *   - 0      = home
+ *   - 1..n   = POIs in array order
+ *
+ * Pairs that the pre-filter considers unreachable may be absent entirely
+ * (callers MUST handle the `undefined` case the same as before PR 6).
+ */
+export type DistanceMatrix = Record<string, MatrixEntry>;
 
 // ─── Results ─────────────────────────────────────────────────
 
@@ -110,6 +151,14 @@ export interface OptimizeResponse {
    * ignore this field.
    */
   unreachable?: UnreachablePoi[];
+  /**
+   * PR 6 (real-roads-only): when `useStrictMatrix` is true, the API
+   * builds a `DistanceMatrix` with per-pair source metadata and
+   * surfaces it here for consumers that want type-safe access. Each
+   * entry is a `MatrixEntry` with `{ distance, source }`. Legacy
+   * callers that ignore this field see no behavior change.
+   */
+  strictMatrix?: DistanceMatrix;
   _meta?: {
     elapsedMs: number;
     osrmPairs: number;
@@ -117,6 +166,12 @@ export interface OptimizeResponse {
     routingMode: "osrm" | "haversine" | "api" | "geoapify";
     /** Number of POIs excluded by the unreachable pre-filter. */
     unreachableCount?: number;
+    /**
+     * PR 6 (real-roads-only): when the request set `useStrictMatrix`,
+     * the API echoes it back here so the frontend can correlate the
+     * response shape with the requested mode.
+     */
+    useStrictMatrix?: boolean;
   };
 }
 

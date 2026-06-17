@@ -15,7 +15,7 @@ import {
 import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
 import { haversineDistance } from "@/utils/haversine";
-import { fetchAllRouteGeometries, MatrixProgress } from "@/utils/clientRouting";
+import { fetchAllRouteGeometries, MatrixProgress, RouteSource } from "@/utils/clientRouting";
 import { reoptimizeDay } from "@/utils/routerOptimizer";
 
 // ─── Matrix cache (localStorage) ─────────────────────────────
@@ -173,6 +173,8 @@ export default function Home() {
   const [matrixProgress, setMatrixProgress] = useState<MatrixProgress | null>(null);
   const [routingMode, setRoutingMode] = useState<"osrm" | "haversine">("osrm");
   const [routeGeometry, setRouteGeometry] = useState<Map<number, [number, number][]> | null>(null);
+  /** Per-day routing source — drives dashed styling on the map. */
+  const [routeSource, setRouteSource] = useState<Map<number, RouteSource> | null>(null);
   const [algorithm, setAlgorithm] = useState<"auto" | "nsga2">("nsga2");
 
   // Route editing
@@ -312,6 +314,8 @@ export default function Home() {
         // During editing or preview, use straight lines for instant visual feedback
         routingMode: editMode || previewDays ? "haversine" : routingMode,
         routeGeometry: !editMode && !previewDays && routingMode === "osrm" ? routeGeometry ?? undefined : undefined,
+        // Parallel sources map — same gating as routeGeometry
+        routeSource: !editMode && !previewDays && routingMode === "osrm" ? routeSource ?? undefined : undefined,
       };
     }
 
@@ -320,7 +324,7 @@ export default function Home() {
     }
 
     return {};
-  }, [phase, validatedRows, locations, config, result, hiddenDays, routingMode, routeGeometry, editMode, editDaysPreview, previewDays]);
+  }, [phase, validatedRows, locations, config, result, hiddenDays, routingMode, routeGeometry, routeSource, editMode, editDaysPreview, previewDays]);
 
   /** Fetch OSRM geometry for visible days (lazy, cached) */
   const fetchGeometryForVisible = useCallback(
@@ -572,6 +576,11 @@ export default function Home() {
         locations, config, algorithm,
         distanceMatrix: distances,
         geoapifyTried,
+        // PR 6 (real-roads-only): feature flag — when true, the API
+        // builds a `DistanceMatrix` with per-pair source metadata and
+        // passes it through to the optimizer. Default `false` keeps the
+        // legacy `Record<string, number>` path bit-identical to pre-PR-6.
+        useStrictMatrix: config?.useStrictMatrix ?? false,
       };
 
       console.log(`${FLOW} POST /api/optimize — ${locations.length} locs, ${Object.keys(distances).length} pairs, ${geoapifyTried.length} geoapify-tried`);
@@ -677,11 +686,12 @@ export default function Home() {
       console.log(`${FLOW} geometryDays:`, geometryDays?.length ?? 0, 'days, result days:', result?.days?.length ?? 0);
       if (geometryDays && geometryDays.length > 0) {
         console.log(`${FLOW} Fetching route geometries for ${geometryDays.length} days...`);
-        fetchAllRouteGeometries(geometryDays).then(geo => {
+        fetchAllRouteGeometries(geometryDays).then(({ geometries: geo, sources }) => {
           console.log(`${FLOW} Route geometries: ${geo.size}/${geometryDays.length} days resolved`);
           if (geo.size > 0) {
             console.log(`${FLOW} Setting routeGeometry with ${geo.size} routes`);
             setRouteGeometry(geo);
+            setRouteSource(sources);
           }
         }).catch((err: any) => {
           console.error(`${FLOW} Route geometry error:`, err);
@@ -725,8 +735,11 @@ export default function Home() {
   /** Recalculate route geometries for a set of days (post-Apply). */
   const refetchGeometries = useCallback((days: DayRoute[]) => {
     if (days.length === 0) return;
-    fetchAllRouteGeometries(days).then(geo => {
-      if (geo.size > 0) setRouteGeometry(geo);
+    fetchAllRouteGeometries(days).then(({ geometries: geo, sources }) => {
+      if (geo.size > 0) {
+        setRouteGeometry(geo);
+        setRouteSource(sources);
+      }
     }).catch(err => {
       console.error("[FLOW] Post-Apply geometry fetch error:", err);
     });
