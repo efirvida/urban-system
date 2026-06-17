@@ -965,6 +965,7 @@ export default function Home() {
           });
         }}
         highlightDay={highlightDay}
+        homeDraggable={phase === "config"}
       />
 
       {/* ── Error toast ── */}

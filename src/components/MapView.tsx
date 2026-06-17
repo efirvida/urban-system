@@ -29,6 +29,8 @@ interface MapViewProps {
   onPlaceHome?: (lat: number, lng: number) => void;
   /** Called when user drags home marker */
   onDragHome?: (lat: number, lng: number) => void;
+  /** When true, the home marker can be dragged (default false) */
+  homeDraggable?: boolean;
   /** Called when user clicks a route stop (POI) in a route */
   onPOIClick?: (lat: number, lng: number, day: number, name: string) => void;
   /** Day to highlight (dim others) */
@@ -68,6 +70,7 @@ export default function MapView({
   placementMode,
   onPlaceHome,
   onDragHome,
+  homeDraggable,
   onPOIClick,
   highlightDay,
   selectedPOI,
@@ -145,12 +148,21 @@ export default function MapView({
   const onPlaceHomeRef = useRef(onPlaceHome);
   const onDragHomeRef = useRef(onDragHome);
   const placementModeRef = useRef(placementMode);
+  const onPOIClickRef = useRef(onPOIClick);
 
   useEffect(() => {
     onPlaceHomeRef.current = onPlaceHome;
     onDragHomeRef.current = onDragHome;
     placementModeRef.current = placementMode;
-  }, [onPlaceHome, onDragHome, placementMode]);
+    onPOIClickRef.current = onPOIClick;
+  }, [onPlaceHome, onDragHome, placementMode, onPOIClick]);
+
+  // ── Update home marker draggability ──
+  useEffect(() => {
+    if (homeMarkerRef.current) {
+      homeMarkerRef.current.setDraggable(!!homeDraggable);
+    }
+  }, [homeDraggable]);
 
   // Re-attach click handlers when placementMode changes
   useEffect(() => {
@@ -356,14 +368,13 @@ export default function MapView({
       pinOnly?: boolean,
       /** Click handler (for route editing) */
       onClick?: () => void,
-      /** Optional POI metadata — stored on the element for highlight lookup. */
-      poiData?: { lat: number; lng: number; day: number }
+      /** Optional POI metadata — stored on the element for highlight + click. */
+      poiData?: { lat: number; lng: number; day: number; name: string }
     ) => {
       keepIds.add(id);
       const existing = markersMap.get(id);
       if (existing) {
         existing.setLngLat([lng, lat]);
-        if (onClick) (existing as any)._clickFn = onClick;
         if (poiData) (existing.getElement() as any)._poiData = poiData;
         return;
       }
@@ -391,13 +402,17 @@ export default function MapView({
       if (popupHtml) {
         m.setPopup(new maplibregl.Popup({ offset: 25 }).setHTML(popupHtml));
       }
-      if (onClick) {
-        el.style.cursor = "pointer";
-        el.addEventListener("click", (e) => {
-          e.stopPropagation();
-          onClick();
-        });
-      }
+      // Click handler reads from the ref to always have the latest onPOIClick
+      el.style.cursor = "pointer";
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const data = (el as any)._poiData as
+          | { lat: number; lng: number; day: number; name: string }
+          | undefined;
+        if (data && onPOIClickRef.current) {
+          onPOIClickRef.current(data.lat, data.lng, data.day, data.name);
+        }
+      });
       markersMap.set(id, m);
     };
 
@@ -460,8 +475,8 @@ export default function MapView({
             color,
             `<strong>${stop.name}</strong><br/>Día ${day.day} · #${stop.sequence}<br/>${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`,
             false,
-            () => onPOIClick?.(stop.lat, stop.lng, day.day, stop.name),
-            { lat: stop.lat, lng: stop.lng, day: day.day }
+            undefined, // onClick via ref + poiData
+            { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name }
           );
         }
       }

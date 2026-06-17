@@ -10,7 +10,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { MapPin } from "lucide-react";
+import { MapPin, Plus } from "lucide-react";
 import { DayRoute, Location, Config, EditMutation } from "@/types";
 import { reoptimizeDay } from "@/utils/routerOptimizer";
 import { cn, getRouteColor } from "@/lib/utils";
@@ -90,6 +90,16 @@ export default function RouteEditor({
     name: string;
     color?: string;
   } | null>(null);
+
+  const actionBarRef = useRef<HTMLDivElement | null>(null);
+  const editorContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Scroll to the action bar when a POI is selected
+  useEffect(() => {
+    if (selectedPOI && actionBarRef.current) {
+      actionBarRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [selectedPOI]);
 
   // ── Init working state from result (once) ──
   useEffect(() => {
@@ -391,6 +401,36 @@ export default function RouteEditor({
     [onPOISelect]
   );
 
+  // ── Add an empty day ──
+  const handleAddDay = useCallback(() => {
+    const maxDay = workingDays.length > 0 ? Math.max(...workingDays.map((d) => d.day)) : 0;
+    const newDayNumber = maxDay + 1;
+    const homeStop = workingDays[0]?.stops[0];
+    if (!homeStop) return;
+
+    const emptyDay: DayRoute = {
+      day: newDayNumber,
+      stops: [
+        {
+          sequence: 0,
+          name: homeStop.name,
+          lat: homeStop.lat,
+          lng: homeStop.lng,
+          distanceFromPrev: 0,
+          cumulativeDistance: 0,
+          cumulativeTime: 0,
+          isHome: true,
+        },
+      ],
+      totalDistance: 0,
+      totalTime: 0,
+      totalStops: 0,
+    };
+
+    pushUndo({ type: "add", poiName: `day-${newDayNumber}`, fromDay: 0, toDay: newDayNumber });
+    setWorkingDays((prev) => [...prev, emptyDay]);
+  }, [workingDays, pushUndo]);
+
   // ── Move POI to a different day (from the action bar) ──
   const handleMovePOI = useCallback(
     (poiName: string, lat: number, lng: number, fromDayNumber: number, toDayNumber: number | null) => {
@@ -468,7 +508,10 @@ export default function RouteEditor({
 
         {/* ── POI action bar: appears when a POI is selected in edit mode ── */}
         {selectedPOI && (
-          <div className="rounded-lg p-2.5 border border-blue-200 bg-blue-50/80">
+          <div
+            ref={actionBarRef}
+            className="rounded-lg p-2.5 border border-blue-200 bg-blue-50/80 scroll-mt-2"
+          >
             <div className="flex items-center gap-1.5 text-xs flex-wrap">
               <MapPin className="w-3.5 h-3.5 text-blue-600 shrink-0" />
               <span className="font-semibold text-blue-800 truncate max-w-[120px]">
@@ -540,6 +583,19 @@ export default function RouteEditor({
             />
           ))}
         </div>
+
+        {/* ── Add empty day button ── */}
+        <button
+          onClick={handleAddDay}
+          className={cn(
+            "w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border-2 border-dashed",
+            "border-gray-300 text-gray-400 hover:text-blue-600 hover:border-blue-300",
+            "text-xs font-medium transition-colors"
+          )}
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Agregar día vacío
+        </button>
 
         <UnassignedPool pois={unassigned} />
 
