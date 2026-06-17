@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useMemo } from "react";
+import { useCallback, useState, useMemo, useRef } from "react";
 import {
   Location,
   Config,
@@ -16,6 +16,7 @@ import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
 import { haversineDistance } from "@/utils/haversine";
 import { fetchAllRouteGeometries, MatrixProgress } from "@/utils/clientRouting";
+import { reoptimizeDay } from "@/utils/routerOptimizer";
 
 // ─── Matrix cache (localStorage) ─────────────────────────────
 // Format: { d: Record<"i,j", km>, s: Record<"i,j", "h"|"o"|"g">, t?: string[] }
@@ -124,7 +125,8 @@ import OptimizeButton from "@/components/OptimizeButton";
 import OptimizeProgress from "@/components/OptimizeProgress";
 import MapView, { MapViewData } from "@/components/MapView";
 import Sidebar from "@/components/Sidebar";
-import RouteEditor from "@/components/RouteEditor";
+import RouteEditor, { RouteEditorHandle } from "@/components/RouteEditor";
+import MapPOIActionBar from "@/components/MapPOIActionBar";
 
 // ─── Phase definition ───────────────────────────────────────
 
@@ -185,12 +187,88 @@ export default function Home() {
     name: string;
   } | null>(null);
   const [highlightDay, setHighlightDay] = useState<number | null>(null);
+  /** Floating action bar: target day being previewed (null = no preview). */
+  const [previewTargetDay, setPreviewTargetDay] = useState<number | null>(null);
+  /** Preview routes — shown on the map while user decides in the action bar. */
+  const [previewDays, setPreviewDays] = useState<DayRoute[] | null>(null);
   const [nsgaResult, setNsgaResult] = useState<{
     balanced: ParetoSolution;
     minDistance: ParetoSolution;
   } | null>(null);
   const [autoResult, setAutoResult] = useState<{ days: number; distance: number; maxHours: number; dayRoutes: DayRoute[] } | null>(null);
   const [selectedResult, setSelectedResult] = useState<"best" | "auto" | "balanced" | "minDistance">("best");
+
+  const editorRef = useRef<RouteEditorHandle | null>(null);
+
+  /** Available day numbers — from editDaysPreview or result. */
+  const availableDays = useMemo(() => {
+    const source = editDaysPreview ?? result?.days ?? [];
+    return [...new Set(source.map((d) => d.day))].sort((a, b) => a - b);
+  }, [editDaysPreview, result]);
+
+  /** Calculate preview routes when the user selects a target day. */
+  const handlePreviewDay = useCallback(
+    (targetDay: number | null) => {
+      if (!selectedPOI || !editDaysPreview) return;
+      setPreviewTargetDay(targetDay);
+
+      if (targetDay === null || targetDay === selectedPOI.day) {
+        // Cancel preview — restore the route preview to current working state
+        setPreviewDays(null);
+        return;
+      }
+
+      // Build preview: remove POI from its current day, add to target
+      const sourceDay = editDaysPreview.find((d) => d.day === selectedPOI.day);
+      const targetDayData = editDaysPreview.find((d) => d.day === targetDay);
+      if (!sourceDay || !targetDayData) return;
+
+      const home: Location = { name: "Casa", lat: config.homeLat, lng: config.homeLng };
+
+      const stopsToLocs = (stops: Array<{ name: string; lat: number; lng: number; isHome?: boolean }>) =>
+        stops.filter((s) => !s.isHome).map((s) => ({ name: s.name, lat: s.lat, lng: s.lng }));
+
+      const sourcePois = stopsToLocs(sourceDay.stops).filter((s) => s.name !== selectedPOI.name);
+      const targetPois = stopsToLocs(targetDayData.stops).concat([
+        { name: selectedPOI.name, lat: selectedPOI.lat, lng: selectedPOI.lng },
+      ]);
+
+      const newSource = reoptimizeDay(sourcePois, home, config, undefined, sourceDay.day);
+      const newTarget = reoptimizeDay(targetPois, home, config, undefined, targetDayData.day);
+
+      const preview = editDaysPreview.map((d) => {
+        if (d.day === sourceDay.day) return newSource;
+        if (d.day === targetDayData.day) return newTarget;
+        return d;
+      });
+      setPreviewDays(preview);
+    },
+    [selectedPOI, editDaysPreview, config]
+  );
+
+  const handleAcceptMove = useCallback(() => {
+    if (!selectedPOI || previewTargetDay === null || previewTargetDay === selectedPOI.day) return;
+    editorRef.current?.commitMove(
+      {
+        name: selectedPOI.name,
+        lat: selectedPOI.lat,
+        lng: selectedPOI.lng,
+        fromDay: selectedPOI.day,
+      },
+      previewTargetDay
+    );
+    // Clear preview state
+    setPreviewDays(null);
+    setPreviewTargetDay(null);
+    // Update selection to new day
+    setSelectedPOI({ ...selectedPOI, day: previewTargetDay });
+    setHighlightDay(previewTargetDay);
+  }, [selectedPOI, previewTargetDay]);
+
+  const handleCancelMove = useCallback(() => {
+    setPreviewDays(null);
+    setPreviewTargetDay(null);
+  }, []);
 
   // ── Map data (derived) ──
   const mapData = useMemo((): MapViewData => {
@@ -204,16 +282,17 @@ export default function Home() {
     }
 
     if (phase === "results" && result) {
-      // In edit mode, show the LIVE editable days on the map
-      const editRoutes = editMode && editDaysPreview ? editDaysPreview : result.days;
+      // Previews override editing previews — in order: previewDays > editDaysPreview > result.days
+      const preview = previewDays ?? (editMode && editDaysPreview ? editDaysPreview : null);
+      const editRoutes = preview ?? result.days;
       return {
         routes: editRoutes,
         locations,
         home,
         hiddenDays,
-        // During editing, use straight lines for instant visual feedback
-        routingMode: editMode ? "haversine" : routingMode,
-        routeGeometry: !editMode && routingMode === "osrm" ? routeGeometry ?? undefined : undefined,
+        // During editing or preview, use straight lines for instant visual feedback
+        routingMode: editMode || previewDays ? "haversine" : routingMode,
+        routeGeometry: !editMode && !previewDays && routingMode === "osrm" ? routeGeometry ?? undefined : undefined,
       };
     }
 
@@ -222,7 +301,7 @@ export default function Home() {
     }
 
     return {};
-  }, [phase, validatedRows, locations, config, result, hiddenDays, routingMode, routeGeometry, editMode, editDaysPreview]);
+  }, [phase, validatedRows, locations, config, result, hiddenDays, routingMode, routeGeometry, editMode, editDaysPreview, previewDays]);
 
   /** Fetch OSRM geometry for visible days (lazy, cached) */
   const fetchGeometryForVisible = useCallback(
@@ -646,6 +725,8 @@ export default function Home() {
     setEditMode(false);
     setEditorDirty(false);
     setEditDaysPreview(null);
+    setPreviewDays(null);
+    setPreviewTargetDay(null);
     setSelectedPOI(null);
     setHighlightDay(null);
   }, [result, refetchGeometries]);
@@ -655,6 +736,8 @@ export default function Home() {
     setEditMode(false);
     setEditorDirty(false);
     setEditDaysPreview(null);
+    setPreviewDays(null);
+    setPreviewTargetDay(null);
     setSelectedPOI(null);
     setHighlightDay(null);
   }, []);
@@ -892,6 +975,7 @@ export default function Home() {
               {/* Route editor — mounted only when edit mode is on */}
               {editMode && result && (
                 <RouteEditor
+                  ref={editorRef}
                   result={result}
                   config={config}
                   locations={locations}
@@ -967,6 +1051,19 @@ export default function Home() {
         highlightDay={highlightDay}
         homeDraggable={phase === "config"}
       />
+
+      {/* ── Floating POI action bar (map overlay, edit mode only) ── */}
+      {editMode && selectedPOI && (
+        <MapPOIActionBar
+          poiName={selectedPOI.name}
+          currentDay={selectedPOI.day}
+          availableDays={availableDays}
+          previewTargetDay={previewTargetDay}
+          onSelectDay={handlePreviewDay}
+          onAccept={handleAcceptMove}
+          onCancel={handleCancelMove}
+        />
+      )}
 
       {/* ── Error toast ── */}
       {error && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -49,6 +49,15 @@ interface RouteEditorProps {
   onClearSelection?: () => void;
 }
 
+export interface RouteEditorHandle {
+  /** Commit a POI move from its current day to a target day (or null = unassign).
+   *  This mutates workingDays and pushes to the undo stack. */
+  commitMove: (
+    poi: { name: string; lat: number; lng: number; fromDay: number },
+    toDay: number | null
+  ) => void;
+}
+
 const UNDO_CAP = 20;
 const POOL_DAY = 0; // 0 = unassigned pool in mutation metadata
 
@@ -65,7 +74,7 @@ const POOL_DAY = 0; // 0 = unassigned pool in mutation metadata
  *  - Within-day drop → ignored. The day is reoptimized regardless of
  *    drop index, so manual reordering is impossible.
  */
-export default function RouteEditor({
+const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function RouteEditor({
   result,
   config,
   locations,
@@ -77,7 +86,7 @@ export default function RouteEditor({
   onDiscard,
   onWorkingDaysChange,
   onClearSelection,
-}: RouteEditorProps) {
+}: RouteEditorProps, ref) {
   // ── Session state (initialized from props on first mount) ──
   const snapshotRef = useRef<DayRoute[] | null>(null);
   const initRef = useRef(false);
@@ -488,6 +497,17 @@ export default function RouteEditor({
     [workingDays]
   );
 
+  // ── Expose commitMove via ref (called by the floating MapPOIActionBar) ──
+  useImperativeHandle(
+    ref,
+    () => ({
+      commitMove: (poi, toDay) => {
+        handleMovePOI(poi.name, poi.lat, poi.lng, poi.fromDay, toDay);
+      },
+    }),
+    [handleMovePOI]
+  );
+
   // ── Render ──
   return (
     <div className="space-y-3">
@@ -614,7 +634,7 @@ export default function RouteEditor({
       </DndContext>
     </div>
   );
-}
+});
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -638,6 +658,8 @@ function computeUnassigned(days: DayRoute[], allLocations: Location[]): Location
     }
   }
   return allLocations.filter(
-    (l) => !assignedKeys.has(`${l.name}__${l.lat.toFixed(5)}__${l.lng.toFixed(5)}`)
+      (l) => !assignedKeys.has(`${l.name}__${l.lat.toFixed(5)}__${l.lng.toFixed(5)}`)
   );
 }
+
+export default RouteEditor;
