@@ -124,6 +124,7 @@ import OptimizeButton from "@/components/OptimizeButton";
 import OptimizeProgress from "@/components/OptimizeProgress";
 import MapView, { MapViewData } from "@/components/MapView";
 import Sidebar from "@/components/Sidebar";
+import RouteEditor from "@/components/RouteEditor";
 
 // ─── Phase definition ───────────────────────────────────────
 
@@ -173,8 +174,16 @@ export default function Home() {
 
   // Route editing
   const [editMode, setEditMode] = useState(false);
-  const [editableDays, setEditableDays] = useState<DayRoute[]>([]);
-  const [unassignedPOIs, setUnassignedPOIs] = useState<Location[]>([]);
+  const [editorDirty, setEditorDirty] = useState(false);
+  /** Live preview of editable days — used by the map during editing. */
+  const [editDaysPreview, setEditDaysPreview] = useState<DayRoute[] | null>(null);
+  /** Currently-selected POI on the map. Drives sidebar highlight. */
+  const [selectedPOI, setSelectedPOI] = useState<{
+    lat: number;
+    lng: number;
+    day: number;
+    name: string;
+  } | null>(null);
   const [highlightDay, setHighlightDay] = useState<number | null>(null);
   const [nsgaResult, setNsgaResult] = useState<{
     balanced: ParetoSolution;
@@ -195,13 +204,16 @@ export default function Home() {
     }
 
     if (phase === "results" && result) {
+      // In edit mode, show the LIVE editable days on the map
+      const editRoutes = editMode && editDaysPreview ? editDaysPreview : result.days;
       return {
-        routes: result.days,
+        routes: editRoutes,
         locations,
         home,
         hiddenDays,
-        routingMode,
-        routeGeometry: routingMode === "osrm" ? routeGeometry ?? undefined : undefined,
+        // During editing, use straight lines for instant visual feedback
+        routingMode: editMode ? "haversine" : routingMode,
+        routeGeometry: !editMode && routingMode === "osrm" ? routeGeometry ?? undefined : undefined,
       };
     }
 
@@ -210,7 +222,7 @@ export default function Home() {
     }
 
     return {};
-  }, [phase, validatedRows, locations, config, result, hiddenDays, routingMode, routeGeometry]);
+  }, [phase, validatedRows, locations, config, result, hiddenDays, routingMode, routeGeometry, editMode, editDaysPreview]);
 
   /** Fetch OSRM geometry for visible days (lazy, cached) */
   const fetchGeometryForVisible = useCallback(
@@ -605,44 +617,66 @@ export default function Home() {
     setPlacementMode((prev) => (prev === "home" ? null : "home"));
   }, []);
 
-  /** Recalculate a single day's route (distance + geometry) via API */
-  const recalcDayRoute = useCallback(async (day: DayRoute): Promise<DayRoute | null> => {
-    try {
-      const stops = day.stops.map(s => ({ lat: s.lat, lng: s.lng }));
-      const res = await fetch("/api/routing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stops }),
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!res.ok) return null;
-      const data = await res.json();
-      const totalDist = data.distance as number;
-      const totalTime = (data.time as number) / 3600;
-      if (!totalDist) return null;
+  /** Recalculate route geometries for a set of days (post-Apply). */
+  const refetchGeometries = useCallback((days: DayRoute[]) => {
+    if (days.length === 0) return;
+    fetchAllRouteGeometries(days).then(geo => {
+      if (geo.size > 0) setRouteGeometry(geo);
+    }).catch(err => {
+      console.error("[FLOW] Post-Apply geometry fetch error:", err);
+    });
+  }, []);
 
-      const newStops = day.stops.map((s, i) => ({ ...s }));
-      let cumD = 0, cumT = 0;
-      for (let i = 0; i < newStops.length; i++) {
-        if (i === 0) {
-          newStops[i].distanceFromPrev = 0;
-          newStops[i].cumulativeDistance = 0;
-          newStops[i].cumulativeTime = 0;
-        } else {
-          const d = haversineDistance(newStops[i-1].lat, newStops[i-1].lng, newStops[i].lat, newStops[i].lng);
-          cumD += d;
-          cumT += d / config.avgSpeed + config.visitTime / 60;
-          newStops[i].distanceFromPrev = d;
-          newStops[i].cumulativeDistance = cumD;
-          newStops[i].cumulativeTime = cumT;
-        }
+  /** Apply handler — commits editor's working days to the result. */
+  const handleApply = useCallback((newDays: DayRoute[]) => {
+    if (!result) return;
+    const newTotalDistance = newDays.reduce((s, d) => s + d.totalDistance, 0);
+    setResult({
+      ...result,
+      days: newDays,
+      totalDistance: Math.round(newTotalDistance * 100) / 100,
+      totalDays: newDays.length,
+    });
+    // Recompute hidden days based on the new set
+    setHiddenDays(new Set(newDays.slice(1).map((d) => d.day)));
+    // Refetch real-road geometry for the new days (background)
+    setRoutingMode("osrm");
+    refetchGeometries(newDays);
+    // Exit edit mode
+    setEditMode(false);
+    setEditorDirty(false);
+    setEditDaysPreview(null);
+    setSelectedPOI(null);
+    setHighlightDay(null);
+  }, [result, refetchGeometries]);
+
+  /** Discard handler — exit edit mode (editor handles its own state). */
+  const handleDiscardEdit = useCallback(() => {
+    setEditMode(false);
+    setEditorDirty(false);
+    setEditDaysPreview(null);
+    setSelectedPOI(null);
+    setHighlightDay(null);
+  }, []);
+
+  /** Toggle edit mode with close-guard. */
+  const toggleEditMode = useCallback(() => {
+    if (editMode) {
+      // Trying to exit — check for unsaved changes
+      if (editorDirty) {
+        const ok = window.confirm(
+          "¿Descartar cambios sin guardar?\n\nTienes cambios en el editor que se perderán."
+        );
+        if (!ok) return;
       }
-      const lastLeg = newStops.length > 1
-        ? haversineDistance(newStops[newStops.length-2].lat, newStops[newStops.length-2].lng, newStops[newStops.length-1].lat, newStops[newStops.length-1].lng)
-        : 0;
-      return { ...day, stops: newStops, totalDistance: Math.round(cumD * 100) / 100, totalTime: Math.round(cumT * 100) / 100 };
-    } catch { return null; }
-  }, [config.avgSpeed, config.visitTime]);
+      setEditMode(false);
+      setEditorDirty(false);
+    } else {
+      // Enter edit mode — clear any previous selection
+      setSelectedPOI(null);
+      setEditMode(true);
+    }
+  }, [editMode, editorDirty]);
 
   const handleReset = useCallback(() => {
     setRawData(null);
@@ -654,6 +688,10 @@ export default function Home() {
     setSidebarOpen(true);
     setPlacementMode(null);
     setHiddenDays(new Set());
+    setEditMode(false);
+    setEditorDirty(false);
+    setSelectedPOI(null);
+    setHighlightDay(null);
   }, []);
 
   // ── Steps bar — shown inside the sidebar header ──
@@ -836,87 +874,42 @@ export default function Home() {
 
               {/* Edit mode toggle */}
               {result && result.days.length > 0 && (
-                <button onClick={() => {
-                  if (!editMode) {
-                    setEditableDays(result.days.map(d => ({ ...d, stops: [...d.stops] })));
-                    const assigned = new Set(result.days.flatMap(d => d.stops.filter(s => !s.isHome).map(s => `${s.lat},${s.lng}`)));
-                    setUnassignedPOIs(locations.filter(l => !assigned.has(`${l.lat},${l.lng}`)));
-                  }
-                  setEditMode(!editMode);
-                }}
-                  className={cn("w-full text-sm py-2 rounded-lg font-medium transition-all", editMode ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>
-                  ✏️ {editMode ? "Terminar edición" : "Editar rutas"}
+                <button
+                  onClick={toggleEditMode}
+                  className={cn(
+                    "w-full text-sm py-2 rounded-lg font-medium transition-all",
+                    editMode
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  )}
+                >
+                  {editMode
+                    ? (editorDirty ? "Terminar edición (con cambios)" : "Terminar edición")
+                    : "Editar rutas"}
                 </button>
               )}
 
-              {/* Route editor */}
-              {editMode && (
-                <div className="space-y-3">
-                  {editableDays.map((day) => (
-                    <div key={day.day} className={`rounded-lg p-3 border-2 transition-all ${highlightDay === day.day ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'}`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-semibold">Día {day.day}</span>
-                        <span className="text-xs text-gray-400">{day.stops.filter(s => !s.isHome).length} paradas · {day.totalDistance.toFixed(0)}km</span>
-                      </div>
-                      <div className="space-y-1">
-                        {day.stops.filter(s => !s.isHome).map((stop, si) => (
-                          <div key={si} className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1">
-                            <span>{stop.name}</span>
-                            <div className="flex gap-1">
-                              <button onClick={() => {
-                                const newDays = editableDays.map(d => ({ ...d, stops: [...d.stops] }));
-                                const dayIdx = newDays.findIndex(d => d.day === day.day);
-                                const stopIdx = newDays[dayIdx].stops.findIndex(s => s.sequence === stop.sequence);
-                                const removed = newDays[dayIdx].stops.splice(stopIdx, 1);
-                                if (removed.length > 0 && !removed[0].isHome) {
-                                  setUnassignedPOIs(prev => [...prev, { name: removed[0].name, lat: removed[0].lat, lng: removed[0].lng }]);
-                                }
-                                // Recalc day distance
-                                recalcDayRoute(newDays[dayIdx]).then(updated => {
-                                  if (updated) newDays[dayIdx] = updated;
-                                  setEditableDays(newDays);
-                                });
-                              }} className="text-red-400 hover:text-red-600">✕</button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {unassignedPOIs.map((poi, pi) => (
-                          <button key={pi} onClick={() => {
-                            const newDays = editableDays.map(d => ({ ...d, stops: [...d.stops] }));
-                            const dayIdx = newDays.findIndex(d => d.day === day.day);
-                            const lastSeq = Math.max(...newDays[dayIdx].stops.map(s => s.sequence), 0);
-                            newDays[dayIdx].stops.splice(newDays[dayIdx].stops.length - 1, 0, {
-                              sequence: lastSeq, name: poi.name, lat: poi.lat, lng: poi.lng,
-                              distanceFromPrev: 0, cumulativeDistance: 0, cumulativeTime: 0, isHome: false,
-                            });
-                            setUnassignedPOIs(prev => prev.filter((_, i) => i !== pi));
-                            recalcDayRoute(newDays[dayIdx]).then(updated => {
-                              if (updated) newDays[dayIdx] = updated;
-                              setEditableDays(newDays);
-                            });
-                          }}
-                            className="text-[10px] px-2 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-200 hover:bg-green-100">
-                            + {poi.name.slice(0, 12)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Unassigned POIs panel */}
-                  {unassignedPOIs.length > 0 && (
-                    <div className="rounded-lg p-3 border border-dashed border-gray-300 bg-amber-50">
-                      <div className="text-xs font-semibold text-amber-700 mb-1">📍 POIs sin ruta ({unassignedPOIs.length})</div>
-                      <div className="flex flex-wrap gap-1">
-                        {unassignedPOIs.map((poi, pi) => (
-                          <span key={pi} className="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-700">{poi.name}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+              {/* Route editor — mounted only when edit mode is on */}
+              {editMode && result && (
+                <RouteEditor
+                  result={result}
+                  config={config}
+                  locations={locations}
+                  matrix={undefined}
+                  selectedPOI={selectedPOI}
+                  onPOISelect={(name, lat, lng, day) => {
+                    setSelectedPOI({ name, lat, lng, day });
+                    setHighlightDay(day);
+                  }}
+                  onApply={handleApply}
+                  onDirtyChange={setEditorDirty}
+                  onDiscard={handleDiscardEdit}
+                  onWorkingDaysChange={setEditDaysPreview}
+                  onClearSelection={() => {
+                    setSelectedPOI(null);
+                    setHighlightDay(null);
+                  }}
+                />
               )}
 
               <button
@@ -958,11 +951,16 @@ export default function Home() {
         placementMode={placementMode}
         onPlaceHome={handlePlaceHome}
         onDragHome={handleDragHome}
+        selectedPOI={selectedPOI}
         onPOIClick={(lat, lng, day, name) => {
+          setSelectedPOI({ name, lat, lng, day });
           setHighlightDay(day);
-          // Open the day's route in the sidebar
+          // Open the clicked POI's day — use editable days when in edit mode
           setHiddenDays((prev) => {
-            const allDays = result?.days.map((d) => d.day) ?? [];
+            const sourceDays = editMode && editDaysPreview
+              ? editDaysPreview
+              : result?.days ?? [];
+            const allDays = sourceDays.map((d) => d.day);
             return new Set(allDays.filter((d) => d !== day));
           });
         }}

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
+import { Car, Ruler, MapPin } from "lucide-react";
 import { ValidatedRow, Location, DayRoute } from "@/types";
 import { getRouteColor } from "@/lib/utils";
 
@@ -32,6 +33,9 @@ interface MapViewProps {
   onPOIClick?: (lat: number, lng: number, day: number, name: string) => void;
   /** Day to highlight (dim others) */
   highlightDay?: number | null;
+  /** Currently-selected POI — the matching marker is scaled up
+   *  and ringed with a blue glow. */
+  selectedPOI?: { lat: number; lng: number; day: number; name: string } | null;
 }
 
 // ─── OSM Style (guarantees road network visibility) ──────────
@@ -66,6 +70,7 @@ export default function MapView({
   onDragHome,
   onPOIClick,
   highlightDay,
+  selectedPOI,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -231,8 +236,8 @@ export default function MapView({
             layout: { "line-join": "round", "line-cap": "round", visibility: isHidden ? "none" : "visible" },
             paint: {
               "line-color": "#000000",
-              "line-width": 6,
-              "line-opacity": highlightDay && highlightDay !== day.day ? 0.08 : 0.25,
+              "line-width": highlightDay && highlightDay === day.day ? 8 : 6,
+              "line-opacity": highlightDay && highlightDay !== day.day ? 0.04 : 0.25,
             },
           });
           // Route layer (colored, thick)
@@ -243,8 +248,8 @@ export default function MapView({
             layout: { "line-join": "round", "line-cap": "round", visibility: isHidden ? "none" : "visible" },
             paint: {
               "line-color": color,
-              "line-width": highlightDay && highlightDay !== day.day ? 3 : 5,
-              "line-opacity": highlightDay && highlightDay !== day.day ? 0.3 : 1,
+              "line-width": highlightDay && highlightDay === day.day ? 6 : highlightDay ? 2 : 4,
+              "line-opacity": highlightDay && highlightDay !== day.day ? 0.1 : 1,
             },
           });
           routeLayersRef.current.push(glowId, layerId);
@@ -311,7 +316,7 @@ export default function MapView({
           .setLngLat([home.lng, home.lat])
           .setPopup(
             new maplibregl.Popup({ offset: 25 }).setHTML(
-              `<strong>🏠 Casa</strong><br/>${home.lat.toFixed(4)}, ${home.lng.toFixed(4)}`
+              `<strong>Casa</strong><br/>${home.lat.toFixed(4)}, ${home.lng.toFixed(4)}`
             )
           )
           .addTo(map);
@@ -350,13 +355,16 @@ export default function MapView({
       /** Show as pin icon instead of numbered circle */
       pinOnly?: boolean,
       /** Click handler (for route editing) */
-      onClick?: () => void
+      onClick?: () => void,
+      /** Optional POI metadata — stored on the element for highlight lookup. */
+      poiData?: { lat: number; lng: number; day: number }
     ) => {
       keepIds.add(id);
       const existing = markersMap.get(id);
       if (existing) {
         existing.setLngLat([lng, lat]);
         if (onClick) (existing as any)._clickFn = onClick;
+        if (poiData) (existing.getElement() as any)._poiData = poiData;
         return;
       }
 
@@ -374,6 +382,8 @@ export default function MapView({
         el.style.backgroundColor = color;
         el.textContent = label;
       }
+
+      if (poiData) (el as any)._poiData = poiData;
 
       const m = new maplibregl.Marker({ element: el })
         .setLngLat([lng, lat])
@@ -450,7 +460,8 @@ export default function MapView({
             color,
             `<strong>${stop.name}</strong><br/>Día ${day.day} · #${stop.sequence}<br/>${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`,
             false,
-            () => onPOIClick?.(stop.lat, stop.lng, day.day, stop.name)
+            () => onPOIClick?.(stop.lat, stop.lng, day.day, stop.name),
+            { lat: stop.lat, lng: stop.lng, day: day.day }
           );
         }
       }
@@ -480,19 +491,61 @@ export default function MapView({
     }
   }, [data]);
 
+  // ── Highlight the selected POI marker (scale-up + ring) ──
+  useEffect(() => {
+    // Find the matching marker by matching its stored data on the
+    // element. Markers created by addMarker with onClick have lat/lng
+    // stored on the element via a data attribute (see addMarker below).
+    for (const [id, marker] of markersRef.current) {
+      const el = marker.getElement() as HTMLElement & {
+        _poiData?: { lat: number; lng: number; day: number };
+      };
+      const isMatch =
+        selectedPOI !== null &&
+        selectedPOI !== undefined &&
+        el._poiData !== undefined &&
+        el._poiData.day === selectedPOI.day &&
+        Math.abs(el._poiData.lat - selectedPOI.lat) < 0.000001 &&
+        Math.abs(el._poiData.lng - selectedPOI.lng) < 0.000001;
+
+      if (isMatch) {
+        el.style.transform = "scale(1.4)";
+        el.style.boxShadow =
+          "0 0 0 4px rgba(59, 130, 246, 0.6), 0 0 0 6px rgba(59, 130, 246, 0.3)";
+        el.style.zIndex = "20";
+      } else {
+        el.style.transform = "";
+        el.style.boxShadow = "";
+        el.style.zIndex = "";
+      }
+      void id;
+    }
+  }, [selectedPOI, data]);
+
   return (
     <div className="absolute inset-0" style={{ width: "100%", height: "100%" }}>
       {/* Routing mode badge (bottom-left of map) */}
       {data.routingMode && (
-        <div className="absolute bottom-4 left-4 z-10 px-2.5 py-1 bg-white/90 backdrop-blur-sm rounded-full shadow text-xs text-gray-500 border">
-          {data.routingMode === "osrm" ? "🚗 Ruta real" : "📏 Línea recta"}
+        <div className="absolute bottom-4 left-4 z-10 px-2.5 py-1 bg-white/90 backdrop-blur-sm rounded-full shadow text-xs text-gray-500 border flex items-center gap-1.5">
+          {data.routingMode === "osrm" ? (
+            <>
+              <Car className="w-3.5 h-3.5" />
+              Ruta real
+            </>
+          ) : (
+            <>
+              <Ruler className="w-3.5 h-3.5" />
+              Línea recta
+            </>
+          )}
         </div>
       )}
 
       {/* Placement mode overlay indicator */}
       {placementMode === "home" && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-4 py-2 bg-blue-600 text-white rounded-full shadow-lg text-sm font-medium whitespace-nowrap">
-          🏠 Haz clic en el mapa para colocar la casa
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-4 py-2 bg-blue-600 text-white rounded-full shadow-lg text-sm font-medium whitespace-nowrap flex items-center gap-2">
+          <MapPin className="w-4 h-4" />
+          Haz clic en el mapa para colocar la casa
         </div>
       )}
 

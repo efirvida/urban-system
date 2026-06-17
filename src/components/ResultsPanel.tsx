@@ -1,8 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import {
+  Eye,
+  EyeOff,
+  House,
+  Map as MapIcon,
+  ChevronDown,
+  BarChart3,
+} from "lucide-react";
 import { DayRoute } from "@/types";
-import { formatDistance, formatDuration, getRouteColor } from "@/lib/utils";
+import { formatDistance, formatDuration, getRouteColor, cn } from "@/lib/utils";
 
 interface ResultsPanelProps {
   days: DayRoute[];
@@ -32,7 +40,10 @@ export default function ResultsPanel({
       {/* Global summary */}
       <div className="card-base">
         <div className="card-header flex items-center justify-between">
-          <span>📊 Resumen Global</span>
+          <span className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-blue-600" />
+            Resumen Global
+          </span>
           {routingLabel && (
             <span className="text-xs font-normal text-gray-400">{routingLabel}</span>
           )}
@@ -91,37 +102,33 @@ export default function ResultsPanel({
                     e.stopPropagation();
                     onToggleDay(day.day);
                   }}
-                  className={`w-7 h-7 flex items-center justify-center rounded-full border transition-colors text-xs ${
+                  className={cn(
+                    "w-7 h-7 flex items-center justify-center rounded-full border transition-colors text-xs",
                     hiddenDays?.has(day.day)
                       ? "border-gray-200 text-gray-300 hover:text-gray-500 hover:border-gray-300"
                       : "border-blue-200 text-blue-500 bg-blue-50 hover:bg-blue-100"
-                  }`}
+                  )}
                   title={
                     hiddenDays?.has(day.day)
                       ? "Mostrar en mapa"
                       : "Ocultar en mapa"
                   }
                 >
-                  {hiddenDays?.has(day.day) ? "🙈" : "👁"}
+                  {hiddenDays?.has(day.day) ? (
+                    <EyeOff className="w-3.5 h-3.5" />
+                  ) : (
+                    <Eye className="w-3.5 h-3.5" />
+                  )}
                 </button>
               )}
               <span>{formatDistance(day.totalDistance)}</span>
               <span>{formatDuration(day.totalTime)}</span>
-              <svg
-                className={`w-4 h-4 transition-transform ${
-                  isExpanded ? "rotate-180" : ""
-                }`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
+              <ChevronDown
+                className={cn(
+                  "w-4 h-4 transition-transform",
+                  isExpanded && "rotate-180"
+                )}
+              />
             </div>
             </div>
 
@@ -140,10 +147,11 @@ export default function ResultsPanel({
                     })()}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="ml-auto text-blue-500 hover:text-blue-700 underline shrink-0"
+                    className="ml-auto text-blue-500 hover:text-blue-700 underline shrink-0 inline-flex items-center gap-1"
                     title="Ver ruta en Google Maps"
                   >
-                    🗺️ Maps
+                    <MapIcon className="w-3.5 h-3.5" />
+                    Maps
                   </a>
                 </div>
 
@@ -158,13 +166,18 @@ export default function ResultsPanel({
                     >
                       {/* Sequence badge */}
                       <span
-                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                        className={cn(
+                          "w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0",
                           stop.isHome
                             ? "bg-blue-100 text-blue-600"
                             : "bg-gray-100 text-gray-600"
-                        }`}
+                        )}
                       >
-                        {stop.isHome ? "🏠" : stop.sequence}
+                        {stop.isHome ? (
+                          <House className="w-3.5 h-3.5" />
+                        ) : (
+                          stop.sequence
+                        )}
                       </span>
 
                       {/* Info */}

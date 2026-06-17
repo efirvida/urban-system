@@ -1,3 +1,9 @@
 {
-  "fingerprint": "f1bd732f7570d24ac5423a2b42e618d477dd97e7"
+  "fingerprint": "urban-system-2026-06-17",
+  "generated_by": "sdd-init",
+  "sources": [
+    "/home/efirvida/.agents/skills",
+    "/home/efirvida/.config/opencode/skills",
+    "/home/efirvida/.copilot/skills"
+  ]
 }

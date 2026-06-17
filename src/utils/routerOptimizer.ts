@@ -1,5 +1,6 @@
 import { Location, Config, DayRoute, Stop } from "@/types";
 import { improveWithGA } from "./geneticOptimizer";
+import { haversineDistance } from "./haversine";
 
 /**
  * Look up distance from the precomputed matrix.
@@ -484,4 +485,171 @@ function solutionToDays(
     return { day: dayIdx + 1, stops, totalDistance: cumulativeDist,
       totalTime: cumulativeTime, totalStops: ordered.length };
   });
+}
+
+// ─── Edit-mode: reoptimize a single day ──────────────────────
+
+/**
+ * Re-optimize a single day's POIs from scratch.
+ *
+ * Used by the route editor on add/remove — instant feedback is critical
+ * here (drag interactions), so we skip OSRM and use Haversine + a fast
+ * NN + 2-opt loop over the day's POI subset. The caller passes a
+ * precomputed `matrix` as a hint; if it cannot resolve a pair we fall
+ * back to Haversine so the editor always renders.
+ *
+ * @param locations POIs to visit on this day (order is ignored).
+ * @param home      Start and end point of the day.
+ * @param config    Used for avgSpeed + visitTime when computing
+ *                  cumulative time on the returned DayRoute.
+ * @param matrix    Optional precomputed distances (unused — Haversine
+ *                  is faster for small day subsets).
+ * @param dayNumber 1-based day number for the returned DayRoute.
+ * @returns         DayRoute with home → optimized POIs → home.
+ */
+export function reoptimizeDay(
+  locations: Location[],
+  home: Location,
+  config: Config,
+  matrix: Record<string, number> | undefined,
+  dayNumber: number
+): DayRoute {
+  // Empty day — just home at start and end.
+  if (locations.length === 0) {
+    const homeStop: Stop = {
+      sequence: 0,
+      name: home.name,
+      lat: home.lat,
+      lng: home.lng,
+      distanceFromPrev: 0,
+      cumulativeDistance: 0,
+      cumulativeTime: 0,
+      isHome: true,
+    };
+    return {
+      day: dayNumber,
+      stops: [homeStop],
+      totalDistance: 0,
+      totalTime: 0,
+      totalStops: 0,
+    };
+  }
+
+  // Distance: Haversine for fast local feedback. Matrix parameter is kept for
+  // future use if a name→index map is provided for cached distance lookup.
+  const distance = (a: Location, b: Location): number =>
+    haversineDistance(a.lat, a.lng, b.lat, b.lng);
+
+  // ── Step 1: Nearest Neighbor from home ──
+  const ordered: Location[] = [];
+  const remaining = [...locations];
+  let current: Location = home;
+
+  while (remaining.length > 0) {
+    let nearestIdx = 0;
+    let nearestDist = distance(current, remaining[0]);
+    for (let i = 1; i < remaining.length; i++) {
+      const d = distance(current, remaining[i]);
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearestIdx = i;
+      }
+    }
+    const next = remaining.splice(nearestIdx, 1)[0];
+    ordered.push(next);
+    current = next;
+  }
+
+  // ── Step 2: 2-opt improvement (round-trip home → ... → home) ──
+  const MAX_ITER = 50;
+  let improved = true;
+  let iter = 0;
+  while (improved && iter < MAX_ITER && ordered.length >= 3) {
+    improved = false;
+    iter++;
+    for (let i = 0; i < ordered.length - 2; i++) {
+      for (let j = i + 2; j < ordered.length - 1; j++) {
+        // Current edges: (i-1,i) and (j,j+1)  —  with home on both ends
+        // We are swapping reverse(i+1..j) — measure only the changed
+        // interior edges to keep this O(1) per move.
+        const a = i === 0 ? home : ordered[i - 1];
+        const b = ordered[i];
+        const c = ordered[j];
+        const d = j + 1 < ordered.length ? ordered[j + 1] : home;
+
+        const before = distance(a, b) + distance(c, d);
+        const after = distance(a, c) + distance(b, d);
+
+        if (after + 1e-9 < before) {
+          // Reverse the segment [i..j]
+          let lo = i;
+          let hi = j;
+          while (lo < hi) {
+            const tmp = ordered[lo];
+            ordered[lo] = ordered[hi];
+            ordered[hi] = tmp;
+            lo++;
+            hi--;
+          }
+          improved = true;
+        }
+      }
+    }
+  }
+  // ── Step 3: Build the DayRoute ──
+  const stops: Stop[] = [];
+  let cumulativeDist = 0;
+  let cumulativeTime = 0;
+
+  stops.push({
+    sequence: 0,
+    name: home.name,
+    lat: home.lat,
+    lng: home.lng,
+    distanceFromPrev: 0,
+    cumulativeDistance: 0,
+    cumulativeTime: 0,
+    isHome: true,
+  });
+
+  for (let i = 0; i < ordered.length; i++) {
+    const prev = i === 0 ? home : ordered[i - 1];
+    const cur = ordered[i];
+    const d = distance(prev, cur);
+    const t = d / config.avgSpeed;
+    cumulativeDist += d;
+    cumulativeTime += t + config.visitTime / 60;
+    stops.push({
+      sequence: i + 1,
+      name: cur.name,
+      lat: cur.lat,
+      lng: cur.lng,
+      distanceFromPrev: d,
+      cumulativeDistance: cumulativeDist,
+      cumulativeTime: cumulativeTime,
+      isHome: false,
+    });
+  }
+
+  const returnDist = distance(ordered[ordered.length - 1], home);
+  cumulativeDist += returnDist;
+  cumulativeTime += returnDist / config.avgSpeed;
+  stops.push({
+    sequence: ordered.length + 1,
+    name: home.name,
+    lat: home.lat,
+    lng: home.lng,
+    distanceFromPrev: returnDist,
+    cumulativeDistance: cumulativeDist,
+    cumulativeTime: cumulativeTime,
+    isHome: true,
+  });
+
+  return {
+    day: dayNumber,
+    stops,
+    totalDistance: Math.round(cumulativeDist * 100) / 100,
+    totalTime: Math.round(cumulativeTime * 100) / 100,
+    totalStops: ordered.length,
+  };
 }

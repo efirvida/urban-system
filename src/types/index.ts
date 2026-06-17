@@ -130,3 +130,33 @@ export interface NSGAResponse {
     uniqueDays: number[];
   };
 }
+
+// ─── Route Editing ──────────────────────────────────────────
+
+/** A single edit action captured for undo. */
+export interface EditMutation {
+  type: "move" | "remove" | "add";
+  /** Display name of the POI this mutation acts on. */
+  poiName: string;
+  /** Day the POI was in BEFORE the mutation. 0 = unassigned pool. */
+  fromDay: number;
+  /** Day the POI ends up in AFTER the mutation. 0 = unassigned pool. */
+  toDay: number;
+  /** Snapshot of `editableDays` immediately before this mutation. */
+  priorDays: DayRoute[];
+  /** Snapshot of unassigned POIs immediately before this mutation. */
+  priorUnassigned: Location[];
+}
+
+/** Edit-mode session: entry snapshot + undo stack + dirty flag. */
+export interface EditSession {
+  /** result.days at edit-mode entry — used by Discard and Apply restore. */
+  snapshot: DayRoute[];
+  /** POIs that are NOT in any day at session entry. */
+  snapshotUnassigned: Location[];
+  /** True if any mutation since session entry. */
+  dirty: boolean;
+  /** Cap 20 — oldest entry dropped on overflow. */
+  undoStack: EditMutation[];
+  redoStack: EditMutation[];
+}
