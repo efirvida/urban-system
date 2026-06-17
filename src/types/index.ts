@@ -51,6 +51,7 @@ export interface Config {
   constraintValue: number;
   avgSpeed: number; // km/h, default 60
   visitTime: number; // minutes per stop, default 30
+  googleMapsKey?: string; // Optional Google Maps API key
 }
 
 // ─── Results ─────────────────────────────────────────────────
