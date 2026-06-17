@@ -11,8 +11,6 @@ interface ConfigPanelProps {
   placingHome?: boolean;
   /** Called to toggle home placement mode */
   onTogglePlaceHome?: () => void;
-  googleMapsKey?: string;
-  onGoogleMapsKeyChange?: (key: string) => void;
 }
 
 const CONSTRAINT_OPTIONS = [
@@ -27,8 +25,6 @@ export default function ConfigPanel({
   locationCount,
   placingHome,
   onTogglePlaceHome,
-  googleMapsKey,
-  onGoogleMapsKeyChange,
 }: ConfigPanelProps) {
   const update = (partial: Partial<Config>) => {
     onChange({ ...config, ...partial });
@@ -180,25 +176,6 @@ export default function ConfigPanel({
           </div>
         </div>
       )}
-
-      {/* Google Maps API Key (optional) */}
-      <hr className="border-gray-200" />
-      <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">
-          🗺️ Google Maps API Key
-        </label>
-        <input
-          type="text"
-          value={googleMapsKey || ""}
-          onChange={(e) => onGoogleMapsKeyChange?.(e.target.value)}
-          placeholder={googleMapsKey ? "✓ Key configurada" : "AIza... (opcional)"}
-          className="input-field text-xs font-mono"
-        />
-        <p className="text-xs text-gray-400 mt-1">
-          Si no se provee, usa distancia estimada (Haversine).
-          La key se envía al servidor, nunca se expone.
-        </p>
-      </div>
 
       {/* Summary */}
       <div className="text-xs text-gray-400 bg-gray-50 rounded-md p-2 text-center">

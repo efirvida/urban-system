@@ -67,7 +67,6 @@ export default function Home() {
   const [matrixProgress, setMatrixProgress] = useState<MatrixProgress | null>(null);
   const [routingMode, setRoutingMode] = useState<"osrm" | "haversine">("osrm");
   const [routeGeometry, setRouteGeometry] = useState<Map<string, [number, number][]> | null>(null);
-  const [googleMapsKey, setGoogleMapsKey] = useState("");
 
   // ── Map data (derived) ──
   const mapData = useMemo((): MapViewData => {
@@ -158,17 +157,13 @@ export default function Home() {
     setMatrixProgress(null);
 
     try {
-      // ── Phase 1: Build distance matrix (client-side OSRM + Haversine) ──
-      let distanceObj: Record<string, number> | undefined;
-
-      if (!googleMapsKey && !process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY) {
-        setOptimizePhase("matrix");
-        const { osrmMatrix } = await buildDistanceMatrices(
-          config.homeLat, config.homeLng, locations, setMatrixProgress
-        );
-        distanceObj = {};
-        osrmMatrix.forEach((v, k) => { distanceObj![k] = v; });
-      }
+      // ── Phase 1: Build distance matrix (OSRM + Haversine) ──
+      setOptimizePhase("matrix");
+      const { osrmMatrix } = await buildDistanceMatrices(
+        config.homeLat, config.homeLng, locations, setMatrixProgress
+      );
+      const distanceObj: Record<string, number> = {};
+      osrmMatrix.forEach((v, k) => { distanceObj[k] = v; });
 
       // ── Phase 2: Run optimizer ──
       setOptimizePhase("algorithm");
@@ -177,12 +172,7 @@ export default function Home() {
       const res = await fetch("/api/optimize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          locations,
-          config,
-          distanceMatrix: distanceObj,
-          googleMapsKey: googleMapsKey || undefined,
-        }),
+        body: JSON.stringify({ locations, config, distanceMatrix: distanceObj }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
 
@@ -315,8 +305,6 @@ export default function Home() {
                     locationCount={locations.length}
                     placingHome={placementMode === "home"}
                     onTogglePlaceHome={handleTogglePlaceHome}
-                    googleMapsKey={googleMapsKey}
-                    onGoogleMapsKeyChange={setGoogleMapsKey}
                   />
                   <OptimizeButton
                     onClick={handleOptimize}
