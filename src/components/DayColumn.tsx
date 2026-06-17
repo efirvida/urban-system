@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
-import { ChevronDown, Clock, MapPin } from "lucide-react";
+import { ChevronDown, Clock, Eye, EyeOff, MapPin } from "lucide-react";
 import { DayRoute, Config } from "@/types";
 import { cn, formatDistance, formatDuration } from "@/lib/utils";
 import StopItem from "./StopItem";
@@ -21,6 +21,10 @@ interface DayColumnProps {
   selectedStopName?: string | null;
   /** Whether this day is highlighted (selected on map). */
   highlighted?: boolean;
+  /** Whether this day's route is hidden on the map. */
+  hidden?: boolean;
+  /** Called when the user toggles route visibility on the map. */
+  onToggleVisibility?: () => void;
   /** Initial collapsed state — defaults to expanded. */
   defaultCollapsed?: boolean;
 }
@@ -87,6 +91,8 @@ export default function DayColumn({
   onStopClick,
   selectedStopName,
   highlighted,
+  hidden,
+  onToggleVisibility,
   defaultCollapsed = false,
 }: DayColumnProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
@@ -131,6 +137,24 @@ export default function DayColumn({
         </div>
 
         <div className="flex items-center gap-2 text-[10px] text-gray-500 shrink-0">
+          {onToggleVisibility && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleVisibility();
+              }}
+              className={cn(
+                "w-6 h-6 flex items-center justify-center rounded transition-colors",
+                hidden
+                  ? "text-gray-300 hover:text-gray-500"
+                  : "text-gray-500 hover:text-blue-600"
+              )}
+              title={hidden ? "Mostrar ruta en mapa" : "Ocultar ruta en mapa"}
+            >
+              {hidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          )}
           <span>{formatDistance(day.totalDistance)}</span>
           <span>{formatDuration(day.totalTime)}</span>
           <ChevronDown

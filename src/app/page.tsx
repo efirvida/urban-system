@@ -270,6 +270,16 @@ export default function Home() {
     setPreviewTargetDay(null);
   }, []);
 
+  /** Toggle a day's visibility on the map. */
+  const handleToggleDay = useCallback((day: number) => {
+    setHiddenDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(day)) next.delete(day);
+      else next.add(day);
+      return next;
+    });
+  }, []);
+
   // ── Map data (derived) ──
   const mapData = useMemo((): MapViewData => {
     const home =
@@ -287,7 +297,8 @@ export default function Home() {
       const editRoutes = preview ?? result.days;
       return {
         routes: editRoutes,
-        locations,
+        // In edit mode, only show route markers — skip raw location pins to avoid duplicates
+        locations: editMode ? undefined : locations,
         home,
         hiddenDays,
         // During editing or preview, use straight lines for instant visual feedback
@@ -938,14 +949,7 @@ export default function Home() {
                 totalDays={result.totalDays}
                 totalLocations={result.totalLocations}
                 hiddenDays={hiddenDays}
-                onToggleDay={(day) =>
-                  setHiddenDays((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(day)) next.delete(day);
-                    else next.add(day);
-                    return next;
-                  })
-                }
+                onToggleDay={handleToggleDay}
                 onExpandDay={(day) =>
                   setHiddenDays((prev) => {
                     const allDays = result.days.map((d) => d.day);
@@ -993,6 +997,8 @@ export default function Home() {
                     setSelectedPOI(null);
                     setHighlightDay(null);
                   }}
+                  hiddenDays={hiddenDays}
+                  onToggleDay={handleToggleDay}
                 />
               )}
 

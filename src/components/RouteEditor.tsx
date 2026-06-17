@@ -47,6 +47,10 @@ interface RouteEditorProps {
   onWorkingDaysChange?: (days: DayRoute[]) => void;
   /** Called when the user clears the POI selection (e.g. after moving it). */
   onClearSelection?: () => void;
+  /** Days hidden on the map — used for per-day visibility toggle. */
+  hiddenDays?: Set<number>;
+  /** Called when user toggles a day's visibility on the map. */
+  onToggleDay?: (day: number) => void;
 }
 
 export interface RouteEditorHandle {
@@ -86,6 +90,8 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
   onDiscard,
   onWorkingDaysChange,
   onClearSelection,
+  hiddenDays,
+  onToggleDay,
 }: RouteEditorProps, ref) {
   // ── Session state (initialized from props on first mount) ──
   const snapshotRef = useRef<DayRoute[] | null>(null);
@@ -594,6 +600,8 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
               color={getRouteColor(idx)}
               config={config}
               highlighted={highlightedDay === day.day}
+              hidden={hiddenDays?.has(day.day)}
+              onToggleVisibility={() => onToggleDay?.(day.day)}
               selectedStopName={selectedPOI?.name ?? null}
               onRemoveStop={(seq) => {
                 const stop = day.stops.find((s) => s.sequence === seq);
