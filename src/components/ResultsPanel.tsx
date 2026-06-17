@@ -134,11 +134,9 @@ export default function ResultsPanel({
                   <span>{visitStops.length} visitas</span>
                   <a
                     href={(() => {
-                      const origin = `${day.stops[0]?.lng ?? 0},${day.stops[0]?.lat ?? 0}`;
-                      const stops = day.stops.filter(s => !s.isHome).map(
-                        s => `${s.lng},${s.lat}`
-                      ).join("/");
-                      return stops ? `https://www.google.com/maps/dir/${origin}/${stops}/` : "#";
+                      // Google Maps expects lat,lng format (NOT lng,lat)
+                      const allStops = day.stops.map(s => `${s.lat},${s.lng}`).join("/");
+                      return allStops ? `https://www.google.com/maps/dir/${allStops}/` : "#";
                     })()}
                     target="_blank"
                     rel="noopener noreferrer"
