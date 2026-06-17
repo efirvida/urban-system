@@ -123,6 +123,7 @@ import ConfigPanel from "@/components/ConfigPanel";
 import ResultsPanel from "@/components/ResultsPanel";
 import OptimizeButton from "@/components/OptimizeButton";
 import OptimizeProgress from "@/components/OptimizeProgress";
+import UnreachableWarning from "@/components/UnreachableWarning";
 import MapView, { MapViewData } from "@/components/MapView";
 import Sidebar from "@/components/Sidebar";
 import RouteEditor, { RouteEditorHandle } from "@/components/RouteEditor";
@@ -643,7 +644,14 @@ export default function Home() {
 
       // Default to best result
       setSelectedResult("best");
-      optResult = { days: bestDays, totalDistance: bestDist, totalDays: bestCnt, totalLocations: locations.length };
+      optResult = {
+        days: bestDays,
+        totalDistance: bestDist,
+        totalDays: bestCnt,
+        totalLocations: locations.length,
+        unreachable: Array.isArray(apiData.unreachable) ? apiData.unreachable : [],
+        _meta: apiData._meta,
+      };
       geometryDays = bestDays;
       setHiddenDays(new Set(bestDays.slice(1).map((d: any) => d.day)));
       setResult(optResult);
@@ -962,6 +970,15 @@ export default function Home() {
                 expandedDay={sidebarExpandedDay}
                 onExpandedDayChange={setSidebarExpandedDay}
               />
+
+              {/* Unreachable POIs — visible only when the API pre-filter excluded any */}
+              {result.unreachable && result.unreachable.length > 0 && (
+                <UnreachableWarning
+                  unreachable={result.unreachable}
+                  onRetry={handleOptimize}
+                  loading={loading}
+                />
+              )}
 
               {/* Edit mode toggle */}
               {result && result.days.length > 0 && (

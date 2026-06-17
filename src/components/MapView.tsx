@@ -409,11 +409,10 @@ export default function MapView({
         m.setPopup(new maplibregl.Popup({ offset: 25 }).setHTML(popupHtml));
       }
       // Always attach click handler — reads POI data from element + latest
-      // callback from ref. This ensures clicks work on all markers including
-      // those created before the current onPOIClick prop was set.
+      // callback from ref. No stopPropagation so MapLibre's popup listener
+      // on the marker container also fires.
       el.style.cursor = "pointer";
-      el.addEventListener("click", (e) => {
-        e.stopPropagation();
+      el.addEventListener("click", () => {
         const data = (el as any)._poiData as
           | { lat: number; lng: number; day: number; name: string }
           | undefined;
