@@ -1,6 +1,5 @@
 import { Location, Config, DayRoute, Stop } from "@/types";
 import { haversineDistance } from "./haversine";
-import { drivingDistance } from "./routing";
 
 // ─── Distance cache ───────────────────────────────────────────
 
@@ -14,7 +13,7 @@ async function getDist(
   precomputed?: Record<string, number>,
   i?: number, j?: number
 ): Promise<number> {
-  // Try precomputed matrix first (by index when available)
+  // Try precomputed matrix first
   if (precomputed && i !== undefined && j !== undefined) {
     const a = i === -1 ? 0 : i + 1;
     const b = j === -1 ? 0 : j + 1;
@@ -23,13 +22,7 @@ async function getDist(
     if (val !== undefined) return val;
   }
 
-  // Try OSRM
-  try {
-    const real = await drivingDistance(lat1, lng1, lat2, lng2);
-    if (real > 0) return real;
-  } catch {}
-
-  // Fallback to Haversine
+  // Direct Haversine fallback - NO OSRM calls (avoids rate limit hangs)
   return haversineDistance(lat1, lng1, lat2, lng2);
 }
 

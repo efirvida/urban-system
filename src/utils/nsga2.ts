@@ -54,8 +54,8 @@ export function runNSGA2(
     return { balanced: empty, minDistance: empty, minDuration: empty, paretoFront: [], totalEvaluations: 0 };
   }
 
-  const POP = 120;
-  const GENS = 200;
+  const POP = 60;
+  const GENS = 80;
   const CR = 0.85;
   const MR = 0.2;
 

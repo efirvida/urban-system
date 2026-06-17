@@ -4,6 +4,17 @@ import { optimizeRoutes } from "@/utils/routerOptimizer";
 import { buildGoogleMatrix } from "@/utils/googleRouting";
 import { improveWithGA } from "@/utils/geneticOptimizer";
 import { runNSGA2 } from "@/utils/nsga2";
+import { haversineDistance } from "@/utils/haversine";
+
+/** Build pure Haversine distance matrix (instant, no API calls) */
+function buildHaversineMatrix(locations: Location[], config: Config): Record<string, number> {
+  const matrix: Record<string, number> = {};
+  const all = [{ lat: config.homeLat, lng: config.homeLng }, ...locations];
+  for (let i = 0; i < all.length; i++)
+    for (let j = i + 1; j < all.length; j++)
+      matrix[`${i},${j}`] = haversineDistance(all[i].lat, all[i].lng, all[j].lat, all[j].lng);
+  return matrix;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -135,10 +146,17 @@ export async function POST(request: NextRequest) {
 
     // ── NSGA-II Multi-Objective ──
     if (algorithm === "nsga2") {
-      const home = { name: "Casa", lat: normalizedConfig.homeLat, lng: normalizedConfig.homeLng };
-      const nsgaResult = runNSGA2(locations, home, normalizedConfig, distanceMatrix);
+      // If no distance matrix, build pure Haversine to avoid OSRM timeouts
+      if (!distanceMatrix || Object.keys(distanceMatrix).length === 0) {
+        distanceMatrix = buildHaversineMatrix(locations, normalizedConfig);
+      }
 
-      // Re-fetch geometry if needed (simplified)
+      const home = { name: "Casa", lat: normalizedConfig.homeLat, lng: normalizedConfig.homeLng };
+      // Wrap in timeout: max 6 seconds
+      const timeoutPromise = new Promise<null>((_, reject) => setTimeout(() => reject(new Error("NSGA2 timeout")), 6000));
+      const nsgaResult = await Promise.race([Promise.resolve().then(() => runNSGA2(locations, home, normalizedConfig, distanceMatrix)), timeoutPromise])!;
+      if (!nsgaResult) throw new Error("NSGA2 timeout - try Auto mode");
+
       const uniqueDays = [...new Set(nsgaResult.paretoFront.map(s => s.days))].sort((a: number, b: number) => a - b);
       const response: NSGAResponse = {
         algorithm: "nsga2",
