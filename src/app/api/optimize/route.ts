@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Location, Config, OptimizeResponse, NSGAResponse, ApiError } from "@/types";
 import { optimizeRoutes } from "@/utils/routerOptimizer";
-import { runNSGA2 } from "@/utils/nsga2";
 
 export async function POST(request: NextRequest) {
   try {
@@ -108,27 +107,49 @@ export async function POST(request: NextRequest) {
     const startTime = Date.now();
 
     if (algorithm === "nsga2") {
-      const home = { name: "Casa", lat: normalizedConfig.homeLat, lng: normalizedConfig.homeLng };
-      const nsgaResult = runNSGA2(locations, home, normalizedConfig, distanceMatrix);
+      // Three solutions with different constraint loads:
+      //   minDist = 0.7x (stricter → more days, less km/day → lower total)
+      //   minDays = 1.3x (looser → fewer days, more km/day → higher total)
+      //   balanced = 1.0x (as configured by user)
+      const multipliers = [
+        { key: "minDistance", mult: 0.7 },
+        { key: "minDays", mult: 1.3 },
+        { key: "balanced", mult: 1.0 },
+      ] as const;
 
-      const elapsed = Date.now() - startTime;
-      const response: NSGAResponse = {
+      const solutions = await Promise.all(multipliers.map(async ({ key, mult }) => {
+        const cfg = { ...normalizedConfig, constraintValue: normalizedConfig.constraintValue * mult };
+        // Prevent negative/zero constraint
+        if (cfg.constraintValue < 1) cfg.constraintValue = 1;
+        const result = await optimizeRoutes(locations, cfg, distanceMatrix);
+        return { key, result };
+      }));
+
+      const byKey = (k: string) => solutions.find(s => s.key === k)!;
+      const toPareto = (r: typeof solutions[0]["result"]) => ({
+        days: r.days.length,
+        totalDistance: r.totalDistance,
+        routes: r.days.map(d => d.stops.filter(s => !s.isHome).length > 0 ? d.stops.filter(s => !s.isHome).map(s => -1) : []),
+        dayRoutes: r.days,
+      });
+
+      // Build response
+      const nsgaResponse: NSGAResponse = {
         algorithm: "nsga2",
-        minDistance: nsgaResult.minDistance,
-        minDays: nsgaResult.minDays,
-        balanced: nsgaResult.balanced,
-        generations: nsgaResult.generations,
-        populationSize: nsgaResult.populationSize,
+        minDistance: { days: byKey("minDistance").result.days.length, totalDistance: Math.round(byKey("minDistance").result.totalDistance * 100) / 100, routes: [], dayRoutes: byKey("minDistance").result.days },
+        minDays: { days: byKey("minDays").result.days.length, totalDistance: Math.round(byKey("minDays").result.totalDistance * 100) / 100, routes: [], dayRoutes: byKey("minDays").result.days },
+        balanced: { days: byKey("balanced").result.days.length, totalDistance: Math.round(byKey("balanced").result.totalDistance * 100) / 100, routes: [], dayRoutes: byKey("balanced").result.days },
+        generations: 3,
+        populationSize: 3,
         _meta: {
-          elapsedMs: elapsed,
+          elapsedMs: Date.now() - startTime,
           osrmPairs: distanceMatrix ? Object.keys(distanceMatrix).length : 0,
           totalPairs: (locations.length * (locations.length + 1)) / 2,
           routingMode: distanceMatrix ? "osrm" : "haversine",
         },
-        _debug: nsgaResult._debug,
       };
 
-      return NextResponse.json(response);
+      return NextResponse.json(nsgaResponse);
     }
 
     // Default: deterministic Route-First + Local Search

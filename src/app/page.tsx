@@ -247,19 +247,10 @@ export default function Home() {
         if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
 
         const nsgaData: NSGAResponse = await res.json();
-        // Debug NSGA-II response
-        if (typeof window !== "undefined") {
-          (window as any).__nsgaDebug = nsgaData._debug || nsgaData;
-          console.log("[NSGA2] Response received", nsgaData._debug ? "with debug" : "NO debug data");
-          if (nsgaData._debug) {
-            console.log("[NSGA2] Front size:", nsgaData._debug.frontSize);
-            console.log("[NSGA2] Days diversity:", nsgaData._debug.uniqueDays);
-          } else {
-            console.log("[NSGA2] minDistance:", nsgaData.minDistance?.days, "days", nsgaData.minDistance?.totalDistance, "km");
-            console.log("[NSGA2] minDays:", nsgaData.minDays?.days, "days", nsgaData.minDays?.totalDistance, "km");
-            console.log("[NSGA2] balanced:", nsgaData.balanced?.days, "days", nsgaData.balanced?.totalDistance, "km");
-          }
-        }
+        // Debug NSGA-II
+        console.log("[NSGA2] minDistance:", nsgaData.minDistance?.days, "d", nsgaData.minDistance?.totalDistance, "km");
+        console.log("[NSGA2] minDays:", nsgaData.minDays?.days, "d", nsgaData.minDays?.totalDistance, "km");
+        console.log("[NSGA2] balanced:", nsgaData.balanced?.days, "d", nsgaData.balanced?.totalDistance, "km");
         setNsgaSolutions({
           minDistance: nsgaData.minDistance,
           minDays: nsgaData.minDays,
