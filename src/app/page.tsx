@@ -69,7 +69,7 @@ export default function Home() {
   const [matrixProgress, setMatrixProgress] = useState<MatrixProgress | null>(null);
   const [routingMode, setRoutingMode] = useState<"osrm" | "haversine">("osrm");
   const [routeGeometry, setRouteGeometry] = useState<Map<number, [number, number][]> | null>(null);
-  const [algorithm, setAlgorithm] = useState<"auto" | "nsga2">("auto");
+  const [algorithm, setAlgorithm] = useState<"auto" | "nsga2">("nsga2");
   const [nsgaResult, setNsgaResult] = useState<{
     balanced: ParetoSolution;
     minDistance: ParetoSolution;
