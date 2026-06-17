@@ -164,8 +164,9 @@ function initPopulation(): Individual[] {
 
   for (let i = 0; i < DEFAULT_PARAMS.populationSize; i++) {
     const perm = i < nnCount ? nnPermutation() : randomPermutation(n);
-    // Random load factor: 0.5-1.0 (uniform distribution)
-    const loadFactor = 0.5 + Math.random() * 0.5;
+    // Evenly spaced load factors across the population for maximum diversity
+    // Range: 0.35 to 1.0 (narrower = stronger trade-off)
+    const loadFactor = 0.35 + (i / DEFAULT_PARAMS.populationSize) * 0.65;
     const routes = decode(perm, loadFactor);
     const objectives = computeObjectives(routes);
     pop.push({ perm, loadFactor, routes, objectives, rank: 0, crowdingDist: 0 });

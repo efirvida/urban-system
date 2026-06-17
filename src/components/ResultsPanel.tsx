@@ -128,25 +128,25 @@ export default function ResultsPanel({
             {isExpanded && (
               <div className="card-body p-0">
                 {/* Day summary bar */}
-                <div className="grid grid-cols-3 gap-2 px-4 py-3 bg-gray-50 border-b text-xs text-gray-500">
-                  <div>
-                    <span className="font-medium text-gray-700">
-                      {formatDistance(day.totalDistance)}
-                    </span>{" "}
-                    distancia
-                  </div>
-                  <div>
-                    <span className="font-medium text-gray-700">
-                      {formatDuration(day.totalTime)}
-                    </span>{" "}
-                    duración
-                  </div>
-                  <div>
-                    <span className="font-medium text-gray-700">
-                      {visitStops.length}
-                    </span>{" "}
-                    visitas
-                  </div>
+                <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b text-xs text-gray-500">
+                  <span className="flex-1">{formatDistance(day.totalDistance)} distancia</span>
+                  <span>{formatDuration(day.totalTime)} duración</span>
+                  <span>{visitStops.length} visitas</span>
+                  <a
+                    href={(() => {
+                      const origin = `${day.stops[0]?.lng ?? 0},${day.stops[0]?.lat ?? 0}`;
+                      const stops = day.stops.filter(s => !s.isHome).map(
+                        s => `${s.lng},${s.lat}`
+                      ).join("/");
+                      return stops ? `https://www.google.com/maps/dir/${origin}/${stops}/` : "#";
+                    })()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-auto text-blue-500 hover:text-blue-700 underline shrink-0"
+                    title="Ver ruta en Google Maps"
+                  >
+                    🗺️ Maps
+                  </a>
                 </div>
 
                 {/* Stops list */}
