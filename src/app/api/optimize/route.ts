@@ -138,6 +138,7 @@ export async function POST(request: NextRequest) {
       const nsgaResult = runNSGA2(locations, home, normalizedConfig, distanceMatrix);
 
       // Re-fetch geometry if needed (simplified)
+      const uniqueDays = [...new Set(nsgaResult.paretoFront.map(s => s.days))].sort((a: number, b: number) => a - b);
       const response: NSGAResponse = {
         algorithm: "nsga2",
         balanced: nsgaResult.balanced,
@@ -150,6 +151,10 @@ export async function POST(request: NextRequest) {
           osrmPairs: distanceMatrix ? Object.keys(distanceMatrix).length : 0,
           totalPairs: (locations.length * (locations.length + 1)) / 2,
           routingMode: distanceMatrix ? "osrm" : "haversine",
+        },
+        _debug: {
+          frontSize: nsgaResult.paretoFront.length,
+          uniqueDays,
         },
       };
       return NextResponse.json(response);

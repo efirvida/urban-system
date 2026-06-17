@@ -192,6 +192,7 @@ export default function Home() {
       const data = await res.json();
       if (data.algorithm === "nsga2") {
         const nsga = data as NSGAResponse;
+        console.log("[NSGA2] Front size:", nsga._debug?.frontSize, "Unique days:", nsga._debug?.uniqueDays);
         setNsgaResult({ balanced: nsga.balanced, minDistance: nsga.minDistance, minDuration: nsga.minDuration });
         setSelectedNsga("balanced");
         setResult({ days: nsga.balanced.dayRoutes, totalDistance: nsga.balanced.totalDistance, totalDays: nsga.balanced.days, totalLocations: locations.length });

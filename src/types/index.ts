@@ -124,4 +124,8 @@ export interface NSGAResponse {
     totalPairs: number;
     routingMode: "osrm" | "haversine";
   };
+  _debug?: {
+    frontSize: number;
+    uniqueDays: number[];
+  };
 }
