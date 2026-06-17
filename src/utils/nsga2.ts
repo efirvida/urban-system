@@ -88,14 +88,15 @@ export function runNSGA2(
     const routes: number[][] = [];
     let i = 0;
     const maxH = config.constraintValue * lf;
-    while (i < perm.length) {
+    const validPerm = perm.filter(idx => idx >= 0 && idx < locations.length);
+    while (i < validPerm.length) {
       const day: number[] = [];
-      while (i < perm.length) {
-        const prop = [...day, perm[i]];
+      while (i < validPerm.length) {
+        const prop = [...day, validPerm[i]];
         if (routeHours(prop) > maxH) break;
-        day.push(perm[i]); i++;
+        day.push(validPerm[i]); i++;
       }
-      if (day.length === 0 && i < perm.length) { day.push(perm[i]); i++; }
+      if (day.length === 0 && i < validPerm.length) { day.push(validPerm[i]); i++; }
       if (day.length > 0) {
         const uv = new Set(day);
         const ord: number[] = [];
