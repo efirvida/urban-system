@@ -77,17 +77,46 @@ export interface DayRoute {
   totalStops: number; // locations visited (not counting home)
 }
 
+/**
+ * A POI the API excluded from optimization because it has no real road
+ * connection to home. Surfaces the POI to the caller (UI badge, "Try
+ * again" CTA in PR 3) without losing information about the rejection.
+ */
+export interface UnreachablePoi {
+  name: string;
+  lat: number;
+  lng: number;
+  /**
+   * Why the POI was filtered out.
+   *   - "no_road_connection" — the routing provider had no real road
+   *     from home (or to any neighbor) and the matrix was filled with
+   *     a Haversine estimate.
+   * Future values may distinguish island parcels, unmapped service
+   * roads, or provider timeouts once PR 6 adds intra-day reachability.
+   */
+  reason: "no_road_connection" | string;
+}
+
 /** Response from the optimization API */
 export interface OptimizeResponse {
   days: DayRoute[];
   totalDistance: number;
   totalDays: number;
   totalLocations: number;
+  /**
+   * POIs the optimizer was asked to route but could not (no real road
+   * to home). Always present when the API ran the pre-filter; empty
+   * array means every POI was reachable. Additive — existing clients
+   * ignore this field.
+   */
+  unreachable?: UnreachablePoi[];
   _meta?: {
     elapsedMs: number;
     osrmPairs: number;
     totalPairs: number;
     routingMode: "osrm" | "haversine" | "api" | "geoapify";
+    /** Number of POIs excluded by the unreachable pre-filter. */
+    unreachableCount?: number;
   };
 }
 

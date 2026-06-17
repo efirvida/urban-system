@@ -125,11 +125,14 @@ export async function fetchAllRouteGeometries(
     }
 
     if (allCached) {
-      // All legs cached — stitch them together
+      // All legs cached — stitch them together. CRITICAL: clone each leg
+      // before shifting because getCachedLeg returns the SAME array ref;
+      // mutating it with shift() corrupts the cache for subsequent calls.
       for (const leg of legCache) {
         if (leg && leg.length > 0) {
-          if (dayCoords.length > 0 && leg.length > 0) leg.shift(); // avoid duplicate junction
-          dayCoords.push(...leg);
+          const clone = [...leg];
+          if (dayCoords.length > 0 && clone.length > 0) clone.shift(); // avoid duplicate junction
+          dayCoords.push(...clone);
         }
       }
       result.set(day.day, dayCoords);
@@ -159,8 +162,9 @@ export async function fetchAllRouteGeometries(
         const a = fullStops[i], b = fullStops[i + 1];
         const cached = getCachedLeg(a.lat, a.lng, b.lat, b.lng);
         if (cached && cached.length > 0) {
-          if (fallback.length > 0) cached.shift();
-          fallback.push(...cached);
+          const clone = [...cached];
+          if (fallback.length > 0 && clone.length > 0) clone.shift();
+          fallback.push(...clone);
           hasAny = true;
         }
       }
@@ -184,13 +188,14 @@ export async function fetchAllRouteGeometries(
       if (legCoords.length > 0) setCachedLeg(a.lat, a.lng, b.lat, b.lng, legCoords);
     }
 
-    // Reconstruct full day route from cache
+    // Reconstruct full day route from cache (clone each leg before shift!)
     for (let i = 0; i < fullStops.length - 1; i++) {
       const a = fullStops[i], b = fullStops[i + 1];
       const leg = getCachedLeg(a.lat, a.lng, b.lat, b.lng);
       if (leg && leg.length > 0) {
-        if (dayCoords.length > 0 && leg.length > 0) leg.shift();
-        dayCoords.push(...leg);
+        const clone = [...leg];
+        if (dayCoords.length > 0 && clone.length > 0) clone.shift();
+        dayCoords.push(...clone);
       }
     }
 

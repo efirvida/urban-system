@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Location, Config, ParetoSolution, OptimizeResponse, NSGAResponse, ApiError } from "@/types";
+import { Location, Config, ParetoSolution, OptimizeResponse, NSGAResponse, ApiError, UnreachablePoi } from "@/types";
 import { optimizeRoutes } from "@/utils/routerOptimizer";
 import { runNSGA2 } from "@/utils/nsga2";
 import { buildGeoapifyMatrix } from "@/utils/geoapifyMatrix";
 import { haversineDistance } from "@/utils/haversine";
+import { filterUnreachable } from "@/utils/unreachableFilter";
+import { REAL_VS_ESTIMATED_KM } from "@/utils/constants";
 
 function buildHaversineMatrix(locations: Location[], config: Config): Record<string, number> {
   const matrix: Record<string, number> = {};
@@ -84,7 +86,7 @@ export async function POST(request: NextRequest) {
             skipped++;
             continue;
           }
-          if (Math.abs(geoMatrix[key] - haversineRef[key]) > 0.01) {
+          if (Math.abs(geoMatrix[key] - haversineRef[key]) > REAL_VS_ESTIMATED_KM) {
             matrix[key] = geoMatrix[key];
             geoapifyCache[key] = geoMatrix[key];
             overrides++;
@@ -110,7 +112,7 @@ export async function POST(request: NextRequest) {
       let geoCount = 0, osmCount = 0, havCount = 0;
       for (const key of Object.keys(matrix)) {
         if (geoapifyCache[key]) geoCount++;
-        else if (Math.abs(matrix[key] - havRef[key]) > 0.1) osmCount++;
+        else if (Math.abs(matrix[key] - havRef[key]) > REAL_VS_ESTIMATED_KM) osmCount++;
         else havCount++;
       }
       console.log(`[API] Final matrix: ${Object.keys(matrix).length}/${totalPairs} pairs — Geoapify:${geoCount} OSRM:${osmCount} Haversine:${havCount}, source: ${routingMode}`);
@@ -124,11 +126,34 @@ export async function POST(request: NextRequest) {
       console.log(`[API] Samples:`, samples.map(k => `${k}=${matrix[k].toFixed(2)}km`).join(', '));
     }
 
+    // ── Step 2.5: Pre-filter unreachable POIs (PR 1: real-roads-only) ──
+    // The matrix is keyed by index with home at 0 and POIs at 1..n.
+    // A POI is unreachable when its home→P distance is missing from the
+    // matrix or matches the Haversine reference within REAL_VS_ESTIMATED_KM
+    // (i.e. the routing provider returned null and the matrix was filled
+    // with a straight-line estimate). Sub-50m pairs are always reachable.
+    const haversineRefForFilter = buildHaversineMatrix(locations, normConfig);
+    const { reachable, unreachable } = filterUnreachable(
+      locations,
+      home,
+      matrix,
+      haversineRefForFilter
+    );
+    if (unreachable.length > 0) {
+      console.log(`[API] Pre-filter: ${unreachable.length}/${locations.length} POIs unreachable (no real road from home): ${unreachable.map(p => p.name).join(", ")}`);
+    }
+    const unreachableForResponse: UnreachablePoi[] = unreachable;
+
     // ── Step 3: Run BOTH algorithms and pick the best ──
+    // Optimizer sees only `reachable` POIs. The matrix is keyed by index,
+    // so we still pass the full matrix — keys for unreachable POIs will
+    // simply never be looked up. (PR 2 will harden matGet to return
+    // Infinity for any missing/unreachable key.)
     const tOpt = Date.now();
+    const optimizedLocations = reachable;
 
     // Deterministic + GA
-    const autoResult = await optimizeRoutes(locations, normConfig, matrix);
+    const autoResult = await optimizeRoutes(optimizedLocations, normConfig, matrix);
     const autoDistance = Math.round(autoResult.totalDistance * 100) / 100;
     const autoDays = autoResult.days.length;
     console.log(`[API] Auto: ${autoDays}d, ${autoDistance}km in ${Date.now() - tOpt}ms`);
@@ -136,7 +161,7 @@ export async function POST(request: NextRequest) {
     // NSGA2
     let nsgaData: Record<string, unknown> | null = null;
     try {
-      const nsgaPromise = runNSGA2(locations, home, normConfig, matrix);
+      const nsgaPromise = runNSGA2(optimizedLocations, home, normConfig, matrix);
       const timeoutPromise = new Promise<null>(r => setTimeout(() => r(null), 30000));
       const nsgaResult = await Promise.race([nsgaPromise, timeoutPromise]);
       if (nsgaResult) {
@@ -178,7 +203,14 @@ export async function POST(request: NextRequest) {
       totalDistance: bestDistance,
       totalDays: bestDaysCount,
       totalLocations: locations.length,
-      _meta: { elapsedMs: Date.now() - startTime, osrmPairs: Object.keys(matrix).length, totalPairs, routingMode },
+      unreachable: unreachableForResponse,
+      _meta: {
+        elapsedMs: Date.now() - startTime,
+        osrmPairs: Object.keys(matrix).length,
+        totalPairs,
+        routingMode,
+        unreachableCount: unreachableForResponse.length,
+      },
       _matrixCache: Object.keys(geoapifyCache).length > 0 ? geoapifyCache : undefined,
       _geoapifyTried: geoapifyFailed.length > 0 ? geoapifyFailed : undefined,
     };
