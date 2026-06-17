@@ -1,19 +1,29 @@
 /**
- * Server-side Google Maps Distance Matrix provider.
- * Reads GOOGLE_MAPS_API_KEY from environment.
- * Builds a distance matrix with just 3-4 API calls (batched 25×25).
+ * Google Maps Routes API — ComputeRouteMatrix provider.
+ *
+ * Modern replacement for Distance Matrix API.
+ * Supports up to 100 origins × 100 destinations per request.
+ *
+ * Requires: billing enabled, Routes API + Distance Matrix API activated.
+ * Free tier: $200/month credit → ~20,000 optimizations for 47 locations.
  */
 
 import { haversineDistance } from "./haversine";
 
-const GOOGLE_API = "https://maps.googleapis.com/maps/api/distancematrix/json";
+const ROUTES_URL = "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix";
 
-interface Element {
-  status: string;
-  distance?: { value: number }; // meters
+interface RouteMatrixElement {
+  originIndex: number;
+  destinationIndex: number;
+  distanceMeters?: number;
+  duration?: string;
 }
 
-/** Build distance matrix using Google Maps API (server-side). */
+/**
+ * Build distance matrix using Google Routes API (ComputeRouteMatrix).
+ * Batches origins in groups of up to 25 to stay within limits.
+ * Falls back to Haversine for any pair that fails.
+ */
 export async function buildGoogleMatrix(
   locations: Array<{ lat: number; lng: number }>,
   apiKey: string
@@ -28,63 +38,87 @@ export async function buildGoogleMatrix(
     if (!(key in matrix)) matrix[key] = km;
   };
 
-  const get = (i: number, j: number): number | undefined => {
+  const has = (i: number, j: number): boolean => {
     const key = i < j ? `${i},${j}` : `${j},${i}`;
-    return matrix[key];
+    return key in matrix;
   };
 
-  // Batch origins in groups of up to 25
   const BATCH = 25;
+
   for (let oStart = 0; oStart < n; oStart += BATCH) {
     const oEnd = Math.min(oStart + BATCH, n);
-    const originIndices: number[] = [];
-    const allDestIndices = new Set<number>();
+
+    // Collect origins that still need destinations
+    const needOrigins: number[] = [];
+    const needDests = new Set<number>();
 
     for (let i = oStart; i < oEnd; i++) {
       for (let j = 0; j < n; j++) {
-        if (i === j) continue;
-        if (get(i, j) !== undefined) continue;
-        originIndices.push(i);
-        for (let j2 = 0; j2 < n; j2++) {
-          if (i !== j2 && get(i, j2) === undefined) allDestIndices.add(j2);
+        if (i !== j && !has(i, j)) {
+          needOrigins.push(i);
+          for (let k = 0; k < n; k++) {
+            if (i !== k && !has(i, k)) needDests.add(k);
+          }
+          break;
         }
-        break;
       }
     }
 
-    if (originIndices.length === 0) continue;
+    if (needOrigins.length === 0) continue;
 
-    const origins = originIndices.map(i => `${locations[i].lat},${locations[i].lng}`);
-    const dests = [...allDestIndices].map(j => `${locations[j].lat},${locations[j].lng}`);
+    const origins = needOrigins.map(i => ({
+      waypoint: { location: { latLng: { latitude: locations[i].lat, longitude: locations[i].lng } } },
+    }));
+    const destArray = [...needDests];
+    const destinations = destArray.map(j => ({
+      waypoint: { location: { latLng: { latitude: locations[j].lat, longitude: locations[j].lng } } },
+    }));
 
     try {
-      const url = `${GOOGLE_API}?origins=${encodeURIComponent(origins.join("|"))}&destinations=${encodeURIComponent(dests.join("|"))}&key=${apiKey}&units=metric`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      const res = await fetch(ROUTES_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": "originIndex,destinationIndex,distanceMeters",
+        },
+        body: JSON.stringify({
+          origins,
+          destinations,
+          travelMode: "DRIVE",
+          routingPreference: "TRAFFIC_AWARE",
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+
       if (res.ok) {
-        const data = await res.json();
-        if (data.status === "OK" && data.rows) {
-          for (let oi = 0; oi < data.rows.length && oi < originIndices.length; oi++) {
-            const oiActual = originIndices[oi];
-            const elements: Element[] = data.rows[oi].elements || [];
-            const destArray = [...allDestIndices];
-            for (let di = 0; di < elements.length && di < destArray.length; di++) {
-              const el = elements[di];
-              const djActual = destArray[di];
-              if (el.status === "OK" && el.distance?.value !== undefined) {
-                set(oiActual, djActual, el.distance.value / 1000);
-                realCount++;
-              }
+        const data: RouteMatrixElement[] = await res.json();
+        if (Array.isArray(data)) {
+          for (const el of data) {
+            const oi = needOrigins[el.originIndex];
+            const dj = destArray[el.destinationIndex];
+            if (el.distanceMeters !== undefined && oi !== undefined && dj !== undefined) {
+              set(oi, dj, el.distanceMeters / 1000);
+              realCount++;
             }
           }
         }
+      } else {
+        const errText = await res.text().catch(() => "");
+        if (errText.includes("billing")) {
+          console.warn("[GoogleMatrix] Billing not enabled. Falling back to Haversine.");
+        } else if (errText.includes("not enabled")) {
+          console.warn("[GoogleMatrix] Routes API not enabled for this key.");
+        }
       }
-    } catch {}
+    } catch (err) {
+      console.warn("[GoogleMatrix] Request failed:", err);
+    }
 
-    // Fill any missing pairs in this batch with Haversine
-    for (let i = oStart; i < oEnd && i < n; i++) {
+    // Fill remaining with Haversine
+    for (let i = oStart; i < oEnd; i++) {
       for (let j = 0; j < n; j++) {
-        if (i === j) continue;
-        if (get(i, j) !== undefined) continue;
+        if (i === j || has(i, j)) continue;
         const km = haversineDistance(
           locations[i].lat, locations[i].lng,
           locations[j].lat, locations[j].lng
