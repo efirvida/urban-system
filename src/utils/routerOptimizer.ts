@@ -1,29 +1,15 @@
 import { Location, Config, DayRoute, Stop } from "@/types";
-import { haversineDistance } from "./haversine";
-
-// ─── Distance cache ───────────────────────────────────────────
 
 /**
- * Internal distance function: uses precomputed matrix when available,
- * falls back to drivingDistance (OSRM), then Haversine.
+ * Look up distance from the precomputed matrix.
+ * a, b: location indices (-1 = home, 0..n-1 = locations)
+ * matrix: precomputed distance matrix "i,j" → km (0 = home, 1..n = locations)
  */
-async function getDist(
-  lat1: number, lng1: number,
-  lat2: number, lng2: number,
-  precomputed?: Record<string, number>,
-  i?: number, j?: number
-): Promise<number> {
-  // Try precomputed matrix first
-  if (precomputed && i !== undefined && j !== undefined) {
-    const a = i === -1 ? 0 : i + 1;
-    const b = j === -1 ? 0 : j + 1;
-    const key = a < b ? `${a},${b}` : `${b},${a}`;
-    const val = precomputed[key];
-    if (val !== undefined) return val;
-  }
-
-  // Direct Haversine fallback - NO OSRM calls (avoids rate limit hangs)
-  return haversineDistance(lat1, lng1, lat2, lng2);
+function matGet(a: number, b: number, matrix: Record<string, number>): number {
+  const ka = a === -1 ? 0 : a + 1;
+  const kb = b === -1 ? 0 : b + 1;
+  const key = ka < kb ? `${ka},${kb}` : `${kb},${ka}`;
+  return matrix[key];
 }
 
 // ─── Main entry point ────────────────────────────────────────
@@ -86,17 +72,14 @@ async function buildGiantTour(
   let currentLat = home.lat;
   let currentLng = home.lng;
 
+  let prevLocIdx = -1; // home
   while (visited.size < n) {
     let nearest = -1;
     let nearestDist = Infinity;
 
     for (let i = 0; i < n; i++) {
       if (visited.has(i)) continue;
-      const d = await getDist(
-        currentLat, currentLng,
-        locations[i].lat, locations[i].lng,
-        precomputed, -1, i
-      );
+      const d = matGet(prevLocIdx, i, precomputed!);
       if (d < nearestDist) {
         nearestDist = d;
         nearest = i;
@@ -107,8 +90,7 @@ async function buildGiantTour(
 
     tour.push(nearest);
     visited.add(nearest);
-    currentLat = locations[nearest].lat;
-    currentLng = locations[nearest].lng;
+    prevLocIdx = nearest;
   }
 
   // 2-opt improvement
@@ -127,31 +109,13 @@ function tourDist(
   if (tour.length <= 1) return 0;
   let total = 0;
   for (let i = 0; i < tour.length - 1; i++) {
-    total += pairDist(tour[i], tour[i + 1], locations, precomputed);
+    total += pd(tour[i], tour[i + 1], precomputed!);
   }
   return total;
 }
 
-function pairDist(
-  a: number, b: number,
-  locations: Location[],
-  precomputed?: Record<string, number>
-): number {
-  const ai = a === -1 ? -1 : a;
-  const bj = b === -1 ? -1 : b;
-  if (precomputed) {
-    const keyA = ai === -1 ? 0 : ai + 1;
-    const keyB = bj === -1 ? 0 : bj + 1;
-    const key = keyA < keyB ? `${keyA},${keyB}` : `${keyB},${keyA}`;
-    const val = precomputed[key];
-    if (val !== undefined) return val;
-  }
-  return haversineDistance(
-    ai === -1 ? 0 : locations[ai].lat,
-    ai === -1 ? 0 : locations[ai].lng,
-    bj === -1 ? 0 : locations[bj].lat,
-    bj === -1 ? 0 : locations[bj].lng
-  );
+function pd(a: number, b: number, matrix: Record<string, number>): number {
+  return matGet(a, b, matrix);
 }
 
 function improveTour2Opt(
@@ -172,11 +136,11 @@ function improveTour2Opt(
     for (let i = 0; i < tour.length - 2; i++) {
       for (let j = i + 2; j < tour.length - 1; j++) {
         // Current edges: (i, i+1) and (j, j+1)
-        const d1 = pairDist(tour[i], tour[i + 1], locations, precomputed);
-        const d2 = pairDist(tour[j], tour[j + 1], locations, precomputed);
+        const d1 = pd(tour[i], tour[i + 1], precomputed!);
+        const d2 = pd(tour[j], tour[j + 1], precomputed!);
         // Proposed edges: (i, j) and (i+1, j+1)
-        const d3 = pairDist(tour[i], tour[j], locations, precomputed);
-        const d4 = pairDist(tour[i + 1], tour[j + 1], locations, precomputed);
+        const d3 = pd(tour[i], tour[j], precomputed!);
+        const d4 = pd(tour[i + 1], tour[j + 1], precomputed!);
 
         if (d1 + d2 > d3 + d4) {
           // Swap: reverse segment [i+1, j]
@@ -252,7 +216,7 @@ function estimateRouteKm(
 ): number {
   if (indices.length === 0) return 0;
   if (indices.length === 1) {
-    return 2 * pairDist(indices[0], -1, locations, precomputed);
+    return 2 * pd(indices[0], -1, precomputed!);
   }
 
   // Simple NN ordering estimate
@@ -264,7 +228,7 @@ function estimateRouteKm(
     let nearest = -1;
     let minD = Infinity;
     for (const idx of unvisited) {
-      const d = pairDist(current, idx, locations, precomputed);
+      const d = pd(current, idx, precomputed!);
       if (d < minD) {
         minD = d;
         nearest = idx;
@@ -276,7 +240,7 @@ function estimateRouteKm(
     unvisited.delete(nearest);
   }
 
-  total += pairDist(current, -1, locations, precomputed); // return home
+  total += pd(current, -1, precomputed!); // return home
   return total;
 }
 
@@ -294,7 +258,7 @@ function nearestNeighborWithinDay(
   while (unvisited.size > 0) {
     let nearest = -1; let minD = Infinity;
     for (const idx of unvisited) {
-      const d = pairDist(current, idx, locations, precomputed);
+      const d = pd(current, idx, precomputed!);
       if (d < minD) { minD = d; nearest = idx; }
     }
     if (nearest === -1) break;
@@ -315,13 +279,13 @@ function solutionDistance(
   for (const day of sol) {
     if (day.length === 0) continue;
     // home → first
-    total += pairDist(-1, day[0], locations, precomputed);
+    total += pd(-1, day[0], precomputed!);
     // between stops
     for (let i = 1; i < day.length; i++) {
-      total += pairDist(day[i - 1], day[i], locations, precomputed);
+      total += pd(day[i - 1], day[i], precomputed!);
     }
     // last → home
-    total += pairDist(day[day.length - 1], -1, locations, precomputed);
+    total += pd(day[day.length - 1], -1, precomputed!);
   }
   return total;
 }
@@ -457,7 +421,7 @@ function solutionToDays(
 
     for (let i = 0; i < ordered.length; i++) {
       const idx = ordered[i];
-      const d = pairDist(i === 0 ? -1 : ordered[i - 1], idx, locations, precomputed);
+      const d = pd(i === 0 ? -1 : ordered[i - 1], idx, precomputed!);
       const t = d / config.avgSpeed;
       cumulativeDist += d;
       cumulativeTime += t + config.visitTime / 60;
@@ -466,7 +430,7 @@ function solutionToDays(
         cumulativeTime: cumulativeTime, isHome: false });
     }
 
-    const returnDist = pairDist(ordered[ordered.length - 1], -1, locations, precomputed);
+    const returnDist = pd(ordered[ordered.length - 1], -1, precomputed!);
     cumulativeDist += returnDist;
     cumulativeTime += returnDist / config.avgSpeed;
     stops.push({ sequence: ordered.length + 1, name: home.name, lat: home.lat, lng: home.lng,
