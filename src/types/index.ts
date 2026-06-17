@@ -102,20 +102,22 @@ export interface ApiError {
 export interface ParetoSolution {
   days: number;
   totalDistance: number;
+  maxDayHours: number;
   /** Location indices per route (in visit order) */
   routes: number[][];
   /** Converted DayRoute[] for map display */
   dayRoutes: DayRoute[];
+  routingLabel?: string;
 }
 
 /** Response when algorithm=nsga2 */
 export interface NSGAResponse {
   algorithm: "nsga2";
-  minDistance: ParetoSolution;
-  minDays: ParetoSolution;
   balanced: ParetoSolution;
-  generations: number;
-  populationSize: number;
+  minDistance: ParetoSolution;
+  minDuration: ParetoSolution;
+  paretoFront: ParetoSolution[];
+  totalEvaluations: number;
   _meta?: {
     elapsedMs: number;
     osrmPairs: number;

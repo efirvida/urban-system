@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Location, Config, OptimizeResponse, ApiError } from "@/types";
+import { Location, Config, OptimizeResponse, NSGAResponse, ApiError } from "@/types";
 import { optimizeRoutes } from "@/utils/routerOptimizer";
 import { buildGoogleMatrix } from "@/utils/googleRouting";
 import { improveWithGA } from "@/utils/geneticOptimizer";
+import { runNSGA2 } from "@/utils/nsga2";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { locations, config, distanceMatrix: clientMatrix, googleMapsKey: clientKey } = body as {
+    const { locations, config, distanceMatrix: clientMatrix, googleMapsKey: clientKey, algorithm } = body as {
       locations: Location[];
       config: Config;
       distanceMatrix?: Record<string, number>;
       googleMapsKey?: string;
+      algorithm?: string;
     };
 
     // Resolve distance matrix (priority: client → Google Maps → Haversine)
@@ -129,6 +131,29 @@ export async function POST(request: NextRequest) {
     // ─── Optimize ───────────────────────────────────────────
 
     const startTime = Date.now();
+
+    // ── NSGA-II Multi-Objective ──
+    if (algorithm === "nsga2") {
+      const home = { name: "Casa", lat: normalizedConfig.homeLat, lng: normalizedConfig.homeLng };
+      const nsgaResult = runNSGA2(locations, home, normalizedConfig, distanceMatrix);
+
+      // Re-fetch geometry if needed (simplified)
+      const response: NSGAResponse = {
+        algorithm: "nsga2",
+        balanced: nsgaResult.balanced,
+        minDistance: nsgaResult.minDistance,
+        minDuration: nsgaResult.minDuration,
+        paretoFront: nsgaResult.paretoFront,
+        totalEvaluations: nsgaResult.totalEvaluations,
+        _meta: {
+          elapsedMs: Date.now() - startTime,
+          osrmPairs: distanceMatrix ? Object.keys(distanceMatrix).length : 0,
+          totalPairs: (locations.length * (locations.length + 1)) / 2,
+          routingMode: distanceMatrix ? "osrm" : "haversine",
+        },
+      };
+      return NextResponse.json(response);
+    }
 
     // Route-First + Local Search
     const base = await optimizeRoutes(locations, normalizedConfig, distanceMatrix);

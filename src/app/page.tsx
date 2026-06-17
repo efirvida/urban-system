@@ -4,7 +4,9 @@ import { useCallback, useState, useMemo } from "react";
 import {
   Location,
   Config,
+  ParetoSolution,
   OptimizeResponse,
+  NSGAResponse,
   RawFileData,
   ValidatedRow,
   ColumnMapping,
@@ -67,6 +69,13 @@ export default function Home() {
   const [matrixProgress, setMatrixProgress] = useState<MatrixProgress | null>(null);
   const [routingMode, setRoutingMode] = useState<"osrm" | "haversine">("osrm");
   const [routeGeometry, setRouteGeometry] = useState<Map<string, [number, number][]> | null>(null);
+  const [algorithm, setAlgorithm] = useState<"auto" | "nsga2">("auto");
+  const [nsgaResult, setNsgaResult] = useState<{
+    balanced: ParetoSolution;
+    minDistance: ParetoSolution;
+    minDuration: ParetoSolution;
+  } | null>(null);
+  const [selectedNsga, setSelectedNsga] = useState<"balanced" | "minDistance" | "minDuration">("balanced");
 
   // ── Map data (derived) ──
   const mapData = useMemo((): MapViewData => {
@@ -172,15 +181,29 @@ export default function Home() {
       const res = await fetch("/api/optimize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locations, config, distanceMatrix: distanceObj }),
+        body: JSON.stringify({
+          locations, config,
+          distanceMatrix: distanceObj,
+          algorithm: algorithm === "nsga2" ? "nsga2" : undefined,
+        }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
 
-      const optResult: OptimizeResponse = await res.json();
-      setResult(optResult);
+      const data = await res.json();
+      if (data.algorithm === "nsga2") {
+        const nsga = data as NSGAResponse;
+        setNsgaResult({ balanced: nsga.balanced, minDistance: nsga.minDistance, minDuration: nsga.minDuration });
+        setSelectedNsga("balanced");
+        setResult({ days: nsga.balanced.dayRoutes, totalDistance: nsga.balanced.totalDistance, totalDays: nsga.balanced.days, totalLocations: locations.length });
+        setHiddenDays(new Set(nsga.balanced.dayRoutes.slice(1).map((d) => d.day)));
+      } else {
+        const optResult = data as OptimizeResponse;
+        setResult(optResult);
+        setNsgaResult(null);
+        setHiddenDays(new Set(optResult.days.slice(1).map((d: any) => d.day)));
+      }
       setRoutingMode("osrm");
       setOptimizePhase("done");
-      setHiddenDays(new Set(optResult.days.slice(1).map((d) => d.day)));
 
       setPhase("results");
       setSidebarOpen(true);
@@ -306,6 +329,10 @@ export default function Home() {
                     placingHome={placementMode === "home"}
                     onTogglePlaceHome={handleTogglePlaceHome}
                   />
+                  <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1 border">
+                    <button onClick={() => setAlgorithm("auto")} className={cn("flex-1 text-xs py-1.5 px-2 rounded-md font-medium transition-colors", algorithm === "auto" ? "bg-white text-blue-700 shadow-sm border" : "text-gray-500 hover:text-gray-700")}>🧠 Auto</button>
+                    <button onClick={() => setAlgorithm("nsga2")} className={cn("flex-1 text-xs py-1.5 px-2 rounded-md font-medium transition-colors", algorithm === "nsga2" ? "bg-white text-blue-700 shadow-sm border" : "text-gray-500 hover:text-gray-700")}>🧬 NSGA-II</button>
+                  </div>
                   <OptimizeButton
                     onClick={handleOptimize}
                     loading={loading}
@@ -335,6 +362,24 @@ export default function Home() {
           <>
             {stepsNode}
             <div className="mt-3 space-y-3">
+              {nsgaResult && (
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3">
+                  <div className="text-xs font-semibold text-blue-700 mb-2">🧬 NSGA-II — {selectedNsga === "balanced" ? "⚖️ Balanceada" : selectedNsga === "minDistance" ? "📏 Min distancia" : "⏱️ Min duración"}</div>
+                  <div className="flex flex-col gap-1">
+                    {(["balanced", "minDistance", "minDuration"] as const).map((mode) => {
+                      const sol = nsgaResult[mode];
+                      const labels = { balanced: "⚖️ Balanceada", minDistance: "📏 Menos km", minDuration: "⏱️ Día +corto" };
+                      return (
+                        <button key={mode} onClick={() => { setSelectedNsga(mode); setResult({ days: sol.dayRoutes, totalDistance: sol.totalDistance, totalDays: sol.days, totalLocations: locations.length }); setHiddenDays(new Set(sol.dayRoutes.slice(1).map(d => d.day))); }}
+                          className={cn("flex items-center justify-between w-full text-left px-3 py-2 rounded-md text-sm transition-all", selectedNsga === mode ? "bg-white text-blue-800 shadow-sm border border-blue-300 font-medium" : "text-gray-600 hover:bg-white/70")}>
+                          <span>{labels[mode]}</span>
+                          <span className="text-xs font-mono text-blue-500">{sol.days}d · {sol.totalDistance.toFixed(0)}km · {sol.maxDayHours.toFixed(1)}h/día</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <ResultsPanel
                 days={result.days}
                 totalDistance={result.totalDistance}
