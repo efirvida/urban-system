@@ -47,8 +47,9 @@ export interface ValidatedRow {
 export interface Config {
   homeLat: number;
   homeLng: number;
-  constraintType: "hours" | "visits" | "capacity";
+  constraintType: "hours" | "visits" | "hours+visits";
   constraintValue: number;
+  maxVisits?: number; // used when constraintType is "visits" or "hours+visits"
   avgSpeed: number; // km/h, default 60
   visitTime: number; // minutes per stop, default 30
 }
@@ -86,7 +87,7 @@ export interface OptimizeResponse {
     elapsedMs: number;
     osrmPairs: number;
     totalPairs: number;
-    routingMode: "osrm" | "haversine";
+    routingMode: "osrm" | "haversine" | "api" | "geoapify";
   };
 }
 
@@ -122,7 +123,7 @@ export interface NSGAResponse {
     elapsedMs: number;
     osrmPairs: number;
     totalPairs: number;
-    routingMode: "osrm" | "haversine";
+    routingMode: "osrm" | "haversine" | "api" | "geoapify";
   };
   _debug?: {
     frontSize: number;

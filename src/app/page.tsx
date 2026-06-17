@@ -4,8 +4,10 @@ import { useCallback, useState, useMemo } from "react";
 import {
   Location,
   Config,
+  DayRoute,
   ParetoSolution,
   OptimizeResponse,
+  NSGAResponse,
   RawFileData,
   ValidatedRow,
   ColumnMapping,
@@ -13,9 +15,105 @@ import {
 import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
 import { haversineDistance } from "@/utils/haversine";
-import { optimizeRoutes } from "@/utils/routerOptimizer";
-import { runNSGA2 } from "@/utils/nsga2";
-import { fetchAllRouteGeometries } from "@/utils/clientRouting";
+import { fetchAllRouteGeometries, MatrixProgress } from "@/utils/clientRouting";
+
+// ─── Matrix cache (localStorage) ─────────────────────────────
+// Format: { d: Record<"i,j", km>, s: Record<"i,j", "h"|"o"|"g">, t?: string[] }
+//   h = Haversine, o = OSRM, g = Geoapify
+//   t = keys where Geoapify was already attempted (success or fail)
+
+interface CachedMatrix {
+  d: Record<string, number>;
+  s: Record<string, string>;
+  t?: string[];
+  home?: { lat: number; lng: number }; // home coord when cached
+}
+
+const MC_PREFIX = "vrp_matrix_";
+
+function locationsHash(locs: Location[]): string {
+  const coords = locs.map(l => `${l.lat.toFixed(6)},${l.lng.toFixed(6)}`).sort();
+  let h = 5381;
+  for (const s of coords.join("|")) h = ((h << 5) + h + s.charCodeAt(0)) | 0;
+  return Math.abs(h).toString(36);
+}
+
+function loadCachedMatrix(locs: Location[], currentHomeLat?: number, currentHomeLng?: number): { distances: Record<string, number>; geoapifyTried: string[]; cachedHome?: { lat: number; lng: number } } | null {
+  try {
+    const key = MC_PREFIX + locationsHash(locs);
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedMatrix;
+
+    // Check if cached home matches current home (within 300m)
+    let homeMatches = false;
+    if (parsed.home && currentHomeLat !== undefined && currentHomeLng !== undefined) {
+      const d = haversineDistance(currentHomeLat, currentHomeLng, parsed.home.lat, parsed.home.lng);
+      homeMatches = d <= 0.3;
+    }
+
+    const distances: Record<string, number> = {};
+    const sources: Record<string, string> = {};
+    const geoapifyTried: string[] = [];
+
+    if (homeMatches && parsed.d) {
+      // Home matches → load ALL pairs including home
+      for (const k of Object.keys(parsed.d)) {
+        distances[k] = parsed.d[k];
+        sources[k] = parsed.s[k] || "h";
+        if ((parsed.t && parsed.t.includes(k)) || sources[k] === "g" || sources[k] === "x") {
+          geoapifyTried.push(k);
+        }
+      }
+    } else {
+      // Home changed or missing → load only POI pairs
+      for (const k of Object.keys(parsed.d)) {
+        if (k.startsWith("0,")) continue;
+        distances[k] = parsed.d[k];
+        sources[k] = parsed.s[k] || "h";
+        if ((parsed.t && parsed.t.includes(k)) || sources[k] === "g" || sources[k] === "x") {
+          geoapifyTried.push(k);
+        }
+      }
+    }
+
+    const expectedPairs = homeMatches
+      ? (locs.length * (locs.length + 1)) / 2  // all pairs including home
+      : (locs.length * (locs.length - 1)) / 2;  // POI only
+    if (Object.keys(distances).length !== expectedPairs) {
+      console.log(`[Cache] Mismatch (expected ${expectedPairs}, got ${Object.keys(distances).length}), discarding`);
+      localStorage.removeItem(key);
+      return null;
+    }
+    console.log(`[Cache] HIT: ${key} (${Object.keys(distances).length} pairs, ${geoapifyTried.length} tried, homeMatch=${homeMatches})`);
+    return { distances, geoapifyTried, cachedHome: parsed.home };
+  } catch { return null; }
+}
+
+function saveCachedMatrix(
+  locs: Location[],
+  distances: Record<string, number>,
+  sources: Record<string, string>,
+  geoapifyTried?: string[],
+  homeLat?: number,
+  homeLng?: number
+): void {
+  try {
+    const key = MC_PREFIX + locationsHash(locs);
+    // Clone to avoid mutating the originals
+    const toStore: CachedMatrix = { d: { ...distances }, s: { ...sources } };
+    if (geoapifyTried && geoapifyTried.length > 0) toStore.t = [...geoapifyTried];
+    if (homeLat !== undefined && homeLng !== undefined) toStore.home = { lat: homeLat, lng: homeLng };
+    // Keep home pairs in cache so subsequent runs with same home don't need OSRM again
+    localStorage.setItem(key, JSON.stringify(toStore));
+    const oCount = Object.values(toStore.s).filter(v => v === "o").length;
+    const hCount = Object.values(toStore.s).filter(v => v === "h").length;
+    const gCount = Object.values(toStore.s).filter(v => v === "g").length;
+    console.log(`[Cache] SAVED: ${key} (${Object.keys(toStore.d).length} total pairs, g=${gCount} o=${oCount} h=${hCount})`);
+  } catch (err) {
+    console.warn("[Cache] Failed to save:", err);
+  }
+}
 
 import FileUpload from "@/components/FileUpload";
 import ColumnMapper from "@/components/ColumnMapper";
@@ -68,15 +166,22 @@ export default function Home() {
 
   // Optimization progress
   const [optimizePhase, setOptimizePhase] = useState<"idle" | "matrix" | "algorithm" | "done" | "error">("idle");
+  const [matrixProgress, setMatrixProgress] = useState<MatrixProgress | null>(null);
   const [routingMode, setRoutingMode] = useState<"osrm" | "haversine">("osrm");
   const [routeGeometry, setRouteGeometry] = useState<Map<number, [number, number][]> | null>(null);
   const [algorithm, setAlgorithm] = useState<"auto" | "nsga2">("nsga2");
+
+  // Route editing
+  const [editMode, setEditMode] = useState(false);
+  const [editableDays, setEditableDays] = useState<DayRoute[]>([]);
+  const [unassignedPOIs, setUnassignedPOIs] = useState<Location[]>([]);
+  const [highlightDay, setHighlightDay] = useState<number | null>(null);
   const [nsgaResult, setNsgaResult] = useState<{
     balanced: ParetoSolution;
     minDistance: ParetoSolution;
-    minDuration: ParetoSolution;
   } | null>(null);
-  const [selectedNsga, setSelectedNsga] = useState<"balanced" | "minDistance" | "minDuration">("balanced");
+  const [autoResult, setAutoResult] = useState<{ days: number; distance: number; maxHours: number; dayRoutes: DayRoute[] } | null>(null);
+  const [selectedResult, setSelectedResult] = useState<"best" | "auto" | "balanced" | "minDistance">("best");
 
   // ── Map data (derived) ──
   const mapData = useMemo((): MapViewData => {
@@ -152,6 +257,12 @@ export default function Home() {
   }, []);
 
   const handleOptimize = useCallback(async () => {
+    const FLOW = "[FLOW]";
+    const t0 = Date.now();
+    console.log(`${FLOW} ══════ OPTIMIZE START ══════`);
+    console.log(`${FLOW} Locations: ${locations.length}, Algorithm: ${algorithm}`);
+    console.log(`${FLOW} Config:`, JSON.stringify({ homeLat: config.homeLat, homeLng: config.homeLng, constraintType: config.constraintType, constraintValue: config.constraintValue, avgSpeed: config.avgSpeed, visitTime: config.visitTime }));
+
     if (locations.length === 0) {
       setError("No hay ubicaciones válidas.");
       return;
@@ -163,84 +274,303 @@ export default function Home() {
 
     setLoading(true);
     setError(null);
-    setOptimizePhase("algorithm");
+    setMatrixProgress(null);
+    setOptimizePhase("matrix");
+    // Yield para que React pinte "Preparando optimización..."
+    await new Promise(r => setTimeout(r, 100));
 
     try {
-      // ── Build distance matrix (OSRM + Haversine fallback) ──
+      // ── Paso 1: Construir matriz base (cache → Haversine → OSRM) ──
+      // distances: Record<"i,j", km> — lo que se envía al server para optimizar
+      // sources: Record<"i,j", "h"|"o"> — para saber qué se calculó
+      // geoapifyTried: string[] — pares que ya pasaron por Geoapify
+
       const all = [{ lat: config.homeLat, lng: config.homeLng }, ...locations];
       const N = all.length;
-      const expectedPairs = (N * (N - 1)) / 2;
-      const distanceMatrix: Record<string, number> = {};
+      const totalPairs = (N * (N - 1)) / 2;
       const hv = (i: number, j: number) => haversineDistance(all[i].lat, all[i].lng, all[j].lat, all[j].lng);
 
-      // Step 1: Pre-fill all with Haversine (instant, guarantees complete matrix)
-      for (let i = 0; i < N; i++)
-        for (let j = i + 1; j < N; j++)
-          distanceMatrix[`${i},${j}`] = hv(i, j);
+      let distances: Record<string, number> = {};
+      let sources: Record<string, string> = {};
+      let geoapifyTried: string[] = [];
 
-      // Verify matrix completeness
-      const matrixSize = Object.keys(distanceMatrix).length;
-      if (matrixSize !== expectedPairs) {
-        console.warn(`Matrix incomplete: ${matrixSize}/${expectedPairs}, refilling...`);
-        for (let i = 0; i < N; i++)
-          for (let j = i + 1; j < N; j++)
-            if (distanceMatrix[`${i},${j}`] === undefined) distanceMatrix[`${i},${j}`] = hv(i, j);
+      // 1a. Intentar cargar del cache
+      const cached = loadCachedMatrix(locations, config.homeLat, config.homeLng);
+      if (cached) {
+        distances = cached.distances;
+        geoapifyTried = cached.geoapifyTried;
+        for (const k of Object.keys(distances)) {
+          sources[k] = geoapifyTried.includes(k) ? "g" : "h";
+        }
+
+        // If cache loaded full matrix (home matched), skip rebuild
+        const hasHomePairs = Object.keys(distances).length >= totalPairs;
+        console.log(`${FLOW} Cache HIT: ${Object.keys(distances).length}/${totalPairs} pairs, ${geoapifyTried.length} tried, homeCached=${hasHomePairs}`);
+
+        if (!hasHomePairs) {
+          // Home changed: rebuild home pairs with Haversine + OSRM
+          for (let j = 1; j < N; j++) {
+            const k = `0,${j}`;
+            distances[k] = hv(0, j);
+            sources[k] = "h";
+          }
+          geoapifyTried = geoapifyTried.filter(k => !k.startsWith("0,"));
+          console.log(`${FLOW} Home pairs rebuilt: ${N - 1} pairs`);
+
+          // OSRM para pares del home con progreso UI
+          const homeOsrm: Array<{ i: number; j: number }> = [];
+          for (let j = 1; j < N; j++)
+            if (hv(0, j) > 0.5) homeOsrm.push({ i: 0, j });
+
+          if (homeOsrm.length > 0) {
+            setOptimizePhase("matrix");
+            setMatrixProgress({
+              phase: "matrix", stage: `OSRM home: 0/${homeOsrm.length}`,
+              current: 0, total: homeOsrm.length, percent: 0,
+              etaSeconds: 999, realCount: 0, haversineCount: homeOsrm.length,
+            });
+            await new Promise(r => setTimeout(r, 50));
+            console.log(`${FLOW} OSRM home: ${homeOsrm.length} pares`);
+            let oi = 0, osrmOk = 0, osrmFail = 0;
+            await Promise.all(Array.from({ length: 4 }, async () => {
+              while (oi < homeOsrm.length) {
+                const p = homeOsrm[oi++];
+                if ((osrmOk + osrmFail) % 10 === 0) await new Promise(r => setTimeout(r, 0));
+                try {
+                  const c = new AbortController();
+                  const t = setTimeout(() => c.abort(), 5000);
+                  const url = `https://router.project-osrm.org/route/v1/driving/${all[p.i].lng},${all[p.i].lat};${all[p.j].lng},${all[p.j].lat}?overview=false`;
+                  const res = await fetch(url, { signal: c.signal });
+                  clearTimeout(t);
+                  if (res.ok) {
+                    const d = await res.json();
+                    if (d.code === "Ok" && d.routes?.length) {
+                      const key = `${p.i},${p.j}`;
+                      distances[key] = d.routes[0].distance / 1000;
+                      sources[key] = "o";
+                      osrmOk++;
+                    } else osrmFail++;
+                  } else osrmFail++;
+                } catch { osrmFail++; }
+                if ((osrmOk + osrmFail) % 10 === 0) {
+                  const done = osrmOk + osrmFail;
+                  const elapsed = (Date.now() - t0) / 1000;
+                  const speed = done / Math.max(elapsed, 0.1);
+                  setMatrixProgress({
+                    phase: "matrix", stage: `OSRM home: ${osrmOk} ok · ${osrmFail} fallback`,
+                    current: done, total: homeOsrm.length,
+                    percent: Math.round((done / homeOsrm.length) * 100),
+                    etaSeconds: speed > 0 ? Math.round((homeOsrm.length - done) / speed) : 999,
+                    realCount: osrmOk, haversineCount: homeOsrm.length - osrmOk,
+                  });
+                }
+              }
+            }));
+            console.log(`${FLOW} OSRM home: ${osrmOk} ok, ${osrmFail} fallback`);
+          }
+        } else {
+          console.log(`${FLOW} Home unchanged, skipping OSRM home`);
+        }
       }
 
-      // Step 2: Try OSRM improvements in background (fire & forget)
-      // Matrix is already 100% complete with Haversine
-      const osrmPairs2: Array<{ i: number; j: number }> = [];
-      for (let i = 0; i < N; i++)
-        for (let j = i + 1; j < N; j++)
-          if (hv(i, j) > 0.05) osrmPairs2.push({ i, j });
+      // 1b. Cache MISS: construir desde cero con Haversine + OSRM
+      if (!cached) {
+        console.log(`${FLOW} ── Phase: MATRIX (Haversine + OSRM) ──`);
+        setOptimizePhase("matrix");
+        await new Promise(r => setTimeout(r, 50));
 
-      (async () => {
-        let oi = 0;
-        await Promise.all(Array.from({ length: 4 }, async () => {
-          while (oi < osrmPairs2.length) {
-            const { i, j } = osrmPairs2[oi++];
-            try {
-              const c = new AbortController(); const t = setTimeout(() => c.abort(), 3000);
-              const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${all[i].lng},${all[i].lat};${all[j].lng},${all[j].lat}?overview=false`, { signal: c.signal });
-              clearTimeout(t);
-              if (res.ok) { const d = await res.json(); if (d.code === "Ok" && d.routes?.length) distanceMatrix[`${i},${j}`] = d.routes[0].distance / 1000; }
-            } catch {}
+        // Haversine para TODOS los pares (instántaneo)
+        for (let i = 0; i < N; i++) {
+          for (let j = i + 1; j < N; j++) {
+            const k = `${i},${j}`;
+            distances[k] = hv(i, j);
+            sources[k] = "h";
           }
-        }));
-      })();
+        }
+        console.log(`${FLOW} Haversine: ${totalPairs} pairs`);
 
-      console.log(`[Matrix] ${matrixSize}/${expectedPairs} pairs ready, OSRM improvements in background`);
+        // OSRM para pares > 0.5km
+        const osrmCandidates: Array<{ i: number; j: number }> = [];
+        for (let i = 0; i < N; i++)
+          for (let j = i + 1; j < N; j++)
+            if (hv(i, j) > 0.5) osrmCandidates.push({ i, j });
 
-      // ── Run optimization (CLIENT-SIDE, no server) ──
+        const osrmTotal = osrmCandidates.length;
+        if (osrmTotal > 0) {
+          console.log(`${FLOW} OSRM: ${osrmTotal} pares > 0.5km`);
+          const tOsrm = Date.now();
+          let oi = 0, osrmOk = 0, osrmFail = 0;
+
+          setMatrixProgress({
+            phase: "matrix", stage: `OSRM: 0/${osrmTotal}`,
+            current: 0, total: totalPairs, percent: 0,
+            etaSeconds: 999, realCount: 0, haversineCount: totalPairs,
+          });
+
+          await Promise.all(Array.from({ length: 4 }, async () => {
+            while (oi < osrmTotal) {
+              const p = osrmCandidates[oi++];
+              if ((osrmOk + osrmFail) % 10 === 0) await new Promise(r => setTimeout(r, 0));
+              try {
+                const c = new AbortController();
+                const t = setTimeout(() => c.abort(), 5000);
+                const url = `https://router.project-osrm.org/route/v1/driving/${all[p.i].lng},${all[p.i].lat};${all[p.j].lng},${all[p.j].lat}?overview=false`;
+                const res = await fetch(url, { signal: c.signal });
+                clearTimeout(t);
+                if (res.ok) {
+                  const d = await res.json();
+                  if (d.code === "Ok" && d.routes?.length) {
+                    const key = `${p.i},${p.j}`;
+                    distances[key] = d.routes[0].distance / 1000;
+                    sources[key] = "o";
+                    osrmOk++;
+                  } else osrmFail++;
+                } else osrmFail++;
+              } catch { osrmFail++; }
+
+              if ((osrmOk + osrmFail) % 10 === 0) {
+                const done = osrmOk + osrmFail;
+                const elapsed = (Date.now() - tOsrm) / 1000;
+                const speed = done / Math.max(elapsed, 0.1);
+                setMatrixProgress({
+                  phase: "matrix", stage: `OSRM: ${osrmOk} ok · ${osrmFail} fallback (${done}/${osrmTotal})`,
+                  current: done, total: totalPairs,
+                  percent: Math.round((done / totalPairs) * 100),
+                  etaSeconds: speed > 0 ? Math.round((osrmTotal - done) / speed) : 999,
+                  realCount: osrmOk,
+                  haversineCount: totalPairs - osrmOk,
+                });
+              }
+            }
+          }));
+          console.log(`${FLOW} OSRM: ${osrmOk} ok, ${osrmFail} fallback in ${Date.now() - tOsrm}ms`);
+        } else {
+          console.log(`${FLOW} OSRM: skipped (all pairs ≤ 0.5km)`);
+        }
+
+        // Guardar cache inmediatamente (antes de Geoapify)
+        saveCachedMatrix(locations, distances, sources, undefined, config.homeLat, config.homeLng);
+      }
+
+      // ── Paso 2: Enviar al server (Geoapify mejora los pares que faltan) ──
       setOptimizePhase("algorithm");
-      const home = { name: "Casa", lat: config.homeLat, lng: config.homeLng };
+      await new Promise(r => setTimeout(r, 100));
+      console.log(`${FLOW} ── Phase: ALGORITHM (${algorithm}) ──`);
 
+      const tAlgo = Date.now();
+      const apiPayload: Record<string, unknown> = {
+        locations, config, algorithm,
+        distanceMatrix: distances,
+        geoapifyTried,
+      };
+
+      console.log(`${FLOW} POST /api/optimize — ${locations.length} locs, ${Object.keys(distances).length} pairs, ${geoapifyTried.length} geoapify-tried`);
+      const apiRes = await fetch("/api/optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(apiPayload),
+      });
+
+      if (!apiRes.ok) {
+        const errData = await apiRes.json().catch(() => ({ error: `HTTP ${apiRes.status}` }));
+        throw new Error(errData.error || `Error del servidor (${apiRes.status})`);
+      }
+
+      const apiData = await apiRes.json();
+      console.log(`${FLOW} API response in ${Date.now() - tAlgo}ms`);
+
+      // ── Paso 3: Mergear resultados de Geoapify al cache ──
+      if (apiData._matrixCache || apiData._geoapifyTried) {
+        const geoCache = (apiData._matrixCache as Record<string, number>) || {};
+        const geoFailed = (apiData._geoapifyTried as string[]) || [];
+        let geoOk = 0;
+
+        // Override con pares exitosos de Geoapify → source="g"
+        for (const key of Object.keys(geoCache)) {
+          distances[key] = geoCache[key];
+          sources[key] = "g";
+          geoOk++;
+        }
+
+        // Geoapify falló: source se mantiene "o" si OSRM lo calculó, "h" si no
+        // Pero ge registramos como "tried" para no llamar a Geoapify devuelta
+        for (const key of geoFailed) {
+          if (sources[key] !== "o") sources[key] = "x"; // Haversine fallback
+          // si sources[key] ya es "o", lo dejamos — OSRM es mejor que Haversine
+        }
+
+        const allTried = [...geoapifyTried, ...Object.keys(geoCache), ...geoFailed];
+        // Deduplicate
+        const triedSet = new Set(allTried);
+        saveCachedMatrix(locations, distances, sources, [...triedSet], config.homeLat, config.homeLng);
+        console.log(`${FLOW} Geoapify merged: ${geoOk} ok, ${geoFailed.length} failed, tried=${triedSet.size}`);
+      }
+
+      // ── Parse combined result (both algorithms ran on server) ──
       let optResult: OptimizeResponse;
       let geometryDays: Array<{ day: number; stops: Array<{ lat: number; lng: number; isHome?: boolean }> }> | undefined;
 
-      if (algorithm === "nsga2") {
-        const nsga = await runNSGA2(locations, home, config, distanceMatrix);
-        console.log("[NSGA2] balanced:", nsga.balanced.days, "d", nsga.balanced.totalDistance, "km");
-        setNsgaResult({ balanced: nsga.balanced, minDistance: nsga.minDistance, minDuration: nsga.minDuration });
-        setSelectedNsga("balanced");
-        optResult = { days: nsga.balanced.dayRoutes, totalDistance: nsga.balanced.totalDistance, totalDays: nsga.balanced.days, totalLocations: locations.length };
-        geometryDays = nsga.balanced.dayRoutes;
-        setHiddenDays(new Set(nsga.balanced.dayRoutes.slice(1).map((d) => d.day)));
-      } else {
-        const result = await optimizeRoutes(locations, config, distanceMatrix);
-        optResult = { days: result.days, totalDistance: result.totalDistance, totalDays: result.days.length, totalLocations: locations.length };
-        setNsgaResult(null);
-        setHiddenDays(new Set(result.days.slice(1).map((d: any) => d.day)));
-        geometryDays = result.days;
+      const bestDays = apiData.days as unknown as DayRoute[];
+      const bestDist = Number(apiData.totalDistance);
+      const bestCnt = Number(apiData.totalDays);
+
+      // Store auto result (dayRoutes come from the full response)
+      if (apiData._autoDistance) {
+        const autoDays = apiData.days as unknown as DayRoute[];
+        const autoMaxH = Math.max(...autoDays.map((d: any) => d.totalTime || 0), 0);
+        setAutoResult({
+          days: Number(apiData._autoDays),
+          distance: Number(apiData._autoDistance),
+          maxHours: Math.round(autoMaxH * 100) / 100,
+          dayRoutes: autoDays,
+        });
+        console.log(`${FLOW} Auto: ${apiData._autoDays}d · ${apiData._autoDistance}km · ${autoMaxH.toFixed(2)}h max`);
       }
 
+      // Store NSGA2 results (if available)
+      const nsga2raw = apiData._nsga2 as Record<string, unknown> | undefined;
+      if (nsga2raw) {
+        const nsgaBal = nsga2raw.balanced as ParetoSolution;
+        const nsgaMin = nsga2raw.minDistance as ParetoSolution;
+        console.log(`${FLOW} NSGA2 balanced: ${nsgaBal.days}d · ${nsgaBal.totalDistance}km`);
+        console.log(`${FLOW} NSGA2 minDistance: ${nsgaMin.days}d · ${nsgaMin.totalDistance}km`);
+        setNsgaResult({ balanced: nsgaBal, minDistance: nsgaMin });
+      }
+
+      // Default to best result
+      setSelectedResult("best");
+      optResult = { days: bestDays, totalDistance: bestDist, totalDays: bestCnt, totalLocations: locations.length };
+      geometryDays = bestDays;
+      setHiddenDays(new Set(bestDays.slice(1).map((d: any) => d.day)));
       setResult(optResult);
+      console.log(`${FLOW} Best: ${bestCnt}d · ${bestDist}km`);
+
+      // ── Source breakdown ──
+      {
+        const hCount = Object.values(sources).filter(v => v === "h").length;
+        const oCount = Object.values(sources).filter(v => v === "o").length;
+        const gCount = Object.values(sources).filter(v => v === "g").length;
+        const xCount = Object.values(sources).filter(v => v === "x").length;
+        console.log(`${FLOW} ── Phase: DONE ──`);
+        console.log(`${FLOW} Total elapsed: ${Date.now() - t0}ms`);
+        console.log(`${FLOW} Source breakdown: Haversine=${hCount} OSRM=${oCount} GeoapifyOK=${gCount} GeoapifyFail=${xCount} Total=${hCount+oCount+gCount+xCount}`);
+      }
 
       // Fetch route geometries (async, background)
+      console.log(`${FLOW} geometryDays:`, geometryDays?.length ?? 0, 'days, result days:', result?.days?.length ?? 0);
       if (geometryDays && geometryDays.length > 0) {
+        console.log(`${FLOW} Fetching route geometries for ${geometryDays.length} days...`);
         fetchAllRouteGeometries(geometryDays).then(geo => {
-          if (geo.size > 0) setRouteGeometry(geo);
+          console.log(`${FLOW} Route geometries: ${geo.size}/${geometryDays.length} days resolved`);
+          if (geo.size > 0) {
+            console.log(`${FLOW} Setting routeGeometry with ${geo.size} routes`);
+            setRouteGeometry(geo);
+          }
+        }).catch((err: any) => {
+          console.error(`${FLOW} Route geometry error:`, err);
         });
+      } else {
+        console.log(`${FLOW} SKIP geometry fetch — geometryDays empty or undefined`);
       }
 
       setRoutingMode("osrm");
@@ -248,12 +578,13 @@ export default function Home() {
       setPhase("results");
       setSidebarOpen(true);
     } catch (err) {
+      console.error(`${FLOW} ERROR:`, err);
       setError(err instanceof Error ? err.message : "Error inesperado");
       setOptimizePhase("error");
     } finally {
       setLoading(false);
     }
-  }, [locations, config]);
+  }, [locations, config, algorithm]);
 
   const handlePlaceHome = useCallback(
     (lat: number, lng: number) => {
@@ -273,6 +604,45 @@ export default function Home() {
   const handleTogglePlaceHome = useCallback(() => {
     setPlacementMode((prev) => (prev === "home" ? null : "home"));
   }, []);
+
+  /** Recalculate a single day's route (distance + geometry) via API */
+  const recalcDayRoute = useCallback(async (day: DayRoute): Promise<DayRoute | null> => {
+    try {
+      const stops = day.stops.map(s => ({ lat: s.lat, lng: s.lng }));
+      const res = await fetch("/api/routing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stops }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const totalDist = data.distance as number;
+      const totalTime = (data.time as number) / 3600;
+      if (!totalDist) return null;
+
+      const newStops = day.stops.map((s, i) => ({ ...s }));
+      let cumD = 0, cumT = 0;
+      for (let i = 0; i < newStops.length; i++) {
+        if (i === 0) {
+          newStops[i].distanceFromPrev = 0;
+          newStops[i].cumulativeDistance = 0;
+          newStops[i].cumulativeTime = 0;
+        } else {
+          const d = haversineDistance(newStops[i-1].lat, newStops[i-1].lng, newStops[i].lat, newStops[i].lng);
+          cumD += d;
+          cumT += d / config.avgSpeed + config.visitTime / 60;
+          newStops[i].distanceFromPrev = d;
+          newStops[i].cumulativeDistance = cumD;
+          newStops[i].cumulativeTime = cumT;
+        }
+      }
+      const lastLeg = newStops.length > 1
+        ? haversineDistance(newStops[newStops.length-2].lat, newStops[newStops.length-2].lng, newStops[newStops.length-1].lat, newStops[newStops.length-1].lng)
+        : 0;
+      return { ...day, stops: newStops, totalDistance: Math.round(cumD * 100) / 100, totalTime: Math.round(cumT * 100) / 100 };
+    } catch { return null; }
+  }, [config.avgSpeed, config.visitTime]);
 
   const handleReset = useCallback(() => {
     setRawData(null);
@@ -369,9 +739,8 @@ export default function Home() {
                     placingHome={placementMode === "home"}
                     onTogglePlaceHome={handleTogglePlaceHome}
                   />
-                  <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1 border">
-                    <button onClick={() => setAlgorithm("auto")} className={cn("flex-1 text-xs py-1.5 px-2 rounded-md font-medium transition-colors", algorithm === "auto" ? "bg-white text-blue-700 shadow-sm border" : "text-gray-500 hover:text-gray-700")}>🧠 Auto</button>
-                    <button onClick={() => setAlgorithm("nsga2")} className={cn("flex-1 text-xs py-1.5 px-2 rounded-md font-medium transition-colors", algorithm === "nsga2" ? "bg-white text-blue-700 shadow-sm border" : "text-gray-500 hover:text-gray-700")}>🧬 NSGA-II</button>
+                  <div className="text-center text-xs text-gray-400 bg-gray-50 rounded-lg p-2 border border-gray-200">
+                    🧬 Se ejecutan ambos algoritmos — se muestra el mejor resultado
                   </div>
                   <OptimizeButton
                     onClick={handleOptimize}
@@ -387,7 +756,7 @@ export default function Home() {
                 </>
               ) : (
                 <OptimizeProgress
-                  progress={null}
+                  progress={matrixProgress}
                   phase={optimizePhase === "algorithm" ? "algorithm" : "matrix"}
                   totalLocations={locations.length}
                   error={error ?? undefined}
@@ -402,24 +771,46 @@ export default function Home() {
           <>
             {stepsNode}
             <div className="mt-3 space-y-3">
-              {nsgaResult && (
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3">
-                  <div className="text-xs font-semibold text-blue-700 mb-2">🧬 NSGA-II — {selectedNsga === "balanced" ? "⚖️ Balanceada" : selectedNsga === "minDistance" ? "📏 Min distancia" : "⏱️ Min duración"}</div>
-                  <div className="flex flex-col gap-1">
-                    {(["balanced", "minDistance", "minDuration"] as const).map((mode) => {
-                      const sol = nsgaResult[mode];
-                      const labels = { balanced: "⚖️ Balanceada", minDistance: "📏 Menos km", minDuration: "⏱️ Día +corto" };
-                      return (
-                        <button key={mode} onClick={() => { setSelectedNsga(mode); setResult({ days: sol.dayRoutes, totalDistance: sol.totalDistance, totalDays: sol.days, totalLocations: locations.length }); setHiddenDays(new Set(sol.dayRoutes.slice(1).map(d => d.day))); }}
-                          className={cn("flex items-center justify-between w-full text-left px-3 py-2 rounded-md text-sm transition-all", selectedNsga === mode ? "bg-white text-blue-800 shadow-sm border border-blue-300 font-medium" : "text-gray-600 hover:bg-white/70")}>
-                          <span>{labels[mode]}</span>
-                          <span className="text-xs font-mono text-blue-500">{sol.days}d · {sol.totalDistance.toFixed(0)}km · {sol.maxDayHours.toFixed(1)}h/día</span>
+              {(result) && (() => {
+                // Build sorted solutions list — one per algorithm variant
+                interface SolItem { id: string; days: number; dist: number; hours: number; routes: DayRoute[]; }
+                const maxH = (routes: DayRoute[]) => Math.round(Math.max(...routes.map(r => r.totalTime || 0), 0) * 100) / 100;
+                const sols: SolItem[] = [];
+                if (autoResult) sols.push({ id: "auto", days: autoResult.days, dist: autoResult.distance, hours: autoResult.maxHours, routes: autoResult.dayRoutes });
+                if (nsgaResult?.minDistance) {
+                  const m = nsgaResult.minDistance;
+                  sols.push({ id: "nsga-m", days: m.days, dist: m.totalDistance, hours: m.maxDayHours, routes: m.dayRoutes });
+                }
+                if (nsgaResult?.balanced) {
+                  const b = nsgaResult.balanced;
+                  sols.push({ id: "nsga-b", days: b.days, dist: b.totalDistance, hours: b.maxDayHours, routes: b.dayRoutes });
+                }
+                // Sort by dist ↑ then days ↑
+                sols.sort((a, b) => a.dist - b.dist || a.days - b.days);
+
+                // Auto-select first if needed
+                const safeSelected = sols.find(s => s.id === selectedResult) ? selectedResult : sols[0]?.id ?? "auto";
+                if (safeSelected !== selectedResult) setSelectedResult(safeSelected as any);
+
+                return (
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3">
+                    <div className="text-xs font-semibold text-blue-700 mb-2">🏆 Soluciones</div>
+                    <div className="flex flex-col gap-1">
+                      {sols.map((sol, idx) => (
+                        <button key={sol.id} onClick={() => {
+                          setResult({ days: sol.routes, totalDistance: sol.dist, totalDays: sol.days, totalLocations: locations.length });
+                          setHiddenDays(new Set(sol.routes.slice(1).map((d: any) => d.day)));
+                          setSelectedResult(sol.id as any);
+                        }}
+                          className={cn("flex items-center justify-between w-full text-left px-3 py-2 rounded-md text-sm transition-all", safeSelected === sol.id ? "bg-white text-blue-800 shadow-sm border border-blue-300 font-medium" : "text-gray-600 hover:bg-white/70")}>
+                          <span className="font-medium">#{idx + 1}</span>
+                          <span className="text-xs font-mono text-blue-500">{sol.days}d · {sol.dist.toFixed(0)}km{sol.hours > 0 ? ` · ${sol.hours.toFixed(1)}h/día` : ''}</span>
                         </button>
-                      );
-                    })}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
               <ResultsPanel
                 days={result.days}
                 totalDistance={result.totalDistance}
@@ -442,6 +833,91 @@ export default function Home() {
                 }
                 routingLabel="🚗 Rutas optimizadas"
               />
+
+              {/* Edit mode toggle */}
+              {result && result.days.length > 0 && (
+                <button onClick={() => {
+                  if (!editMode) {
+                    setEditableDays(result.days.map(d => ({ ...d, stops: [...d.stops] })));
+                    const assigned = new Set(result.days.flatMap(d => d.stops.filter(s => !s.isHome).map(s => `${s.lat},${s.lng}`)));
+                    setUnassignedPOIs(locations.filter(l => !assigned.has(`${l.lat},${l.lng}`)));
+                  }
+                  setEditMode(!editMode);
+                }}
+                  className={cn("w-full text-sm py-2 rounded-lg font-medium transition-all", editMode ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>
+                  ✏️ {editMode ? "Terminar edición" : "Editar rutas"}
+                </button>
+              )}
+
+              {/* Route editor */}
+              {editMode && (
+                <div className="space-y-3">
+                  {editableDays.map((day) => (
+                    <div key={day.day} className={`rounded-lg p-3 border-2 transition-all ${highlightDay === day.day ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold">Día {day.day}</span>
+                        <span className="text-xs text-gray-400">{day.stops.filter(s => !s.isHome).length} paradas · {day.totalDistance.toFixed(0)}km</span>
+                      </div>
+                      <div className="space-y-1">
+                        {day.stops.filter(s => !s.isHome).map((stop, si) => (
+                          <div key={si} className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1">
+                            <span>{stop.name}</span>
+                            <div className="flex gap-1">
+                              <button onClick={() => {
+                                const newDays = editableDays.map(d => ({ ...d, stops: [...d.stops] }));
+                                const dayIdx = newDays.findIndex(d => d.day === day.day);
+                                const stopIdx = newDays[dayIdx].stops.findIndex(s => s.sequence === stop.sequence);
+                                const removed = newDays[dayIdx].stops.splice(stopIdx, 1);
+                                if (removed.length > 0 && !removed[0].isHome) {
+                                  setUnassignedPOIs(prev => [...prev, { name: removed[0].name, lat: removed[0].lat, lng: removed[0].lng }]);
+                                }
+                                // Recalc day distance
+                                recalcDayRoute(newDays[dayIdx]).then(updated => {
+                                  if (updated) newDays[dayIdx] = updated;
+                                  setEditableDays(newDays);
+                                });
+                              }} className="text-red-400 hover:text-red-600">✕</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {unassignedPOIs.map((poi, pi) => (
+                          <button key={pi} onClick={() => {
+                            const newDays = editableDays.map(d => ({ ...d, stops: [...d.stops] }));
+                            const dayIdx = newDays.findIndex(d => d.day === day.day);
+                            const lastSeq = Math.max(...newDays[dayIdx].stops.map(s => s.sequence), 0);
+                            newDays[dayIdx].stops.splice(newDays[dayIdx].stops.length - 1, 0, {
+                              sequence: lastSeq, name: poi.name, lat: poi.lat, lng: poi.lng,
+                              distanceFromPrev: 0, cumulativeDistance: 0, cumulativeTime: 0, isHome: false,
+                            });
+                            setUnassignedPOIs(prev => prev.filter((_, i) => i !== pi));
+                            recalcDayRoute(newDays[dayIdx]).then(updated => {
+                              if (updated) newDays[dayIdx] = updated;
+                              setEditableDays(newDays);
+                            });
+                          }}
+                            className="text-[10px] px-2 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-200 hover:bg-green-100">
+                            + {poi.name.slice(0, 12)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Unassigned POIs panel */}
+                  {unassignedPOIs.length > 0 && (
+                    <div className="rounded-lg p-3 border border-dashed border-gray-300 bg-amber-50">
+                      <div className="text-xs font-semibold text-amber-700 mb-1">📍 POIs sin ruta ({unassignedPOIs.length})</div>
+                      <div className="flex flex-wrap gap-1">
+                        {unassignedPOIs.map((poi, pi) => (
+                          <span key={pi} className="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-700">{poi.name}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <button
                 onClick={() => setHiddenDays(new Set())}
@@ -482,6 +958,15 @@ export default function Home() {
         placementMode={placementMode}
         onPlaceHome={handlePlaceHome}
         onDragHome={handleDragHome}
+        onPOIClick={(lat, lng, day, name) => {
+          setHighlightDay(day);
+          // Open the day's route in the sidebar
+          setHiddenDays((prev) => {
+            const allDays = result?.days.map((d) => d.day) ?? [];
+            return new Set(allDays.filter((d) => d !== day));
+          });
+        }}
+        highlightDay={highlightDay}
       />
 
       {/* ── Error toast ── */}

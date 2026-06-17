@@ -16,7 +16,7 @@ interface ConfigPanelProps {
 const CONSTRAINT_OPTIONS = [
   { value: "hours" as const, label: "Horas máximas por jornada", icon: "⏰" },
   { value: "visits" as const, label: "Visitas máximas por jornada", icon: "📍" },
-  { value: "capacity" as const, label: "Capacidad del vehículo", icon: "📦" },
+  { value: "hours+visits" as const, label: "Horas + Visitas máximas", icon: "⚡" },
 ];
 
 export default function ConfigPanel({
@@ -117,49 +117,58 @@ export default function ConfigPanel({
         </div>
       </div>
 
-      {/* Constraint value — big stepper */}
-      <div className="bg-gray-50 rounded-lg p-3">
-        <label className="block text-xs font-medium text-gray-600 mb-2 text-center">
-          {config.constraintType === "hours"
-            ? "Jornada laboral"
-            : config.constraintType === "visits"
-            ? "Visitas por día"
-            : "Capacidad del vehículo"}
-        </label>
-        <div className="flex items-center justify-center gap-4">
-          <button
-            type="button"
-            onClick={() => update({ constraintValue: Math.max(1, config.constraintValue - (config.constraintType === "hours" ? 0.5 : 1)) })}
-            className="w-10 h-10 rounded-full bg-white border border-gray-300 text-gray-600 text-lg font-bold hover:bg-gray-100 flex items-center justify-center"
-          >
-            −
-          </button>
-          <div className="text-center min-w-[80px]">
-            <div className="text-3xl font-bold text-gray-900">
-              {config.constraintType === "hours" ? config.constraintValue.toFixed(1) : config.constraintValue}
+      {/* Constraint value(s) — stepper */}
+      <div className="bg-gray-50 rounded-lg p-3 space-y-3">
+        {config.constraintType === "hours+visits" ? (
+          <>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-2 text-center">Jornada laboral</label>
+              <div className="flex items-center justify-center gap-4">
+                <button onClick={() => update({ constraintValue: Math.max(1, config.constraintValue - 0.5) })} className="w-10 h-10 rounded-full bg-white border border-gray-300 text-gray-600 text-lg font-bold hover:bg-gray-100 flex items-center justify-center">−</button>
+                <div className="text-center min-w-[80px]">
+                  <div className="text-3xl font-bold text-gray-900">{config.constraintValue.toFixed(1)}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">horas</div>
+                </div>
+                <button onClick={() => update({ constraintValue: config.constraintValue + 0.5 })} className="w-10 h-10 rounded-full bg-white border border-gray-300 text-gray-600 text-lg font-bold hover:bg-gray-100 flex items-center justify-center">+</button>
+              </div>
             </div>
-            <div className="text-xs text-gray-400 mt-0.5">
-              {config.constraintType === "hours" ? "horas" : config.constraintType === "visits" ? "paradas" : "unidades"}
+            <hr className="border-gray-200" />
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-2 text-center">Visitas máximas por jornada</label>
+              <div className="flex items-center justify-center gap-4">
+                <button onClick={() => update({ maxVisits: Math.max(1, (config.maxVisits ?? 10) - 1) })} className="w-10 h-10 rounded-full bg-white border border-gray-300 text-gray-600 text-lg font-bold hover:bg-gray-100 flex items-center justify-center">−</button>
+                <div className="text-center min-w-[80px]">
+                  <div className="text-3xl font-bold text-gray-900">{config.maxVisits ?? 10}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">paradas</div>
+                </div>
+                <button onClick={() => update({ maxVisits: (config.maxVisits ?? 10) + 1 })} className="w-10 h-10 rounded-full bg-white border border-gray-300 text-gray-600 text-lg font-bold hover:bg-gray-100 flex items-center justify-center">+</button>
+              </div>
             </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => update({ constraintValue: config.constraintValue + (config.constraintType === "hours" ? 0.5 : 1) })}
-            className="w-10 h-10 rounded-full bg-white border border-gray-300 text-gray-600 text-lg font-bold hover:bg-gray-100 flex items-center justify-center"
-          >
-            +
-          </button>
-        </div>
-        {config.constraintType === "hours" && (
-          <div className="text-xs text-gray-400 mt-2 text-center">
-            Incluye viaje + {(config.visitTime / 60).toFixed(1)}h por parada
-          </div>
+          </>
+        ) : (
+          <>
+            <label className="block text-xs font-medium text-gray-600 mb-2 text-center">
+              {config.constraintType === "hours" ? "Jornada laboral" : "Visitas por día"}
+            </label>
+            <div className="flex items-center justify-center gap-4">
+              <button onClick={() => update({ constraintValue: Math.max(1, config.constraintValue - (config.constraintType === "hours" ? 0.5 : 1)) })}
+                className="w-10 h-10 rounded-full bg-white border border-gray-300 text-gray-600 text-lg font-bold hover:bg-gray-100 flex items-center justify-center">−</button>
+              <div className="text-center min-w-[80px]">
+                <div className="text-3xl font-bold text-gray-900">{config.constraintType === "hours" ? config.constraintValue.toFixed(1) : config.constraintValue}</div>
+                <div className="text-xs text-gray-400 mt-0.5">{config.constraintType === "hours" ? "horas" : "paradas"}</div>
+              </div>
+              <button onClick={() => update({ constraintValue: config.constraintValue + (config.constraintType === "hours" ? 0.5 : 1) })}
+                className="w-10 h-10 rounded-full bg-white border border-gray-300 text-gray-600 text-lg font-bold hover:bg-gray-100 flex items-center justify-center">+</button>
+            </div>
+            {config.constraintType === "hours" && (
+              <div className="text-xs text-gray-400 mt-2 text-center">Incluye viaje + {(config.visitTime / 60).toFixed(1)}h por parada</div>
+            )}
+          </>
         )}
       </div>
 
-      {/* Speed & visit time — inline sliders for hours mode */}
-      {config.constraintType === "hours" && (
-        <div className="space-y-3 bg-gray-50 rounded-lg p-3">
+      {/* Speed & visit time — sliders, always visible for all modes */}
+      <div className="space-y-3 bg-gray-50 rounded-lg p-3">
           <div>
             <div className="flex justify-between text-xs text-gray-500 mb-1">
               <span>Velocidad</span>
@@ -179,6 +188,7 @@ export default function ConfigPanel({
               <span>120</span>
             </div>
           </div>
+          {config.constraintType === "hours" && (
           <div>
             <div className="flex justify-between text-xs text-gray-500 mb-1">
               <span>Tiempo por parada</span>
@@ -198,8 +208,8 @@ export default function ConfigPanel({
               <span>3 h</span>
             </div>
           </div>
-        </div>
-      )}
+          )}
+      </div>
 
       {/* Summary */}
       <div className="text-xs text-gray-400 bg-gray-50 rounded-md p-2 text-center">

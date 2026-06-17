@@ -1,4 +1,5 @@
 import { Location, Config, DayRoute, Stop } from "@/types";
+import { improveWithGA } from "./geneticOptimizer";
 
 /**
  * Look up distance from the precomputed matrix.
@@ -9,7 +10,12 @@ function matGet(a: number, b: number, matrix: Record<string, number>): number {
   const ka = a === -1 ? 0 : a + 1;
   const kb = b === -1 ? 0 : b + 1;
   const key = ka < kb ? `${ka},${kb}` : `${kb},${ka}`;
-  return matrix[key];
+  const val = matrix[key];
+  if (val === undefined) {
+    console.warn(`[matGet] Missing key "${key}" (a=${a}, b=${b}), defaulting to 0`);
+    return 0;
+  }
+  return val;
 }
 
 // ─── Main entry point ────────────────────────────────────────
@@ -28,29 +34,67 @@ export async function optimizeRoutes(
     return { days: [], totalDistance: 0, osrmPairs: 0, totalPairs: 0 };
   }
 
+  const FLOW = "[FLOW]";
+  const tStart = Date.now();
+
   const home: Location = {
     name: "Casa",
     lat: config.homeLat,
     lng: config.homeLng,
   };
 
+  console.log(`${FLOW}   routerOptimizer: ${locations.length} locations`);
   // ── Step 1: Build a giant TSP tour ──
   // Nearest Neighbor + 2-opt improvement
+  const t1 = Date.now();
   const tour = await buildGiantTour(locations, home, config, precomputedMatrix);
+  console.log(`${FLOW}   buildGiantTour: ${tour.length} stops in ${Date.now() - t1}ms`);
 
   // ── Step 2: Slice the tour into daily segments ──
+  const t2 = Date.now();
   let solution = sliceTourToSolution(tour, locations, home, config, precomputedMatrix);
+  console.log(`${FLOW}   sliceTourToSolution: ${solution.length} days in ${Date.now() - t2}ms`);
 
   // ── Step 3: Local Search improvement (OR-Tools style) ──
+  const t3 = Date.now();
   solution = localSearch(solution, locations, home, config, precomputedMatrix);
+  console.log(`${FLOW}   localSearch: ${solution.length} days in ${Date.now() - t3}ms`);
 
-  // ── Convert to DayRoute format ──
-  const days = solutionToDays(solution, locations, home, config, precomputedMatrix);
-  const totalDistance = days.reduce((sum, d) => sum + d.totalDistance, 0);
+  // ── Convert deterministic result ──
+  const detDays = solutionToDays(solution, locations, home, config, precomputedMatrix);
+  const detDistance = detDays.reduce((sum, d) => sum + d.totalDistance, 0);
+  console.log(`${FLOW}   deterministic: ${detDays.length} days, ${detDistance.toFixed(1)}km`);
+
+  // ── Step 4: GA post-optimization ──
+  let bestDays = detDays;
+  let bestDistance = detDistance;
+
+  if (locations.length >= 3) {
+    const t4 = Date.now();
+    try {
+      const gaResult = await improveWithGA(tour, locations, home, config, precomputedMatrix);
+      const gaMs = Date.now() - t4;
+      const impr = gaResult.totalDistance < bestDistance ? (bestDistance - gaResult.totalDistance).toFixed(2) : "0";
+      console.log(`${FLOW}   improveWithGA: ${gaResult.totalDays}d, ${gaResult.totalDistance}km, improvement: ${impr}km in ${gaMs}ms`);
+      if (gaResult.totalDistance < bestDistance) {
+        bestDays = gaResult.days;
+        bestDistance = gaResult.totalDistance;
+        console.log(`${FLOW}   → GA improved solution by ${impr}km`);
+      } else {
+        console.log(`${FLOW}   → Deterministic solution was better, keeping it`);
+      }
+    } catch (err) {
+      console.warn("[GA] Post-optimization failed, using deterministic result:", err);
+    }
+  } else {
+    console.log(`${FLOW}   improveWithGA: skipped (< 3 locations)`);
+  }
+
+  console.log(`${FLOW}   routerOptimizer total: ${Date.now() - tStart}ms, det=${detDistance.toFixed(1)}km, best=${bestDistance.toFixed(1)}km, ${bestDays.length} days`);
 
   return {
-    days,
-    totalDistance,
+    days: bestDays,
+    totalDistance: Math.round(bestDistance * 100) / 100,
     osrmPairs: precomputedMatrix ? Object.keys(precomputedMatrix).length : 0,
     totalPairs: (locations.length * (locations.length + 1)) / 2,
   };
@@ -186,8 +230,8 @@ function sliceTourToSolution(
       let violation = false;
       switch (config.constraintType) {
         case "hours": if (hours > config.constraintValue) violation = true; break;
-        case "visits": if (proposed.length > config.constraintValue) violation = true; break;
-        case "capacity": if (proposed.length > config.constraintValue) violation = true; break;
+        case "visits": if (proposed.length > config.constraintValue || km / config.avgSpeed > 8) violation = true; break;
+        case "hours+visits": if (km / config.avgSpeed > config.constraintValue || proposed.length > (config.maxVisits ?? 10)) violation = true; break;
       }
       if (violation) break;
       dayIndices.push(tour[ptr]);
@@ -300,8 +344,8 @@ function dayViolates(
   const hours = km / config.avgSpeed + indices.length * config.visitTime / 60;
   switch (config.constraintType) {
     case "hours": return hours > config.constraintValue;
-    case "visits": return indices.length > config.constraintValue;
-    case "capacity": return indices.length > config.constraintValue;
+    case "visits": return indices.length > config.constraintValue || km / config.avgSpeed > 8;
+    case "hours+visits": return km / config.avgSpeed > config.constraintValue || indices.length > (config.maxVisits ?? 10);
   }
 }
 

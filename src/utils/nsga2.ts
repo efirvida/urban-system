@@ -56,10 +56,10 @@ export async function runNSGA2(
     return { balanced: empty, minDistance: empty, minDuration: empty, paretoFront: [], totalEvaluations: 0 };
   }
 
-  const POP = 40;
-  const GENS = 40;
+  const POP = 80;
+  const GENS = 100;
   const CR = 0.85;
-  const MR = 0.2;
+  const MR = 0.3;
 
   // ── Distance helpers ──
   function pd(a: number, b: number): number {
@@ -89,13 +89,30 @@ export async function runNSGA2(
   function decode(perm: number[], lf: number): number[][] {
     const routes: number[][] = [];
     let i = 0;
-    const maxH = config.constraintValue * lf;
     const validPerm = perm.filter(idx => idx >= 0 && idx < locations.length);
+    if (validPerm.length === 0) {
+      console.warn(`[DECODE] EMPTY validPerm! perm=[${perm.slice(0, 5).join(',')}...](${perm.length}), n=${n}, locs=${locations.length}, lf=${lf.toFixed(3)}, constraint=${config.constraintValue}`);
+      return routes;
+    }
     while (i < validPerm.length) {
       const day: number[] = [];
       while (i < validPerm.length) {
         const prop = [...day, validPerm[i]];
-        if (routeHours(prop) > maxH) break;
+        let violation = false;
+        switch (config.constraintType) {
+          case "hours":
+            if (routeHours(prop) > config.constraintValue * lf) violation = true;
+            break;
+          case "visits":
+            if (prop.length > Math.round(config.constraintValue * lf)) violation = true;
+            break;
+          case "hours+visits": {
+            const driveH = routeDist(prop) / config.avgSpeed;
+            if (driveH > config.constraintValue * lf || prop.length > Math.round((config.maxVisits ?? 10) * lf)) violation = true;
+            break;
+          }
+        }
+        if (violation) break;
         day.push(validPerm[i]); i++;
       }
       if (day.length === 0 && i < validPerm.length) { day.push(validPerm[i]); i++; }
@@ -138,7 +155,7 @@ export async function runNSGA2(
   // ── Initialization ──
   function initPopulation(): Individual[] {
     const pop: Individual[] = [];
-    const nnCount = Math.max(2, Math.floor(POP * 0.1));
+    const nnCount = Math.max(5, Math.floor(POP * 0.25));
     for (let i = 0; i < POP; i++) {
       const perm = i < nnCount ? nnPermutation() : randomPerm();
       const lf = 0.5 + (i / POP) * 0.5;
@@ -203,18 +220,34 @@ export async function runNSGA2(
     const c2 = c1 + 1 + Math.floor(Math.random() * (len - c1 - 1));
     const ch1 = new Array(len).fill(-1), ch2 = new Array(len).fill(-1);
     const s1 = new Set(p1.slice(c1, c2 + 1));
-    for (let i = c1; i <= c2; i++) ch1[i] = p1[i];
+    const s2 = new Set(p2.slice(c1, c2 + 1));
+    // Fill middle segment from each parent
+    for (let i = c1; i <= c2; i++) { ch1[i] = p1[i]; ch2[i] = p2[i]; }
+    // Fill remaining slots in order from the other parent
     let idx = 0;
     for (let i = 0; i < len; i++) { if (ch1[i] !== -1) continue; while (s1.has(p2[idx])) idx++; ch1[i] = p2[idx++]; }
+    idx = 0;
+    for (let i = 0; i < len; i++) { if (ch2[i] !== -1) continue; while (s2.has(p1[idx])) idx++; ch2[i] = p1[idx++]; }
     return [ch1, ch2];
   }
 
   function mutate(perm: number[]): number[] {
     const r = [...perm];
-    const i = Math.floor(Math.random() * r.length);
-    let j = Math.floor(Math.random() * r.length);
-    while (j === i) j = Math.floor(Math.random() * r.length);
-    [r[i], r[j]] = [r[j], r[i]];
+    if (r.length < 2) return r;
+    // 50% swap, 50% invert segment
+    if (Math.random() < 0.5) {
+      // Swap two random positions
+      const i = Math.floor(Math.random() * r.length);
+      let j = Math.floor(Math.random() * r.length);
+      while (j === i) j = Math.floor(Math.random() * r.length);
+      [r[i], r[j]] = [r[j], r[i]];
+    } else if (r.length >= 3) {
+      // Invert a random segment (reversal mutation — better for VRP)
+      const a = Math.floor(Math.random() * (r.length - 1));
+      const b = a + 1 + Math.floor(Math.random() * (r.length - a - 1));
+      let l = a, r2 = b;
+      while (l < r2) { const tmp = r[l]; r[l] = r[r2]; r[r2] = tmp; l++; r2--; }
+    }
     return r;
   }
 
@@ -240,13 +273,26 @@ export async function runNSGA2(
   let pop = initPopulation();
   let evals = POP;
 
+  const FLOW = "[FLOW]";
+  const tNsga = Date.now();
+  console.log(`${FLOW}   NSGA2 start: pop=${POP}, gens=${GENS}, n=${n}`);
+
   for (let gen = 0; gen < GENS; gen++) {
     // Yield every 10 generations to avoid blocking the event loop
-    if (gen % 10 === 0) await new Promise(r => setTimeout(r, 0));
+    if (gen % 10 === 0) {
+      await new Promise(r => setTimeout(r, 0));
+      const bestObj = pop.reduce((a, b) => a.objectives[0] < b.objectives[0] ? a : b);
+      console.log(`${FLOW}   NSGA2 gen ${gen}: best dist=${bestObj.objectives[0].toFixed(1)}km, dur=${bestObj.objectives[1].toFixed(2)}h, pop=${pop.length}`);
+    }
 
     const offspring: Individual[] = [];
+    const tOffStart = Date.now();
+    let offCount = 0;
 
     while (offspring.length < POP) {
+      // Yield cada 5 iteraciones para darle respiro al browser
+      if (offCount > 0 && offCount % 5 === 0) await new Promise(r => setTimeout(r, 0));
+
       const p1 = tournamentSelect(pop);
       const p2 = tournamentSelect(pop);
       let c1: number[], c2: number[];
@@ -266,25 +312,51 @@ export async function runNSGA2(
       if (Math.random() < MR) lf1 = Math.max(0.4, Math.min(1.0, lf1 + (Math.random() - 0.5) * 0.2));
       if (Math.random() < MR) lf2 = Math.max(0.4, Math.min(1.0, lf2 + (Math.random() - 0.5) * 0.2));
 
+      console.log(`${FLOW}   NSGA2 gen ${gen} iter ${offCount+1}: BEFORE decode`);
       const r1 = decode(c1, lf1);
+      const tDec1 = Date.now();
+      console.log(`${FLOW}   NSGA2 gen ${gen} iter ${offCount+1}: c1 done (${r1.length} routes)`);
       const r2 = decode(c2, lf2);
-      offspring.push({ perm: c1, loadFactor: lf1, routes: r1, objectives: computeObjectives(r1), rank: 0, crowdingDist: 0 });
-      if (offspring.length < POP) { offspring.push({ perm: c2, loadFactor: lf2, routes: r2, objectives: computeObjectives(r2), rank: 0, crowdingDist: 0 }); }
+      const tDec2 = Date.now();
+      console.log(`${FLOW}   NSGA2 gen ${gen} iter ${offCount+1}: c2 done (${r2.length} routes)`);
+      if (tDec2 - tDec1 > 1000) {
+        console.log(`${FLOW}   NSGA2 gen ${gen} decode SLOW: ${tDec2 - tDec1}ms`);
+      }
+
+      const obj1 = computeObjectives(r1);
+      const obj2 = computeObjectives(r2);
+
+      offspring.push({ perm: c1, loadFactor: lf1, routes: r1, objectives: obj1, rank: 0, crowdingDist: 0 });
+      if (offspring.length < POP) { offspring.push({ perm: c2, loadFactor: lf2, routes: r2, objectives: obj2, rank: 0, crowdingDist: 0 }); }
+
+      offCount++;
+      console.log(`${FLOW}   NSGA2 gen ${gen} iter ${offCount}: DONE — ${offspring.length}/${POP} offspring`);
     }
 
+    console.log(`${FLOW}   NSGA2 gen ${gen}: offspring created (${Date.now() - tOffStart}ms)`);
     evals += offspring.length;
+    const tSort = Date.now();
     const combined = [...pop, ...offspring];
     fastNonDominatedSort(combined);
+    console.log(`${FLOW}   NSGA2 gen ${gen}: nonDominatedSort done (${Date.now() - tSort}ms, combined=${combined.length})`);
 
     const maxRank = Math.max(...combined.map(ind => ind.rank));
     const fronts: number[][] = Array.from({ length: maxRank + 1 }, () => []);
     for (let i = 0; i < combined.length; i++) fronts[combined[i].rank].push(i);
+    const tCrowd = Date.now();
     for (const f of fronts) { if (f.length > 0) crowdingDistance(combined, f); }
+    console.log(`${FLOW}   NSGA2 gen ${gen}: crowdingDistance done (${Date.now() - tCrowd}ms, fronts=${fronts.length})`);
 
+    const tSel = Date.now();
     const next: Individual[] = [];
     let r = 0;
     while (r < fronts.length && next.length + fronts[r].length <= POP) {
-      for (const idx of fronts[r]) next.push({ ...combined[idx], perm: [...combined[idx].perm], routes: combined[idx].routes.map(x => [...x]) });
+      const f = fronts[r];
+      for (let fi = 0; fi < f.length; fi++) {
+        const idx = f[fi];
+        next.push({ ...combined[idx], perm: [...combined[idx].perm], routes: combined[idx].routes.map(x => [...x]) });
+        if (fi % 20 === 0 && fi > 0) await new Promise(r => setTimeout(r, 0)); // yield durante selección también
+      }
       r++;
     }
     if (next.length < POP && r < fronts.length) {
@@ -295,6 +367,7 @@ export async function runNSGA2(
       }
     }
     pop = next;
+    console.log(`${FLOW}   NSGA2 gen ${gen}: selection done (${Date.now() - tSel}ms, next.pop=${pop.length})`);
   }
 
   // ── Extract Pareto front ──
@@ -322,6 +395,8 @@ export async function runNSGA2(
     const score = (ind.objectives[0] - idealDist) / rDist + (ind.objectives[1] - idealDur) / rDur;
     return score < ((best.objectives[0] - idealDist) / rDist + (best.objectives[1] - idealDur) / rDur) ? ind : best;
   });
+
+  console.log(`${FLOW}   NSGA2 done: ${Date.now() - tNsga}ms, pareto=${front.length} solutions, balanced=${balanced.objectives[0].toFixed(1)}km/${balanced.objectives[1].toFixed(2)}h`);
 
   return {
     balanced: toPS(balanced),

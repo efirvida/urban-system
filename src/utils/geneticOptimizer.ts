@@ -53,7 +53,7 @@ function decode(perm: number[], locs: Location[], home: Location, cfg: Config, p
       switch (cfg.constraintType) {
         case "hours": { const h = km / cfg.avgSpeed + prop.length * cfg.visitTime / 60; if (h > cfg.constraintValue) v = true; break; }
         case "visits": if (prop.length > cfg.constraintValue) v = true; break;
-        case "capacity": if (prop.length > cfg.constraintValue) v = true; break;
+        case "hours+visits": if (km / cfg.avgSpeed > cfg.constraintValue || prop.length > (cfg.maxVisits ?? 10)) v = true; break;
       }
       if (v) break;
       day.push(perm[i]); i++;
@@ -150,6 +150,10 @@ export async function improveWithGA(
   const CR = 0.85;
   const MR = 0.2;
 
+  const FLOW = "[FLOW]";
+  const tGa = Date.now();
+  console.log(`${FLOW}     GA start: n=${n}, pop=${POP}, gens=${GENS}`);
+
   // Seed population: 20% from initial perm (mutated variants) + 80% random
   let pop: { perm: number[]; dist: number }[] = [];
 
@@ -169,11 +173,22 @@ export async function improveWithGA(
 
   // Sort by distance
   pop.sort((a, b) => a.dist - b.dist);
+  console.log(`${FLOW}     GA init pop: best=${pop[0].dist.toFixed(1)}km, worst=${pop[pop.length-1].dist.toFixed(1)}km`);
 
   let bestDist = pop[0].dist;
   let bestPerm = [...pop[0].perm];
+  let lastLogDist = bestDist;
 
   for (let gen = 0; gen < GENS; gen++) {
+    // Yield cada 10 generaciones para no bloquear el UI
+    if (gen % 10 === 0) {
+      await new Promise(r => setTimeout(r, 0));
+      if (pop[0].dist < lastLogDist) {
+        console.log(`${FLOW}     GA gen ${gen}: best=${pop[0].dist.toFixed(1)}km (improved ${(lastLogDist - pop[0].dist).toFixed(1)}km)`);
+        lastLogDist = pop[0].dist;
+      }
+    }
+
     const offspring: typeof pop = [];
 
     while (offspring.length < POP) {
@@ -214,12 +229,15 @@ export async function improveWithGA(
   const finalRoutes = decode(bestPerm, locations, home, config, precomputed);
   const initialDist = totalDist(decode(initialPerm, locations, home, config, precomputed), locations, home, precomputed);
   const days = routesToDays(finalRoutes, locations, home, config, precomputed);
+  const improvement = Math.round((initialDist - bestDist) * 100) / 100;
+
+  console.log(`${FLOW}     GA done: ${Date.now() - tGa}ms, initial=${initialDist.toFixed(1)}km, best=${bestDist.toFixed(1)}km, improvement=${improvement}km, days=${finalRoutes.length}`);
 
   return {
     days,
     totalDistance: bestDist,
     totalDays: finalRoutes.length,
-    improvement: Math.round((initialDist - bestDist) * 100) / 100,
+    improvement,
   };
 }
 

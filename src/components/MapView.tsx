@@ -26,8 +26,12 @@ interface MapViewProps {
   placementMode?: "home" | null;
   /** Called when user clicks to place home */
   onPlaceHome?: (lat: number, lng: number) => void;
-  /** Called when user drags the home marker */
+  /** Called when user drags home marker */
   onDragHome?: (lat: number, lng: number) => void;
+  /** Called when user clicks a route stop (POI) in a route */
+  onPOIClick?: (lat: number, lng: number, day: number, name: string) => void;
+  /** Day to highlight (dim others) */
+  highlightDay?: number | null;
 }
 
 // ─── OSM Style (guarantees road network visibility) ──────────
@@ -60,6 +64,8 @@ export default function MapView({
   placementMode,
   onPlaceHome,
   onDragHome,
+  onPOIClick,
+  highlightDay,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -205,8 +211,10 @@ export default function MapView({
         const sourceId = `rs-${day.day}`;
         const isHidden = hiddenDays?.has(day.day);
 
-        // Create layer if it doesn't exist
-        if (!map.getSource(sourceId)) {
+        // Create or update layer
+        const existingSource = map.getSource(sourceId);
+        const glowId = `rg-${day.day}`;
+        if (!existingSource) {
           map.addSource(sourceId, {
             type: "geojson",
             data: {
@@ -215,42 +223,72 @@ export default function MapView({
               geometry: { type: "LineString", coordinates: coords },
             },
           });
+          // Glow/outline layer (dark for contrast)
+          map.addLayer({
+            id: glowId,
+            type: "line",
+            source: sourceId,
+            layout: { "line-join": "round", "line-cap": "round", visibility: isHidden ? "none" : "visible" },
+            paint: {
+              "line-color": "#000000",
+              "line-width": 6,
+              "line-opacity": highlightDay && highlightDay !== day.day ? 0.08 : 0.25,
+            },
+          });
+          // Route layer (colored, thick)
           map.addLayer({
             id: layerId,
             type: "line",
             source: sourceId,
-            layout: {
-              "line-join": "round",
-              "line-cap": "round",
-              visibility: isHidden ? "none" : "visible",
-            },
+            layout: { "line-join": "round", "line-cap": "round", visibility: isHidden ? "none" : "visible" },
             paint: {
               "line-color": color,
-              "line-width": 4,
-              "line-opacity": 0.85,
+              "line-width": highlightDay && highlightDay !== day.day ? 3 : 5,
+              "line-opacity": highlightDay && highlightDay !== day.day ? 0.3 : 1,
             },
           });
-          routeLayersRef.current.push(layerId);
+          routeLayersRef.current.push(glowId, layerId);
         } else {
-          // Toggle visibility
-          map.setLayoutProperty(
-            layerId,
-            "visibility",
-            isHidden ? "none" : "visible"
-          );
+          // Update source data
+          try {
+            (existingSource as any).setData({
+              type: "Feature",
+              properties: {},
+              geometry: { type: "LineString", coordinates: coords },
+            });
+          } catch {}
+          // Toggle visibility for both glow and route
+          map.setLayoutProperty(layerId, "visibility", isHidden ? "none" : "visible");
+          map.setLayoutProperty(glowId, "visibility", isHidden ? "none" : "visible");
         }
       }
     }
 
     // Hide stale route layers
-    const activeRouteDays = new Set(routes?.map((d) => `rl-${d.day}`) ?? []);
+    const activeDays = new Set(routes?.map((d) => d.day) ?? []);
+    const layerPrefix = (id: string) => id.slice(0, 3); // "rl-" or "rg-"
+    const dayNum = (id: string) => parseInt(id.slice(3), 10);
+
     for (const layerId of routeLayersRef.current) {
-      if (!activeRouteDays.has(layerId)) {
+      const day = dayNum(layerId);
+      if (!activeDays.has(day)) {
         try {
           if (map.getLayer(layerId)) map.removeLayer(layerId);
-          const srcId = `rs-${layerId.slice(3)}`;
-          if (map.getSource(srcId)) map.removeSource(srcId);
         } catch {}
+      } else if (routes) {
+        const isHidden = hiddenDays?.has(day);
+        map.setLayoutProperty(layerId, "visibility", isHidden ? "none" : "visible");
+      }
+    }
+
+    // Clean up orphan sources (no layers left for that day)
+    const activeSrcIds = new Set<string>();
+    for (const layerId of routeLayersRef.current) {
+      if (map.getLayer(layerId)) activeSrcIds.add(`rs-${dayNum(layerId)}`);
+    }
+    for (const srcId of routeLayersRef.current.map(l => `rs-${dayNum(l)}`)) {
+      if (!activeSrcIds.has(srcId) && map.getSource(srcId)) {
+        try { map.removeSource(srcId); } catch {}
       }
     }
     routeLayersRef.current = routes?.map((d) => `rl-${d.day}`) ?? [];
@@ -310,12 +348,15 @@ export default function MapView({
       color: string,
       popupHtml?: string,
       /** Show as pin icon instead of numbered circle */
-      pinOnly?: boolean
+      pinOnly?: boolean,
+      /** Click handler (for route editing) */
+      onClick?: () => void
     ) => {
       keepIds.add(id);
       const existing = markersMap.get(id);
       if (existing) {
         existing.setLngLat([lng, lat]);
+        if (onClick) (existing as any)._clickFn = onClick;
         return;
       }
 
@@ -339,6 +380,13 @@ export default function MapView({
         .addTo(map);
       if (popupHtml) {
         m.setPopup(new maplibregl.Popup({ offset: 25 }).setHTML(popupHtml));
+      }
+      if (onClick) {
+        el.style.cursor = "pointer";
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onClick();
+        });
       }
       markersMap.set(id, m);
     };
@@ -400,7 +448,9 @@ export default function MapView({
             stop.lng,
             String(stop.sequence),
             color,
-            `<strong>${stop.name}</strong><br/>Día ${day.day} · #${stop.sequence}<br/>${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`
+            `<strong>${stop.name}</strong><br/>Día ${day.day} · #${stop.sequence}<br/>${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`,
+            false,
+            () => onPOIClick?.(stop.lat, stop.lng, day.day, stop.name)
           );
         }
       }
