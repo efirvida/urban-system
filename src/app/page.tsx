@@ -190,7 +190,7 @@ export default function Home() {
           algorithm: algorithm === "nsga2" ? "nsga2" : undefined,
         }),
       });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+      if (!res.ok) { const err = await res.json(); throw new Error(err.details || err.error || "Error en la optimización"); }
 
       const data = await res.json();
       if (data.algorithm === "nsga2") {
