@@ -13,7 +13,7 @@ import {
 } from "@/types";
 import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
-import { buildDistanceMatrices, fetchAllRouteGeometries, MatrixProgress } from "@/utils/clientRouting";
+import { fetchAllRouteGeometries, MatrixProgress } from "@/utils/clientRouting";
 
 import FileUpload from "@/components/FileUpload";
 import ColumnMapper from "@/components/ColumnMapper";
@@ -166,15 +166,7 @@ export default function Home() {
     setMatrixProgress(null);
 
     try {
-      // ── Phase 1: Build distance matrix (OSRM Table Service — 1 request!) ──
-      setOptimizePhase("matrix");
-      const { osrmMatrix } = await buildDistanceMatrices(
-        config.homeLat, config.homeLng, locations, setMatrixProgress
-      );
-      const distanceObj: Record<string, number> = {};
-      osrmMatrix.forEach((v, k) => { distanceObj[k] = v; });
-
-      // ── Phase 2: Run optimizer ──
+      // ── Run optimizer (server builds distance matrix) ──
       setOptimizePhase("algorithm");
       setMatrixProgress(null);
 
@@ -183,7 +175,6 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           locations, config,
-          distanceMatrix: distanceObj,
           algorithm: algorithm === "nsga2" ? "nsga2" : undefined,
         }),
       });

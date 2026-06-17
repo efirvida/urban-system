@@ -14,9 +14,11 @@ function buildHaversineMatrix(locations: Location[], config: Config): Record<str
 }
 
 export async function POST(request: NextRequest) {
+  console.log("[API] /api/optimize called");
   const startTime = Date.now();
   try {
     const body = await request.json();
+    console.log("[API] Body received, locations:", body.locations?.length);
     const { locations, config, algorithm } = body as {
       locations: Location[];
       config: Config;
