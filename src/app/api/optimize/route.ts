@@ -13,17 +13,17 @@ export async function POST(request: NextRequest) {
       googleMapsKey?: string;
     };
 
-    // Resolve distance matrix: client-provided, Google Maps (env or client key), or Haversine
+    // Resolve distance matrix (priority: client → Google Maps → Haversine)
     let distanceMatrix = clientMatrix;
 
-    if (!distanceMatrix) {
+    if (!distanceMatrix || Object.keys(distanceMatrix).length === 0) {
       const googleKey = process.env.GOOGLE_MAPS_API_KEY || clientKey;
       if (googleKey && locations.length > 0) {
         const all = [{ lat: config.homeLat, lng: config.homeLng }, ...locations];
         const result = await buildGoogleMatrix(all, googleKey);
         distanceMatrix = result.matrix;
       } else {
-        // Pure Haversine (instant, no API calls)
+        // Pure Haversine fallback (instant)
         distanceMatrix = {};
         const { haversineDistance } = await import("@/utils/haversine");
         const all = [{ lat: config.homeLat, lng: config.homeLng }, ...locations];

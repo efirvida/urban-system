@@ -11,7 +11,7 @@ import {
 } from "@/types";
 import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
-import { MatrixProgress } from "@/utils/clientRouting";
+import { buildDistanceMatrices, MatrixProgress } from "@/utils/clientRouting";
 
 import FileUpload from "@/components/FileUpload";
 import ColumnMapper from "@/components/ColumnMapper";
@@ -158,14 +158,31 @@ export default function Home() {
     setMatrixProgress(null);
 
     try {
-      // ── Run optimizer (server builds distance matrix) ──
+      // ── Phase 1: Build distance matrix (client-side OSRM + Haversine) ──
+      let distanceObj: Record<string, number> | undefined;
+
+      if (!googleMapsKey && !process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY) {
+        setOptimizePhase("matrix");
+        const { osrmMatrix } = await buildDistanceMatrices(
+          config.homeLat, config.homeLng, locations, setMatrixProgress
+        );
+        distanceObj = {};
+        osrmMatrix.forEach((v, k) => { distanceObj![k] = v; });
+      }
+
+      // ── Phase 2: Run optimizer ──
       setOptimizePhase("algorithm");
       setMatrixProgress(null);
 
       const res = await fetch("/api/optimize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locations, config, googleMapsKey: googleMapsKey || undefined }),
+        body: JSON.stringify({
+          locations,
+          config,
+          distanceMatrix: distanceObj,
+          googleMapsKey: googleMapsKey || undefined,
+        }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
 
