@@ -209,16 +209,20 @@ export default function MapView({
 
         // Build polyline coordinates — use OSRM road geometry when available
         const coords: [number, number][] = [];
+        const hasOnlyHome = day.stops.every((s) => s.isHome);
 
-        // Try day-level route geometry (full day's route in one polyline)
-        const dayGeo = routeGeometry?.get(day.day);
-        if (dayGeo && dayGeo.length > 1) {
-          coords.push(...dayGeo);
-        } else {
-          // Fallback: straight lines between stops
-          for (let s = 0; s < day.stops.length - 1; s++) {
-            if (s === 0) coords.push([day.stops[s].lng, day.stops[s].lat]);
-            coords.push([day.stops[s + 1].lng, day.stops[s + 1].lat]);
+        if (!hasOnlyHome) {
+          // Try day-level route geometry (full day's route in one polyline)
+          const dayGeo = routeGeometry?.get(day.day);
+          if (dayGeo && dayGeo.length > 1) {
+            coords.push(...dayGeo);
+          } else {
+            // Fallback: straight lines between ALL consecutive stops (home → POIs → home)
+            for (let s = 0; s < day.stops.length - 1; s++) {
+              coords.push([day.stops[s].lng, day.stops[s].lat]);
+            }
+            // Push the last stop to close the polyline
+            coords.push([day.stops[day.stops.length - 1].lng, day.stops[day.stops.length - 1].lat]);
           }
         }
 
@@ -502,49 +506,24 @@ export default function MapView({
     }
   }, [data]);
 
-  // ── Update route paint + visibility when highlightDay changes ──
+  // ── Update route paint properties when highlightDay changes ──
+  // Visibility is handled by the main [data] effect via hiddenDays.
+  // This effect only updates line width/opacity for existing route layers.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !data.routes) return;
-    const hidden = data.hiddenDays ?? new Set();
     for (const day of data.routes) {
       const layerId = `rl-${day.day}`;
       const glowId = `rg-${day.day}`;
       if (!map.getLayer(layerId) || !map.getLayer(glowId)) continue;
 
       const isHighlighted = highlightDay === day.day;
-      const isDimmed = highlightDay !== null && !isHighlighted;
-
-      // Visibility: when highlightDay is set, ONLY show the highlighted day
-      if (highlightDay !== null) {
-        const visible = isHighlighted ? "visible" : "none";
-        map.setLayoutProperty(layerId, "visibility", visible);
-        map.setLayoutProperty(glowId, "visibility", visible);
-      } else {
-        // No highlight: use hiddenDays
-        const visible = hidden.has(day.day) ? "none" : "visible";
-        map.setLayoutProperty(layerId, "visibility", visible);
-        map.setLayoutProperty(glowId, "visibility", visible);
-      }
-
-      // Paint properties
-      if (isHighlighted) {
-        map.setPaintProperty(layerId, "line-width", 6);
-        map.setPaintProperty(layerId, "line-opacity", 1);
-        map.setPaintProperty(glowId, "line-width", 8);
-        map.setPaintProperty(glowId, "line-opacity", 0.3);
-      } else if (isDimmed) {
-        map.setPaintProperty(layerId, "line-width", 2);
-        map.setPaintProperty(layerId, "line-opacity", 0.1);
-        map.setPaintProperty(glowId, "line-width", 6);
-        map.setPaintProperty(glowId, "line-opacity", 0.04);
-      } else {
-        // Default (no highlight active)
-        map.setPaintProperty(layerId, "line-width", 4);
-        map.setPaintProperty(layerId, "line-opacity", 1);
-        map.setPaintProperty(glowId, "line-width", 6);
-        map.setPaintProperty(glowId, "line-opacity", 0.25);
-      }
+      // Update route layer paint
+      map.setPaintProperty(layerId, "line-width", isHighlighted ? 6 : highlightDay ? 2 : 4);
+      map.setPaintProperty(layerId, "line-opacity", isHighlighted ? 1 : highlightDay ? 0.1 : 1);
+      // Update glow layer paint
+      map.setPaintProperty(glowId, "line-width", isHighlighted ? 8 : 6);
+      map.setPaintProperty(glowId, "line-opacity", isHighlighted ? 0.3 : 0.25);
     }
   }, [highlightDay, data]);
 
