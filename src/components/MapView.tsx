@@ -502,18 +502,49 @@ export default function MapView({
     }
   }, [data]);
 
-  // ── Update route paint properties when highlightDay changes ──
+  // ── Update route paint + visibility when highlightDay changes ──
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !data.routes) return;
+    const hidden = data.hiddenDays ?? new Set();
     for (const day of data.routes) {
       const layerId = `rl-${day.day}`;
       const glowId = `rg-${day.day}`;
       if (!map.getLayer(layerId) || !map.getLayer(glowId)) continue;
-      map.setPaintProperty(layerId, "line-width", highlightDay && highlightDay === day.day ? 6 : highlightDay ? 2 : 4);
-      map.setPaintProperty(layerId, "line-opacity", highlightDay && highlightDay !== day.day ? 0.1 : 1);
-      map.setPaintProperty(glowId, "line-width", highlightDay && highlightDay === day.day ? 8 : 6);
-      map.setPaintProperty(glowId, "line-opacity", highlightDay && highlightDay !== day.day ? 0.04 : 0.25);
+
+      const isHighlighted = highlightDay === day.day;
+      const isDimmed = highlightDay !== null && !isHighlighted;
+
+      // Visibility: when highlightDay is set, ONLY show the highlighted day
+      if (highlightDay !== null) {
+        const visible = isHighlighted ? "visible" : "none";
+        map.setLayoutProperty(layerId, "visibility", visible);
+        map.setLayoutProperty(glowId, "visibility", visible);
+      } else {
+        // No highlight: use hiddenDays
+        const visible = hidden.has(day.day) ? "none" : "visible";
+        map.setLayoutProperty(layerId, "visibility", visible);
+        map.setLayoutProperty(glowId, "visibility", visible);
+      }
+
+      // Paint properties
+      if (isHighlighted) {
+        map.setPaintProperty(layerId, "line-width", 6);
+        map.setPaintProperty(layerId, "line-opacity", 1);
+        map.setPaintProperty(glowId, "line-width", 8);
+        map.setPaintProperty(glowId, "line-opacity", 0.3);
+      } else if (isDimmed) {
+        map.setPaintProperty(layerId, "line-width", 2);
+        map.setPaintProperty(layerId, "line-opacity", 0.1);
+        map.setPaintProperty(glowId, "line-width", 6);
+        map.setPaintProperty(glowId, "line-opacity", 0.04);
+      } else {
+        // Default (no highlight active)
+        map.setPaintProperty(layerId, "line-width", 4);
+        map.setPaintProperty(layerId, "line-opacity", 1);
+        map.setPaintProperty(glowId, "line-width", 6);
+        map.setPaintProperty(glowId, "line-opacity", 0.25);
+      }
     }
   }, [highlightDay, data]);
 
