@@ -47,6 +47,9 @@ async function osrmPair(lat1: number, lng1: number, lat2: number, lng2: number):
   } catch { return null; }
 }
 
+/** Routing source for a day's geometry — drives dash styling on the map. */
+export type RouteSource = "geoapify" | "osrm" | "haversine";
+
 /** Fetch route geometry for map display */
 export async function fetchRouteGeometry(stops: Array<{ lat: number; lng: number }>): Promise<[number, number][] | null> {
   if (stops.length < 2) return null;
@@ -100,11 +103,21 @@ function findClosestIdx(coords: [number, number][], lng: number, lat: number): n
   return minI;
 }
 
-/** Fetch geometries for all days with per-leg caching */
+/** Fetch geometries for all days with per-leg caching.
+ *  Returns the geometries map AND a parallel sources map so the map can
+ *  render real-road routes as solid lines and estimated (Haversine) ones
+ *  as dashed lines. When a day resolves from the per-leg cache (no fresh
+ *  API call), its source is conservatively tagged as "haversine" — the
+ *  cache does not store the original provider.
+ */
 export async function fetchAllRouteGeometries(
   days: Array<{ day: number; stops: Array<{ lat: number; lng: number; isHome?: boolean }> }>,
-): Promise<Map<number, [number, number][]>> {
-  const result = new Map<number, [number, number][]>();
+): Promise<{
+  geometries: Map<number, [number, number][]>;
+  sources: Map<number, RouteSource>;
+}> {
+  const geometries = new Map<number, [number, number][]>();
+  const sources = new Map<number, RouteSource>();
 
   // Process each day
   for (const day of days) {
@@ -135,12 +148,18 @@ export async function fetchAllRouteGeometries(
           dayCoords.push(...clone);
         }
       }
-      result.set(day.day, dayCoords);
+      // Source unknown for cached legs — conservative: mark as estimated
+      // so the map dashes them. Per spec, this is acceptable.
+      if (dayCoords.length > 0) {
+        geometries.set(day.day, dayCoords);
+        sources.set(day.day, "haversine");
+      }
       continue;
     }
 
-    // Fetch full route from API
+    // Fetch full route from API — capture the source the server reports
     let routeCoords: [number, number][] | null = null;
+    let apiSource: RouteSource = "haversine";
     try {
       const res = await fetch("/api/routing", {
         method: "POST",
@@ -151,6 +170,10 @@ export async function fetchAllRouteGeometries(
       if (res.ok) {
         const data = await res.json();
         routeCoords = data.coordinates || null;
+        // Validate the source field — fall back to "haversine" if absent or unexpected
+        if (data.source === "geoapify" || data.source === "osrm" || data.source === "haversine") {
+          apiSource = data.source;
+        }
       }
     } catch {}
 
@@ -168,7 +191,10 @@ export async function fetchAllRouteGeometries(
           hasAny = true;
         }
       }
-      if (hasAny) result.set(day.day, fallback);
+      if (hasAny) {
+        geometries.set(day.day, fallback);
+        sources.set(day.day, "haversine");
+      }
       continue;
     }
 
@@ -199,10 +225,14 @@ export async function fetchAllRouteGeometries(
       }
     }
 
-    if (dayCoords.length > 0) result.set(day.day, dayCoords);
+    if (dayCoords.length > 0) {
+      geometries.set(day.day, dayCoords);
+      // Trust the source the server reported — could be "geoapify" / "osrm" / "haversine"
+      sources.set(day.day, apiSource);
+    }
   }
 
-  return result;
+  return { geometries, sources };
 }
 
 // ─── Main ────────────────────────────────────────────────

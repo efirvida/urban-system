@@ -433,11 +433,17 @@ export default function MapView({
       if (popupHtml) {
         m.setPopup(new maplibregl.Popup({ offset: 25 }).setHTML(popupHtml));
       }
-      // Click handler on the marker's ROOT container (same level as popup
-      // listener). Uses closure-captured poiData for reliable access.
+      // Click handler on the marker's ROOT container using CAPTURE phase.
+      // This fires BEFORE MapLibre's popup toggle (which calls stopPropagation
+      // in the bubble phase, preventing the event from reaching the map).
       if (poiData) {
         const container = m.getElement();
         (container as any)._poiData = poiData;
+        container.addEventListener("click", () => {
+          if (onPOIClickRef.current) {
+            onPOIClickRef.current(poiData.lat, poiData.lng, poiData.day, poiData.name);
+          }
+        }, { capture: true });
       }
       markersMap.set(id, m);
       markersMap.set(id, m);
