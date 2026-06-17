@@ -63,10 +63,17 @@ export async function runNSGA2(
 
   // ── Distance helpers ──
   function pd(a: number, b: number): number {
-    const ka = a === -1 ? 0 : a + 1;
-    const kb = b === -1 ? 0 : b + 1;
-    const k = ka < kb ? `${ka},${kb}` : `${kb},${ka}`;
-    if (precomputed?.[k] !== undefined) return precomputed[k];
+    if (precomputed) {
+      const ka = a === -1 ? 0 : a + 1;
+      const kb = b === -1 ? 0 : b + 1;
+      const k = ka < kb ? `${ka},${kb}` : `${kb},${ka}`;
+      if (precomputed[k] !== undefined) return precomputed[k];
+      // Matrix was provided but this key is missing — propagate Infinity
+      // so NSGA-II naturally rejects the individual (no Haversine
+      // fallback when we promised a real-road matrix).
+      return Infinity;
+    }
+    // No matrix supplied at all — fall back to Haversine.
     const lat1 = a === -1 ? home.lat : (locations[a]?.lat ?? home.lat);
     const lng1 = a === -1 ? home.lng : (locations[a]?.lng ?? home.lng);
     const lat2 = b === -1 ? home.lat : (locations[b]?.lat ?? home.lat);

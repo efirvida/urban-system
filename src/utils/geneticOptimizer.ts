@@ -24,7 +24,12 @@ function pd(
     const kb = b === -1 ? 0 : b + 1;
     const k = ka < kb ? `${ka},${kb}` : `${kb},${ka}`;
     if (pre[k] !== undefined) return pre[k];
+    // Matrix was provided but this key is missing — propagate Infinity
+    // so the optimizer naturally rejects the candidate (no Haversine
+    // fallback when we promised a real-road matrix).
+    return Infinity;
   }
+  // No matrix supplied at all — fall back to Haversine (e.g. reoptimizeDay).
   return haversineDistance(
     a === -1 ? home.lat : locs[a].lat,
     a === -1 ? home.lng : locs[a].lng,

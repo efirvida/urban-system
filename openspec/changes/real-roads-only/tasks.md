@@ -33,11 +33,11 @@ Chain strategy: stacked-to-main
 
 **Goal:** Reject POIs with no real road to home before the optimizer; expose them in the response.
 
-- [ ] **T1.1** Create `src/utils/constants.ts` exporting `REAL_VS_ESTIMATED_KM = 0.1` and `TINY_DISTANCE_KM = 0.05`. _Files:_ new file. _Verify:_ `tsc --noEmit` clean.
-- [ ] **T1.2** Create `src/utils/unreachableFilter.ts` exporting `filterUnreachable(locations, home, matrix, haversineRef): { reachable: Location[]; unreachable: Location[] }`. _Files:_ new file. _Verify:_ unit smoke: 100% real matrix → empty `unreachable`; pure-Haversine matrix → all in `unreachable`.
-- [ ] **T1.3** Wire `filterUnreachable` into `src/app/api/optimize/route.ts` between Step 2 (Geoapify) and Step 3 (optimize); pass `reachable` to `optimizeRoutes`; attach `unreachable: Location[]` to response payload. _Files:_ `src/app/api/optimize/route.ts`. _Verify:_ HTTP test with 1 isolated POI → `unreachable.length === 1`, `days` excludes it.
-- [ ] **T1.4** Add `unreachable?: Location[]` to `OptimizeResponse` in `src/types/index.ts`. _Files:_ `src/types/index.ts`. _Verify:_ `tsc --noEmit` clean.
-- [ ] **T1.5** Replace magic literals `0.1` / `0.01` in `src/app/api/optimize/route.ts` (lines 87, 113) with `REAL_VS_ESTIMATED_KM`. _Files:_ same. _Verify:_ grep returns no matches for the old literals.
+- [x] **T1.1** Create `src/utils/constants.ts` exporting `REAL_VS_ESTIMATED_KM = 0.1` and `TINY_DISTANCE_KM = 0.05`. _Files:_ new file. _Verify:_ `tsc --noEmit` clean.
+- [x] **T1.2** Create `src/utils/unreachableFilter.ts` exporting `filterUnreachable(locations, home, matrix, haversineRef): { reachable: Location[]; unreachable: UnreachablePoi[] }`. _Files:_ new file. _Verify:_ unit smoke: 100% real matrix → empty `unreachable`; pure-Haversine matrix → all in `unreachable`.
+- [x] **T1.3** Wire `filterUnreachable` into `src/app/api/optimize/route.ts` between Step 2 (Geoapify) and Step 3 (optimize); pass `reachable` to `optimizeRoutes`; attach `unreachable: UnreachablePoi[]` to response payload. _Files:_ `src/app/api/optimize/route.ts`. _Verify:_ HTTP test with 1 isolated POI → `unreachable.length === 1`, `days` excludes it.
+- [x] **T1.4** Add `unreachable?: UnreachablePoi[]` (and the new `UnreachablePoi` interface) to `OptimizeResponse` in `src/types/index.ts`; also surface `unreachableCount` in `_meta`. _Files:_ `src/types/index.ts`. _Verify:_ `tsc --noEmit` clean.
+- [x] **T1.5** Replace magic literals `0.1` / `0.01` in `src/app/api/optimize/route.ts` (lines 87, 113) with `REAL_VS_ESTIMATED_KM`. _Files:_ same. _Verify:_ grep returns no matches for the old literals.
 
 **Deps:** none. **Rollback:** revert; optimizer sees all POIs again (no data loss).
 **Acceptance (spec §`unreachable-poi-handling`):** "All reachable" → `unreachable: []`, `days` covers 5. "One unreachable" → `unreachable` lists X, `days` covers 4. "All unreachable" → `days: []`, HTTP 200.
@@ -48,9 +48,9 @@ Chain strategy: stacked-to-main
 
 **Goal:** Missing matrix keys propagate `Infinity` instead of poisoning candidates with `0`.
 
-- [ ] **T2.1** Change `matGet` default in `src/utils/routerOptimizer.ts:15-18` from `return 0` to `return Infinity`; keep the `console.warn`. _Files:_ `src/utils/routerOptimizer.ts`. _Verify:_ trace shows `Infinity` for missing key; single warning logged.
-- [ ] **T2.2** Remove Haversine fallback in `pd()` of `src/utils/geneticOptimizer.ts:16-34`; when `pre` is provided and `pre[k]` is undefined, return `Infinity`. _Files:_ `src/utils/geneticOptimizer.ts`. _Verify:_ GA candidate with missing pair → `totalDist = Infinity`, rejected from offspring.
-- [ ] **T2.3** Remove Haversine fallback in `pd()` of `src/utils/nsga2.ts:65-75`; return `Infinity` when `precomputed?.[k]` is undefined. _Files:_ `src/utils/nsga2.ts`. _Verify:_ NSGA2 individual with missing pair is not added to offspring.
+- [x] **T2.1** Change `matGet` default in `src/utils/routerOptimizer.ts:15-18` from `return 0` to `return Infinity`; keep the `console.warn`. _Files:_ `src/utils/routerOptimizer.ts`. _Verify:_ trace shows `Infinity` for missing key; single warning logged.
+- [x] **T2.2** Remove Haversine fallback in `pd()` of `src/utils/geneticOptimizer.ts:16-34`; when `pre` is provided and `pre[k]` is undefined, return `Infinity`. _Files:_ `src/utils/geneticOptimizer.ts`. _Verify:_ GA candidate with missing pair → `totalDist = Infinity`, rejected from offspring.
+- [x] **T2.3** Remove Haversine fallback in `pd()` of `src/utils/nsga2.ts:65-75`; return `Infinity` when `precomputed?.[k]` is undefined. _Files:_ `src/utils/nsga2.ts`. _Verify:_ NSGA2 individual with missing pair is not added to offspring.
 
 **Deps:** none. **Rollback:** restore `return 0`; safe because PR 1 prevents the broken-key path.
 **Acceptance (spec §`strict-matrix-contract`):** `matGet` returns `Infinity` for missing key with one warning. GA `pd` with missing pair → `Infinity` propagates, candidate rejected. NSGA2 `pd` with missing pair → offspring not added.

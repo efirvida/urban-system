@@ -13,8 +13,8 @@ function matGet(a: number, b: number, matrix: Record<string, number>): number {
   const key = ka < kb ? `${ka},${kb}` : `${kb},${ka}`;
   const val = matrix[key];
   if (val === undefined) {
-    console.warn(`[matGet] Missing key "${key}" (a=${a}, b=${b}), defaulting to 0`);
-    return 0;
+    console.warn(`[matGet] Missing key "${key}" (a=${a}, b=${b}), returning Infinity`);
+    return Infinity;
   }
   return val;
 }

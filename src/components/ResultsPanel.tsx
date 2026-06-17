@@ -21,6 +21,10 @@ interface ResultsPanelProps {
   onToggleDay?: (day: number) => void;
   onExpandDay?: (day: number) => void;
   routingLabel?: string;
+  /** Controlled expanded day — when set, overrides internal state. */
+  expandedDay?: number | null;
+  /** Called when the user clicks a day header to expand/collapse. */
+  onExpandedDayChange?: (day: number | null) => void;
 }
 
 export default function ResultsPanel({
@@ -32,8 +36,11 @@ export default function ResultsPanel({
   onToggleDay,
   onExpandDay,
   routingLabel,
+  expandedDay: controlledDay,
+  onExpandedDayChange,
 }: ResultsPanelProps) {
-  const [expandedDay, setExpandedDay] = useState<number>(1);
+  const [internalDay, setInternalDay] = useState<number | null>(1);
+  const activeExpanded = controlledDay !== undefined ? controlledDay : internalDay;
 
   return (
     <div className="space-y-4">
@@ -71,7 +78,7 @@ export default function ResultsPanel({
       {/* Per-day details */}
       {days.map((day) => {
         const color = getRouteColor(day.day - 1);
-        const isExpanded = expandedDay === day.day;
+        const isExpanded = activeExpanded === day.day;
         const visitStops = day.stops.filter((s) => !s.isHome);
 
         return (
@@ -79,9 +86,10 @@ export default function ResultsPanel({
           <div
             className="card-header flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer"
             onClick={() => {
-              const newDay = isExpanded ? -1 : day.day;
-              setExpandedDay(newDay);
-              if (newDay !== -1 && onExpandDay) onExpandDay(newDay);
+              const newDay = isExpanded ? null : day.day;
+              setInternalDay(newDay);
+              onExpandedDayChange?.(newDay);
+              if (newDay !== null && onExpandDay) onExpandDay(newDay);
             }}
           >
             <div className="flex items-center gap-3">

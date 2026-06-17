@@ -187,6 +187,8 @@ export default function Home() {
     name: string;
   } | null>(null);
   const [highlightDay, setHighlightDay] = useState<number | null>(null);
+  /** Which day is expanded in the ResultsPanel sidebar. */
+  const [sidebarExpandedDay, setSidebarExpandedDay] = useState<number | null>(null);
   /** Floating action bar: target day being previewed (null = no preview). */
   const [previewTargetDay, setPreviewTargetDay] = useState<number | null>(null);
   /** Preview routes — shown on the map while user decides in the action bar. */
@@ -957,6 +959,8 @@ export default function Home() {
                   })
                 }
                 routingLabel="🚗 Rutas optimizadas"
+                expandedDay={sidebarExpandedDay}
+                onExpandedDayChange={setSidebarExpandedDay}
               />
 
               {/* Edit mode toggle */}
@@ -1045,6 +1049,7 @@ export default function Home() {
         onPOIClick={(lat, lng, day, name) => {
           setSelectedPOI({ name, lat, lng, day });
           setHighlightDay(day);
+          setSidebarExpandedDay(day);
           // Open the clicked POI's day — use editable days when in edit mode
           setHiddenDays((prev) => {
             const sourceDays = editMode && editDaysPreview
