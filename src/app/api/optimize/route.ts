@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Location, Config, OptimizeResponse, ApiError } from "@/types";
 import { optimizeRoutes } from "@/utils/routerOptimizer";
 import { buildGoogleMatrix } from "@/utils/googleRouting";
+import { improveWithGA } from "@/utils/geneticOptimizer";
 
 export async function POST(request: NextRequest) {
   try {
@@ -130,19 +131,44 @@ export async function POST(request: NextRequest) {
     const startTime = Date.now();
 
     // Route-First + Local Search
-    const result = await optimizeRoutes(locations, normalizedConfig, distanceMatrix);
+    const base = await optimizeRoutes(locations, normalizedConfig, distanceMatrix);
+    let finalDays = base.days;
+    let finalDist = base.totalDistance;
+
+    // GA post-optimization
+    if (locations.length >= 5) {
+      const home = { name: "Casa", lat: normalizedConfig.homeLat, lng: normalizedConfig.homeLng };
+      const initialPerm: number[] = [];
+      for (const day of base.days) {
+        for (const stop of day.stops) {
+          if (stop.isHome) continue;
+          const idx = locations.findIndex(l => l.lat === stop.lat && l.lng === stop.lng);
+          if (idx >= 0) initialPerm.push(idx);
+        }
+      }
+      if (initialPerm.length === locations.length) {
+        try {
+          const gaResult = await improveWithGA(initialPerm, locations, home, normalizedConfig, distanceMatrix);
+          if (gaResult.totalDistance < finalDist) {
+            finalDays = gaResult.days;
+            finalDist = gaResult.totalDistance;
+          }
+        } catch {}
+      }
+    }
+
     const elapsed = Date.now() - startTime;
 
     const response: OptimizeResponse = {
-      days: result.days,
-      totalDistance: Math.round(result.totalDistance * 100) / 100,
-      totalDays: result.days.length,
+      days: finalDays,
+      totalDistance: Math.round(finalDist * 100) / 100,
+      totalDays: finalDays.length,
       totalLocations: locations.length,
       _meta: {
         elapsedMs: elapsed,
-        osrmPairs: result.osrmPairs,
-        totalPairs: result.totalPairs,
-        routingMode: result.osrmPairs > 0 ? "osrm" : "haversine",
+        osrmPairs: base.osrmPairs,
+        totalPairs: base.totalPairs,
+        routingMode: base.osrmPairs > 0 ? "osrm" : "haversine",
       },
     };
 
