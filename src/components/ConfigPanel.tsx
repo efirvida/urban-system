@@ -152,7 +152,7 @@ export default function ConfigPanel({
         </div>
         {config.constraintType === "hours" && (
           <div className="text-xs text-gray-400 mt-2 text-center">
-            Incluye viaje + paradas ({config.visitTime} min c/u)
+            Incluye viaje + {(config.visitTime / 60).toFixed(1)}h por parada
           </div>
         )}
       </div>
@@ -182,20 +182,20 @@ export default function ConfigPanel({
           <div>
             <div className="flex justify-between text-xs text-gray-500 mb-1">
               <span>Tiempo por parada</span>
-              <span className="font-medium text-gray-700">{config.visitTime} min</span>
+              <span className="font-medium text-gray-700">{(config.visitTime / 60).toFixed(1)} h</span>
             </div>
             <input
               type="range"
-              min="5"
-              max="60"
-              step="5"
-              value={config.visitTime}
-              onChange={(e) => update({ visitTime: parseInt(e.target.value) })}
+              min="0.1"
+              max="3"
+              step="0.1"
+              value={config.visitTime / 60}
+              onChange={(e) => update({ visitTime: Math.round(parseFloat(e.target.value) * 60) })}
               className="w-full accent-blue-600"
             />
             <div className="flex justify-between text-[10px] text-gray-300 mt-0.5">
-              <span>5 min</span>
-              <span>60 min</span>
+              <span>0.1 h</span>
+              <span>3 h</span>
             </div>
           </div>
         </div>
