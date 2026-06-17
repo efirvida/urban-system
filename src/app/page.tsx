@@ -6,13 +6,15 @@ import {
   Config,
   ParetoSolution,
   OptimizeResponse,
-  NSGAResponse,
   RawFileData,
   ValidatedRow,
   ColumnMapping,
 } from "@/types";
 import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
+import { haversineDistance } from "@/utils/haversine";
+import { optimizeRoutes } from "@/utils/routerOptimizer";
+import { runNSGA2 } from "@/utils/nsga2";
 import { fetchAllRouteGeometries, MatrixProgress } from "@/utils/clientRouting";
 
 import FileUpload from "@/components/FileUpload";
@@ -166,49 +168,49 @@ export default function Home() {
     setMatrixProgress(null);
 
     try {
-      // ── Run optimizer (server builds distance matrix) ──
-      setOptimizePhase("algorithm");
+      // ── Build Haversine distance matrix ──
+      setOptimizePhase("matrix");
+      const all = [{ lat: config.homeLat, lng: config.homeLng }, ...locations];
+      const distanceMatrix: Record<string, number> = {};
+      for (let i = 0; i < all.length; i++)
+        for (let j = i + 1; j < all.length; j++)
+          distanceMatrix[`${i},${j}`] = haversineDistance(all[i].lat, all[i].lng, all[j].lat, all[j].lng);
       setMatrixProgress(null);
 
-      const res = await fetch("/api/optimize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          locations, config,
-          algorithm: algorithm === "nsga2" ? "nsga2" : undefined,
-        }),
-      });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.details || err.error || "Error en la optimización"); }
+      // ── Run optimization (CLIENT-SIDE, no server) ──
+      setOptimizePhase("algorithm");
+      const home = { name: "Casa", lat: config.homeLat, lng: config.homeLng };
 
-      const data = await res.json();
-
+      let optResult: OptimizeResponse;
       let geometryDays: Array<{ day: number; stops: Array<{ lat: number; lng: number; isHome?: boolean }> }> | undefined;
 
-      if (data.algorithm === "nsga2") {
-        const nsga = data as NSGAResponse;
+      if (algorithm === "nsga2") {
+        const nsga = await runNSGA2(locations, home, config, distanceMatrix);
         console.log("[NSGA2] balanced:", nsga.balanced.days, "d", nsga.balanced.totalDistance, "km");
         setNsgaResult({ balanced: nsga.balanced, minDistance: nsga.minDistance, minDuration: nsga.minDuration });
         setSelectedNsga("balanced");
-        setResult({ days: nsga.balanced.dayRoutes, totalDistance: nsga.balanced.totalDistance, totalDays: nsga.balanced.days, totalLocations: locations.length });
-        setHiddenDays(new Set(nsga.balanced.dayRoutes.slice(1).map((d) => d.day)));
+        optResult = { days: nsga.balanced.dayRoutes, totalDistance: nsga.balanced.totalDistance, totalDays: nsga.balanced.days, totalLocations: locations.length };
         geometryDays = nsga.balanced.dayRoutes;
+        setHiddenDays(new Set(nsga.balanced.dayRoutes.slice(1).map((d) => d.day)));
       } else {
-        const optResult = data as OptimizeResponse;
-        setResult(optResult);
+        const result = await optimizeRoutes(locations, config, distanceMatrix);
+        optResult = { days: result.days, totalDistance: result.totalDistance, totalDays: result.days.length, totalLocations: locations.length };
         setNsgaResult(null);
-        setHiddenDays(new Set(optResult.days.slice(1).map((d: any) => d.day)));
-        geometryDays = optResult.days;
+        setHiddenDays(new Set(result.days.slice(1).map((d: any) => d.day)));
+        geometryDays = result.days;
       }
 
-      // Fetch route geometries for map visualization (road-following polylines)
+      setResult(optResult);
+
+      // Fetch route geometries (async, background)
       if (geometryDays && geometryDays.length > 0) {
         fetchAllRouteGeometries(geometryDays).then(geo => {
           if (geo.size > 0) setRouteGeometry(geo);
         });
       }
+
       setRoutingMode("osrm");
       setOptimizePhase("done");
-
       setPhase("results");
       setSidebarOpen(true);
     } catch (err) {
