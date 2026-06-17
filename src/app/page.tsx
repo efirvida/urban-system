@@ -236,6 +236,11 @@ export default function Home() {
         { name: selectedPOI.name, lat: selectedPOI.lat, lng: selectedPOI.lng },
       ]);
 
+      // Note: matrix is passed as undefined here — page.tsx doesn't yet
+      // have the precomputed distance matrix in the optimization result
+      // flow. PR 6 of the "real-roads-only" change will propagate the
+      // matrix to these call sites. For now reoptimizeDay falls back to
+      // Haversine, which is acceptable for an editor preview.
       const newSource = reoptimizeDay(sourcePois, home, config, undefined, sourceDay.day);
       const newTarget = reoptimizeDay(targetPois, home, config, undefined, targetDayData.day);
 

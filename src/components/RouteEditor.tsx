@@ -25,8 +25,9 @@ interface RouteEditorProps {
   config: Config;
   /** All master locations — used to identify unassigned POIs. */
   locations: Location[];
-  /** Precomputed distance matrix (optional). Currently unused by
-   *  reoptimizeDay which uses Haversine. Kept for future use. */
+  /** Precomputed distance matrix (optional). Used by reoptimizeDay
+   *  together with the internally-built nameToIndex map so the editor
+   *  uses real (OSRM) distances for reordering instead of Haversine. */
   matrix?: Record<string, number>;
   /** Currently-selected POI on the map (for highlight). */
   selectedPOI?: { lat: number; lng: number; day: number; name: string } | null;
@@ -153,6 +154,19 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
     [config.homeLat, config.homeLng]
   );
 
+  // ── name → matrix-index map (0 = home, 1..n = locations) ──
+  // Mirrors the matrix convention used by routerOptimizer.matGet.
+  // Memoized so it's not rebuilt on every render.
+  const nameToIndex = useMemo(() => {
+    const map: Record<string, number> = { [home.name]: 0 };
+    locations.forEach((loc, i) => {
+      // Home wins on key conflict (set first); subsequent locations
+      // with the same name will overwrite, but home is a constant.
+      map[loc.name] = i + 1;
+    });
+    return map;
+  }, [home.name, locations]);
+
   // ── dnd-kit sensors ──
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -215,8 +229,8 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
           targetDay.stops.filter((s) => !s.isHome)
         ).concat([{ name: active.name, lat: active.lat, lng: active.lng }]);
 
-        const newSource = reoptimizeDay(sourcePois, home, config, matrix, sourceDay.day);
-        const newTarget = reoptimizeDay(targetPois, home, config, matrix, targetDay.day);
+        const newSource = reoptimizeDay(sourcePois, home, config, matrix, sourceDay.day, nameToIndex);
+        const newTarget = reoptimizeDay(targetPois, home, config, matrix, targetDay.day, nameToIndex);
 
         pushUndo({
           type: "move",
@@ -244,7 +258,7 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
           sourceDay.stops.filter((s) => !s.isHome)
         ).filter((p) => p.name !== active.name);
 
-        const newSource = reoptimizeDay(sourcePois, home, config, matrix, sourceDay.day);
+        const newSource = reoptimizeDay(sourcePois, home, config, matrix, sourceDay.day, nameToIndex);
 
         pushUndo({
           type: "remove",
@@ -275,7 +289,7 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
           targetDay.stops.filter((s) => !s.isHome)
         ).concat([{ name: active.name, lat: active.lat, lng: active.lng }]);
 
-        const newTarget = reoptimizeDay(targetPois, home, config, matrix, targetDay.day);
+        const newTarget = reoptimizeDay(targetPois, home, config, matrix, targetDay.day, nameToIndex);
 
         pushUndo({
           type: "add",
@@ -305,7 +319,7 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
       // ── Case 4: pool item dropped on pool — no-op ──
       if (active.kind === "pool-item" && over.kind === "pool") return;
     },
-    [workingDays, home, config, matrix, pushUndo]
+    [workingDays, home, config, matrix, nameToIndex, pushUndo]
   );
 
   // ── Undo ──
@@ -388,7 +402,7 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
       const newPois = stopsToLocations(day.stops.filter((s) => !s.isHome)).filter(
         (p) => p.name !== stopName
       );
-      const newDay = reoptimizeDay(newPois, home, config, matrix, day.day);
+      const newDay = reoptimizeDay(newPois, home, config, matrix, day.day, nameToIndex);
       pushUndo({
         type: "remove",
         poiName: stopName,
@@ -405,7 +419,7 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
         { name: stopName, lat, lng },
       ]);
     },
-    [workingDays, home, config, matrix, pushUndo]
+    [workingDays, home, config, matrix, nameToIndex, pushUndo]
   );
 
   // ── Stop click → notify parent (for map highlight) ──
@@ -459,7 +473,7 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
         const sourcePois = stopsToLocations(
           sourceDay.stops.filter((s) => !s.isHome)
         ).filter((p) => p.name !== poiName);
-        const newSource = reoptimizeDay(sourcePois, home, config, matrix, sourceDay.day);
+        const newSource = reoptimizeDay(sourcePois, home, config, matrix, sourceDay.day, nameToIndex);
         pushUndo({ type: "remove", poiName, fromDay: fromDayNumber, toDay: 0 });
         setWorkingDays((prev) => {
           const next = [...prev];
@@ -482,8 +496,8 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
       const targetPois = stopsToLocations(targetDay.stops.filter((s) => !s.isHome))
         .concat([{ name: poiName, lat, lng }]);
 
-      const newSource = reoptimizeDay(sourcePois, home, config, matrix, sourceDay.day);
-      const newTarget = reoptimizeDay(targetPois, home, config, matrix, targetDay.day);
+      const newSource = reoptimizeDay(sourcePois, home, config, matrix, sourceDay.day, nameToIndex);
+      const newTarget = reoptimizeDay(targetPois, home, config, matrix, targetDay.day, nameToIndex);
 
       pushUndo({ type: "move", poiName, fromDay: fromDayNumber, toDay: toDayNumber });
       setWorkingDays((prev) => {
@@ -495,7 +509,7 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
       // Update selection to the new day
       onPOISelect?.(poiName, lat, lng, toDayNumber);
     },
-    [workingDays, home, config, matrix, pushUndo, onPOISelect, onClearSelection]
+    [workingDays, home, config, matrix, nameToIndex, pushUndo, onPOISelect, onClearSelection]
   );
 
   const availableDays = useMemo(

@@ -493,26 +493,37 @@ function solutionToDays(
  * Re-optimize a single day's POIs from scratch.
  *
  * Used by the route editor on add/remove — instant feedback is critical
- * here (drag interactions), so we skip OSRM and use Haversine + a fast
- * NN + 2-opt loop over the day's POI subset. The caller passes a
- * precomputed `matrix` as a hint; if it cannot resolve a pair we fall
- * back to Haversine so the editor always renders.
+ * here (drag interactions), so we skip OSRM and use a fast NN + 2-opt
+ * loop over the day's POI subset. The caller passes a precomputed
+ * `matrix` together with a `nameToIndex` map; if both are present we
+ * use the real distances, and we fall back to Haversine whenever a
+ * pair is missing (e.g. a POI added via the editor that doesn't exist
+ * in the original matrix) so the editor always renders.
  *
- * @param locations POIs to visit on this day (order is ignored).
- * @param home      Start and end point of the day.
- * @param config    Used for avgSpeed + visitTime when computing
- *                  cumulative time on the returned DayRoute.
- * @param matrix    Optional precomputed distances (unused — Haversine
- *                  is faster for small day subsets).
- * @param dayNumber 1-based day number for the returned DayRoute.
- * @returns         DayRoute with home → optimized POIs → home.
+ * The `nameToIndex` map is keyed by `Location.name` and uses the
+ * matrix convention: 0 = home, 1..n = locations in array order.
+ *
+ * @param locations   POIs to visit on this day (order is ignored).
+ * @param home        Start and end point of the day.
+ * @param config      Used for avgSpeed + visitTime when computing
+ *                    cumulative time on the returned DayRoute.
+ * @param matrix      Optional precomputed real-distance matrix
+ *                    ("i,j" → km). Used only when `nameToIndex` is
+ *                    also provided.
+ * @param dayNumber   1-based day number for the returned DayRoute.
+ * @param nameToIndex Optional map from location name → matrix index
+ *                    (0 = home, 1..n = locations in array order).
+ *                    Must agree with the matrix that was built from
+ *                    `[home, ...locations]`.
+ * @returns           DayRoute with home → optimized POIs → home.
  */
 export function reoptimizeDay(
   locations: Location[],
   home: Location,
   config: Config,
   matrix: Record<string, number> | undefined,
-  dayNumber: number
+  dayNumber: number,
+  nameToIndex?: Record<string, number>
 ): DayRoute {
   // Empty day — just home at start and end.
   if (locations.length === 0) {
@@ -535,10 +546,25 @@ export function reoptimizeDay(
     };
   }
 
-  // Distance: Haversine for fast local feedback. Matrix parameter is kept for
-  // future use if a name→index map is provided for cached distance lookup.
-  const distance = (a: Location, b: Location): number =>
-    haversineDistance(a.lat, a.lng, b.lat, b.lng);
+  // Distance: prefer the precomputed real-distance matrix when both
+  // `matrix` and `nameToIndex` are provided. Falls back to Haversine
+  // for missing pairs (e.g. a POI added via the editor that doesn't
+  // exist in the original matrix) so the editor always renders.
+  const distance = (a: Location, b: Location): number => {
+    if (matrix && nameToIndex) {
+      const ia = nameToIndex[a.name];
+      const ib = nameToIndex[b.name];
+      if (ia !== undefined && ib !== undefined) {
+        const key = ia < ib ? `${ia},${ib}` : `${ib},${ia}`;
+        const v = matrix[key];
+        if (v !== undefined) return v;
+        console.warn(
+          `[reoptimizeDay] Missing matrix key "${key}" (a="${a.name}", b="${b.name}"), falling back to Haversine`
+        );
+      }
+    }
+    return haversineDistance(a.lat, a.lng, b.lat, b.lng);
+  };
 
   // ── Step 1: Nearest Neighbor from home ──
   const ordered: Location[] = [];

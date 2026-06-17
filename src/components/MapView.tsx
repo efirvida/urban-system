@@ -400,7 +400,11 @@ export default function MapView({
         el.textContent = label;
       }
 
-      if (poiData) (el as any)._poiData = poiData;
+      if (poiData) {
+        (el as any)._poiData = poiData;
+        // Also store on the marker container for the highlight effect
+        // (marker.getElement() returns the container, not el)
+      }
 
       const m = new maplibregl.Marker({ element: el })
         .setLngLat([lng, lat])
@@ -408,18 +412,19 @@ export default function MapView({
       if (popupHtml) {
         m.setPopup(new maplibregl.Popup({ offset: 25 }).setHTML(popupHtml));
       }
-      // Always attach click handler — reads POI data from element + latest
-      // callback from ref. No stopPropagation so MapLibre's popup listener
-      // on the marker container also fires.
-      el.style.cursor = "pointer";
-      el.addEventListener("click", () => {
-        const data = (el as any)._poiData as
-          | { lat: number; lng: number; day: number; name: string }
-          | undefined;
-        if (data && onPOIClickRef.current) {
-          onPOIClickRef.current(data.lat, data.lng, data.day, data.name);
-        }
-      });
+      // Click handler on the marker's ROOT container (same level as popup
+      // listener). Uses closure-captured poiData for reliable access.
+      if (poiData) {
+        const container = m.getElement();
+        (container as any)._poiData = poiData;
+        container.style.cursor = "pointer";
+        container.addEventListener("click", () => {
+          if (onPOIClickRef.current) {
+            onPOIClickRef.current(poiData.lat, poiData.lng, poiData.day, poiData.name);
+          }
+        });
+      }
+      markersMap.set(id, m);
       markersMap.set(id, m);
     };
 
