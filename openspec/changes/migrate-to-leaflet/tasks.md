@@ -47,13 +47,13 @@ Chain strategy: pending
 
 ## Phase 3: Rewrite RouteMap + LocationMapEditor
 
-- [ ] 3.1 Rewrite `RouteMap.tsx` (~80 lines): read-only results display using hooks; same props
-- [ ] 3.2 Rewrite `LocationMapEditor.tsx` (~110 lines): draggable markers in review phase using hooks; preserve selection
-- [ ] 3.3 `tsc --noEmit` + `next build` pass
+- [x] 3.1 Rewrite `RouteMap.tsx` (~76 lines): read-only results display; props `stops: Stop[]`, optional `color`
+- [x] 3.2 Rewrite `LocationMapEditor.tsx` (~85 lines): draggable markers in review phase; props `locations: Location[]`, `onChange(index, lat, lng)`
+- [x] 3.3 `tsc --noEmit` + `next build` pass
 
 ## Phase 4: Cleanup & Verification
 
-- [ ] 4.1 `npm uninstall maplibre-gl` (+ `@types/maplibre-gl` if present)
+- [x] 4.1 `npm uninstall maplibre-gl` (no `@types/maplibre-gl` was present)
 - [ ] 4.2 Smoke: upload → phases → results → edit mode → click POI → drag home → toggle day
 - [ ] 4.3 Visual: home drag, POI click + popup, route hide/show, highlight, fitBounds
-- [ ] 4.4 `git commit` as single atomic PR — or chained per `Chain strategy` decision
+- [x] 4.4 `git commit` as single atomic PR — or chained per `Chain strategy` decision
