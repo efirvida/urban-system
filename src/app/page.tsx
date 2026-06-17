@@ -67,6 +67,7 @@ export default function Home() {
   const [matrixProgress, setMatrixProgress] = useState<MatrixProgress | null>(null);
   const [routingMode, setRoutingMode] = useState<"osrm" | "haversine">("osrm");
   const [routeGeometry, setRouteGeometry] = useState<Map<string, [number, number][]> | null>(null);
+  const [googleMapsKey, setGoogleMapsKey] = useState("");
 
   // ── Map data (derived) ──
   const mapData = useMemo((): MapViewData => {
@@ -164,7 +165,7 @@ export default function Home() {
       const res = await fetch("/api/optimize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locations, config }),
+        body: JSON.stringify({ locations, config, googleMapsKey: googleMapsKey || undefined }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
 
@@ -297,6 +298,8 @@ export default function Home() {
                     locationCount={locations.length}
                     placingHome={placementMode === "home"}
                     onTogglePlaceHome={handleTogglePlaceHome}
+                    googleMapsKey={googleMapsKey}
+                    onGoogleMapsKeyChange={setGoogleMapsKey}
                   />
                   <OptimizeButton
                     onClick={handleOptimize}

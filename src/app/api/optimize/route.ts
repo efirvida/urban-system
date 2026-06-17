@@ -6,23 +6,24 @@ import { buildGoogleMatrix } from "@/utils/googleRouting";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { locations, config, distanceMatrix: clientMatrix } = body as {
+    const { locations, config, distanceMatrix: clientMatrix, googleMapsKey: clientKey } = body as {
       locations: Location[];
       config: Config;
       distanceMatrix?: Record<string, number>;
+      googleMapsKey?: string;
     };
 
-    // Resolve distance matrix: client-provided, Google Maps, or server-side OSRM/Haversine
+    // Resolve distance matrix: client-provided, Google Maps (env or client key), or Haversine
     let distanceMatrix = clientMatrix;
 
     if (!distanceMatrix) {
-      const googleKey = process.env.GOOGLE_MAPS_API_KEY;
+      const googleKey = process.env.GOOGLE_MAPS_API_KEY || clientKey;
       if (googleKey && locations.length > 0) {
         const all = [{ lat: config.homeLat, lng: config.homeLng }, ...locations];
         const result = await buildGoogleMatrix(all, googleKey);
         distanceMatrix = result.matrix;
       } else {
-        // No Google key → build pure Haversine matrix (instant, no API calls)
+        // Pure Haversine (instant, no API calls)
         distanceMatrix = {};
         const { haversineDistance } = await import("@/utils/haversine");
         const all = [{ lat: config.homeLat, lng: config.homeLng }, ...locations];
