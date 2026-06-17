@@ -41,12 +41,14 @@ export interface NSGAResult {
 
 // ─── Main export — creates fresh scope per call ─────────────
 
-export function runNSGA2(
+function shuffleArray<T>(a: T[]): T[] { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+export async function runNSGA2(
   locations: Location[],
   home: Location,
   config: Config,
   precomputed?: Record<string, number>
-): NSGAResult {
+): Promise<NSGAResult> {
   // ── Functions capture these by closure, no module state ──
   const n = locations.length;
   if (n < 3) {
@@ -54,8 +56,8 @@ export function runNSGA2(
     return { balanced: empty, minDistance: empty, minDuration: empty, paretoFront: [], totalEvaluations: 0 };
   }
 
-  const POP = 60;
-  const GENS = 80;
+  const POP = 40;
+  const GENS = 40;
   const CR = 0.85;
   const MR = 0.2;
 
@@ -118,9 +120,7 @@ export function runNSGA2(
   }
 
   function randomPerm(): number[] {
-    const a = Array.from({ length: n }, (_, i) => i);
-    for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
-    return a;
+    return shuffleArray(Array.from({ length: n }, (_, i) => i));
   }
 
   function nnPermutation(): number[] {
@@ -241,6 +241,9 @@ export function runNSGA2(
   let evals = POP;
 
   for (let gen = 0; gen < GENS; gen++) {
+    // Yield every 10 generations to avoid blocking the event loop
+    if (gen % 10 === 0) await new Promise(r => setTimeout(r, 0));
+
     const offspring: Individual[] = [];
 
     while (offspring.length < POP) {
