@@ -402,17 +402,13 @@ export default function MapView({
       if (popupHtml) {
         m.setPopup(new maplibregl.Popup({ offset: 25 }).setHTML(popupHtml));
       }
-      // Click handler reads from the ref to always have the latest onPOIClick
-      el.style.cursor = "pointer";
-      el.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const data = (el as any)._poiData as
-          | { lat: number; lng: number; day: number; name: string }
-          | undefined;
-        if (data && onPOIClickRef.current) {
-          onPOIClickRef.current(data.lat, data.lng, data.day, data.name);
-        }
-      });
+      if (onClick) {
+        el.style.cursor = "pointer";
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onClick();
+        });
+      }
       markersMap.set(id, m);
     };
 
@@ -475,7 +471,7 @@ export default function MapView({
             color,
             `<strong>${stop.name}</strong><br/>Día ${day.day} · #${stop.sequence}<br/>${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`,
             false,
-            undefined, // onClick via ref + poiData
+            () => onPOIClickRef.current?.(stop.lat, stop.lng, day.day, stop.name),
             { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name }
           );
         }
@@ -505,6 +501,21 @@ export default function MapView({
       } catch {}
     }
   }, [data]);
+
+  // ── Update route paint properties when highlightDay changes ──
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !data.routes) return;
+    for (const day of data.routes) {
+      const layerId = `rl-${day.day}`;
+      const glowId = `rg-${day.day}`;
+      if (!map.getLayer(layerId) || !map.getLayer(glowId)) continue;
+      map.setPaintProperty(layerId, "line-width", highlightDay && highlightDay === day.day ? 6 : highlightDay ? 2 : 4);
+      map.setPaintProperty(layerId, "line-opacity", highlightDay && highlightDay !== day.day ? 0.1 : 1);
+      map.setPaintProperty(glowId, "line-width", highlightDay && highlightDay === day.day ? 8 : 6);
+      map.setPaintProperty(glowId, "line-opacity", highlightDay && highlightDay !== day.day ? 0.04 : 0.25);
+    }
+  }, [highlightDay, data]);
 
   // ── Highlight the selected POI marker (scale-up + ring) ──
   useEffect(() => {
