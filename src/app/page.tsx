@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { haversineDistance } from "@/utils/haversine";
 import { optimizeRoutes } from "@/utils/routerOptimizer";
 import { runNSGA2 } from "@/utils/nsga2";
-import { fetchAllRouteGeometries, MatrixProgress } from "@/utils/clientRouting";
+import { fetchAllRouteGeometries } from "@/utils/clientRouting";
 
 import FileUpload from "@/components/FileUpload";
 import ColumnMapper from "@/components/ColumnMapper";
@@ -68,7 +68,6 @@ export default function Home() {
 
   // Optimization progress
   const [optimizePhase, setOptimizePhase] = useState<"idle" | "matrix" | "algorithm" | "done" | "error">("idle");
-  const [matrixProgress, setMatrixProgress] = useState<MatrixProgress | null>(null);
   const [routingMode, setRoutingMode] = useState<"osrm" | "haversine">("osrm");
   const [routeGeometry, setRouteGeometry] = useState<Map<number, [number, number][]> | null>(null);
   const [algorithm, setAlgorithm] = useState<"auto" | "nsga2">("nsga2");
@@ -164,59 +163,36 @@ export default function Home() {
 
     setLoading(true);
     setError(null);
-    setOptimizePhase("matrix");
-    setMatrixProgress(null);
+    setOptimizePhase("algorithm");
 
     try {
-      // ── Build distance matrix (OSRM per-pair + Haversine fallback) ──
-      setOptimizePhase("matrix");
+      // ── Build distance matrix ──
       const all = [{ lat: config.homeLat, lng: config.homeLng }, ...locations];
       const distanceMatrix: Record<string, number> = {};
-      let osrmCount = 0, havCount = 0, done2 = 0;
-      const totalPairs2 = (all.length * (all.length - 1)) / 2;
-
-      // Collect pairs
-      const pairs2: Array<{ i: number; j: number }> = [];
       for (let i = 0; i < all.length; i++)
         for (let j = i + 1; j < all.length; j++)
-          pairs2.push({ i, j });
+          distanceMatrix[`${i},${j}`] = haversineDistance(all[i].lat, all[i].lng, all[j].lat, all[j].lng);
 
-      const reportProgress = () => {
-        const pct = Math.round((done2 / totalPairs2) * 100);
-        setMatrixProgress({ phase: "matrix", stage: osrmCount > 0 ? `OSRM: ${osrmCount} pares reales` : "Calculando distancias...", current: done2, total: totalPairs2, percent: pct, etaSeconds: 0, realCount: osrmCount, haversineCount: havCount });
-      };
-
-      // Haversine fallback
-      const H = (i: number, j: number) => haversineDistance(all[i].lat, all[i].lng, all[j].lat, all[j].lng);
-
-      // Process with concurrency
-      let idx2 = 0;
-      const MAX_W = 4;
-      const worker2 = async () => {
-        while (idx2 < pairs2.length) {
-          const { i, j } = pairs2[idx2++];
-          const key = `${i},${j}`;
-          const hv = H(i, j);
-          if (hv < 0.05) { distanceMatrix[key] = hv; havCount++; done2++; if (done2 % 20 === 0) reportProgress(); continue; }
-          // Try OSRM
-          try {
-            const c = new AbortController(); const t = setTimeout(() => c.abort(), 3000);
-            const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${all[i].lng},${all[i].lat};${all[j].lng},${all[j].lat}?overview=false`, { signal: c.signal });
-            clearTimeout(t);
-            if (res.ok) {
-              const d = await res.json();
-              if (d.code === "Ok" && d.routes?.length) {
-                const km = d.routes[0].distance / 1000;
-                distanceMatrix[key] = km;
-                osrmCount++; done2++; if (done2 % 10 === 0) reportProgress(); continue;
-              }
-            }
-          } catch {}
-          distanceMatrix[key] = hv; havCount++; done2++; if (done2 % 10 === 0) reportProgress();
-        }
-      };
-      await Promise.all(Array.from({ length: MAX_W }, () => worker2()));
-      setMatrixProgress(null);
+      // Fire OSRM improvements in background (no progress needed, matrix is ready)
+      const hv = (i: number, j: number) => haversineDistance(all[i].lat, all[i].lng, all[j].lat, all[j].lng);
+      const osmrPairs: Array<{ i: number; j: number }> = [];
+      for (let i = 0; i < all.length; i++)
+        for (let j = i + 1; j < all.length; j++)
+          if (hv(i, j) > 0.05) osmrPairs.push({ i, j });
+      (async () => {
+        let oi = 0;
+        await Promise.all(Array.from({ length: 4 }, async () => {
+          while (oi < osmrPairs.length) {
+            const { i, j } = osmrPairs[oi++];
+            try {
+              const c = new AbortController(); const t = setTimeout(() => c.abort(), 3000);
+              const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${all[i].lng},${all[i].lat};${all[j].lng},${all[j].lat}?overview=false`, { signal: c.signal });
+              clearTimeout(t);
+              if (res.ok) { const d = await res.json(); if (d.code === "Ok" && d.routes?.length) distanceMatrix[`${i},${j}`] = d.routes[0].distance / 1000; }
+            } catch {}
+          }
+        }));
+      })();
 
       // ── Run optimization (CLIENT-SIDE, no server) ──
       setOptimizePhase("algorithm");
@@ -394,7 +370,7 @@ export default function Home() {
                 </>
               ) : (
                 <OptimizeProgress
-                  progress={matrixProgress}
+                  progress={null}
                   phase={optimizePhase === "algorithm" ? "algorithm" : "matrix"}
                   totalLocations={locations.length}
                   error={error ?? undefined}
