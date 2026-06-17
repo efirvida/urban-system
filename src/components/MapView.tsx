@@ -171,6 +171,22 @@ export default function MapView({
 
     // Remove old and add new click handler
     const handler = (e: maplibregl.MapMouseEvent) => {
+      // Check if click was on a marker container (for POI selection).
+      // Markers bubble clicks up to the map, so we can catch them here.
+      const target = e.originalEvent.target as HTMLElement | null;
+      if (target) {
+        const markerContainer = target.closest(".maplibregl-marker");
+        if (markerContainer) {
+          const poiData = (markerContainer as any)._poiData as
+            | { lat: number; lng: number; day: number; name: string }
+            | undefined;
+          if (poiData && onPOIClickRef.current) {
+            onPOIClickRef.current(poiData.lat, poiData.lng, poiData.day, poiData.name);
+          }
+          return; // Don't also trigger placement mode
+        }
+      }
+      // Placement mode (home)
       if (placementModeRef.current === "home" && onPlaceHomeRef.current) {
         onPlaceHomeRef.current(e.lngLat.lat, e.lngLat.lng);
       }
@@ -178,8 +194,13 @@ export default function MapView({
 
     const cursorHandler = (e: maplibregl.MapMouseEvent) => {
       const target = e.originalEvent.target as HTMLElement;
-      target.style.cursor =
-        placementModeRef.current === "home" ? "crosshair" : "";
+      // Pointer cursor on markers
+      if (target?.closest?.(".maplibregl-marker")) {
+        target.style.cursor = "pointer";
+      } else {
+        target.style.cursor =
+          placementModeRef.current === "home" ? "crosshair" : "";
+      }
     };
 
     map.on("click", handler);
@@ -417,12 +438,6 @@ export default function MapView({
       if (poiData) {
         const container = m.getElement();
         (container as any)._poiData = poiData;
-        container.style.cursor = "pointer";
-        container.addEventListener("click", () => {
-          if (onPOIClickRef.current) {
-            onPOIClickRef.current(poiData.lat, poiData.lng, poiData.day, poiData.name);
-          }
-        });
       }
       markersMap.set(id, m);
       markersMap.set(id, m);
