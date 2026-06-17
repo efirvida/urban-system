@@ -321,9 +321,9 @@ export default function MapView({
       if (!homeMarkerRef.current) {
         // Create home marker
         const el = document.createElement("div");
-        el.innerHTML = `<svg width="34" height="34" viewBox="0 0 24 24" fill="#2563eb" stroke="white" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`;
-        el.style.cursor = "grab";
-        el.style.filter = "drop-shadow(0 2px 4px rgba(0,0,0,0.3))";
+        el.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="#2563eb" fill-opacity="0.7" stroke="white" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`;
+        el.style.cursor = homeDraggable ? "grab" : "default";
+        el.style.filter = "drop-shadow(0 1px 2px rgba(0,0,0,0.25))";
 
         const marker = new maplibregl.Marker({
           element: el,
