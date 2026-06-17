@@ -143,19 +143,25 @@ export async function POST(request: NextRequest) {
     // ─── Optimize ───────────────────────────────────────────
 
     const startTime = Date.now();
+    const OPTIM_TIMEOUT = 15000; // 15 second max
 
     // ── NSGA-II Multi-Objective ──
     if (algorithm === "nsga2") {
-      // If no distance matrix, build pure Haversine to avoid OSRM timeouts
       if (!distanceMatrix || Object.keys(distanceMatrix).length === 0) {
         distanceMatrix = buildHaversineMatrix(locations, normalizedConfig);
       }
 
       const home = { name: "Casa", lat: normalizedConfig.homeLat, lng: normalizedConfig.homeLng };
-      // Wrap in timeout: max 6 seconds
-      const timeoutPromise = new Promise<null>((_, reject) => setTimeout(() => reject(new Error("NSGA2 timeout")), 6000));
-      const nsgaResult = await Promise.race([Promise.resolve().then(() => runNSGA2(locations, home, normalizedConfig, distanceMatrix)), timeoutPromise])!;
-      if (!nsgaResult) throw new Error("NSGA2 timeout - try Auto mode");
+      // Timeout wrapper
+      const nsgaResult: Awaited<ReturnType<typeof runNSGA2>> | null = await new Promise((resolve, reject) => {
+        const t = setTimeout(() => { console.warn("[Timeout] NSGA2 exceeded limit"); resolve(null); }, OPTIM_TIMEOUT);
+        try {
+          const r = runNSGA2(locations, home, normalizedConfig, distanceMatrix);
+          clearTimeout(t);
+          resolve(r);
+        } catch (e) { clearTimeout(t); reject(e); }
+      });
+      if (!nsgaResult) throw new Error("La optimización tomó demasiado tiempo. Probá con modo Auto.");
 
       const uniqueDays = [...new Set(nsgaResult.paretoFront.map(s => s.days))].sort((a: number, b: number) => a - b);
       const response: NSGAResponse = {
@@ -179,13 +185,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response);
     }
 
-    // Route-First + Local Search
+    // Route-First + Local Search + GA
     const base = await optimizeRoutes(locations, normalizedConfig, distanceMatrix);
     let finalDays = base.days;
     let finalDist = base.totalDistance;
 
-    // GA post-optimization
-    if (locations.length >= 5) {
+    // GA post-optimization (with timeout)
+    if (locations.length >= 5 && Date.now() - startTime < OPTIM_TIMEOUT * 0.7) {
       const home = { name: "Casa", lat: normalizedConfig.homeLat, lng: normalizedConfig.homeLng };
       const initialPerm: number[] = [];
       for (const day of base.days) {
@@ -202,7 +208,7 @@ export async function POST(request: NextRequest) {
             finalDays = gaResult.days;
             finalDist = gaResult.totalDistance;
           }
-        } catch {}
+        } catch (e) { console.warn("[GA] Error:", e); }
       }
     }
 
