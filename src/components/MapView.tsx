@@ -408,13 +408,19 @@ export default function MapView({
       if (popupHtml) {
         m.setPopup(new maplibregl.Popup({ offset: 25 }).setHTML(popupHtml));
       }
-      if (onClick) {
-        el.style.cursor = "pointer";
-        el.addEventListener("click", (e) => {
-          e.stopPropagation();
-          onClick();
-        });
-      }
+      // Always attach click handler — reads POI data from element + latest
+      // callback from ref. This ensures clicks work on all markers including
+      // those created before the current onPOIClick prop was set.
+      el.style.cursor = "pointer";
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const data = (el as any)._poiData as
+          | { lat: number; lng: number; day: number; name: string }
+          | undefined;
+        if (data && onPOIClickRef.current) {
+          onPOIClickRef.current(data.lat, data.lng, data.day, data.name);
+        }
+      });
       markersMap.set(id, m);
     };
 
