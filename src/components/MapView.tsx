@@ -5,13 +5,6 @@ import maplibregl from "maplibre-gl";
 import { ValidatedRow, Location, DayRoute } from "@/types";
 import { getRouteColor } from "@/lib/utils";
 
-/** Coordinate key for looking up OSRM road geometry */
-function coordKey(lat1: number, lng1: number, lat2: number, lng2: number): string {
-  const a = `${lat1.toFixed(6)},${lng1.toFixed(6)}`;
-  const b = `${lat2.toFixed(6)},${lng2.toFixed(6)}`;
-  return a < b ? `${a}|${b}` : `${b}|${a}`;
-}
-
 // ─── Types ───────────────────────────────────────────────────
 
 export interface MapViewData {
@@ -23,8 +16,8 @@ export interface MapViewData {
   hiddenDays?: Set<number>;
   /** Which routing mode is being displayed */
   routingMode?: "osrm" | "haversine";
-  /** Road-following geometry: "i,j" → [lng,lat][] for drawing real routes */
-  routeGeometry?: Map<string, [number, number][]>;
+  /** Road-following geometry: dayNumber → [lng,lat][] for drawing real routes */
+  routeGeometry?: Map<number, [number, number][]>;
 }
 
 interface MapViewProps {
@@ -194,22 +187,15 @@ export default function MapView({
         // Build polyline coordinates — use OSRM road geometry when available
         const coords: [number, number][] = [];
 
-        for (let s = 0; s < day.stops.length - 1; s++) {
-          const a = day.stops[s];
-          const b = day.stops[s + 1];
-
-          // Try road geometry
-          const gKey = coordKey(a.lat, a.lng, b.lat, b.lng);
-          const segment = routeGeometry?.get(gKey);
-
-          if (segment && segment.length > 1) {
-            // Road geometry: includes both endpoints
-            if (s === 0) coords.push(...segment);
-            else coords.push(...segment.slice(1)); // skip duplicate vertex
-          } else {
-            // Straight-line fallback
-            if (s === 0) coords.push([a.lng, a.lat]);
-            coords.push([b.lng, b.lat]);
+        // Try day-level route geometry (full day's route in one polyline)
+        const dayGeo = routeGeometry?.get(day.day);
+        if (dayGeo && dayGeo.length > 1) {
+          coords.push(...dayGeo);
+        } else {
+          // Fallback: straight lines between stops
+          for (let s = 0; s < day.stops.length - 1; s++) {
+            if (s === 0) coords.push([day.stops[s].lng, day.stops[s].lat]);
+            coords.push([day.stops[s + 1].lng, day.stops[s + 1].lat]);
           }
         }
 

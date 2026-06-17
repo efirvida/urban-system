@@ -81,6 +81,60 @@ async function fetchDurations(all: Array<{ lat: number; lng: number }>): Promise
   return null;
 }
 
+// ─── Route Geometry (for map visualization, post-optimization) ─
+
+/**
+ * Fetch road-following polyline for a full day's route.
+ * Uses OSRM Route service with all stops as waypoints.
+ * Returns array of [lng, lat] pairs forming the road path.
+ */
+export async function fetchRouteGeometry(
+  stops: Array<{ lat: number; lng: number }>
+): Promise<[number, number][] | null> {
+  if (stops.length < 2) return null;
+  const coords = stops.map(s => `${s.lng},${s.lat}`).join(";");
+  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=simplified&geometries=geojson&alternatives=false&steps=false`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.code === "Ok" && data.routes?.length) {
+      const coords = data.routes[0].geometry?.coordinates;
+      return coords?.length > 0 ? coords : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch geometries for all days in an optimized result.
+ * One request per day (each day's stops as waypoints).
+ * Returns Map<dayNumber, [lng,lat][]>.
+ */
+export async function fetchAllRouteGeometries(
+  days: Array<{ day: number; stops: Array<{ lat: number; lng: number; isHome?: boolean }> }>,
+  onProgress?: (done: number, total: number) => void
+): Promise<Map<number, [number, number][]>> {
+  const result = new Map<number, [number, number][]>();
+  let done = 0;
+  const total = days.length;
+
+  for (const day of days) {
+    const stops = day.stops.filter(s => !s.isHome);
+    if (stops.length < 2) { done++; onProgress?.(done, total); continue; }
+    // Build route: home → stops → home
+    const allStops = [day.stops[0], ...stops, day.stops[0]];
+    const geo = await fetchRouteGeometry(allStops);
+    if (geo) result.set(day.day, geo);
+    done++;
+    onProgress?.(done, total);
+  }
+
+  return result;
+}
+
 // ─── Main ────────────────────────────────────────────────────
 
 export async function buildDistanceMatrices(

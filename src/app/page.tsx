@@ -13,7 +13,7 @@ import {
 } from "@/types";
 import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
-import { buildDistanceMatrices, MatrixProgress } from "@/utils/clientRouting";
+import { buildDistanceMatrices, fetchAllRouteGeometries, MatrixProgress } from "@/utils/clientRouting";
 
 import FileUpload from "@/components/FileUpload";
 import ColumnMapper from "@/components/ColumnMapper";
@@ -68,7 +68,7 @@ export default function Home() {
   const [optimizePhase, setOptimizePhase] = useState<"idle" | "matrix" | "algorithm" | "done" | "error">("idle");
   const [matrixProgress, setMatrixProgress] = useState<MatrixProgress | null>(null);
   const [routingMode, setRoutingMode] = useState<"osrm" | "haversine">("osrm");
-  const [routeGeometry, setRouteGeometry] = useState<Map<string, [number, number][]> | null>(null);
+  const [routeGeometry, setRouteGeometry] = useState<Map<number, [number, number][]> | null>(null);
   const [algorithm, setAlgorithm] = useState<"auto" | "nsga2">("auto");
   const [nsgaResult, setNsgaResult] = useState<{
     balanced: ParetoSolution;
@@ -193,6 +193,13 @@ export default function Home() {
       if (!res.ok) { const err = await res.json(); throw new Error(err.details || err.error || "Error en la optimización"); }
 
       const data = await res.json();
+
+      // Fetch route geometries for map visualization (road-following polylines)
+      if (data.days?.length > 0) {
+        fetchAllRouteGeometries(data.days).then(geo => {
+          if (geo.size > 0) setRouteGeometry(geo);
+        });
+      }
       if (data.algorithm === "nsga2") {
         const nsga = data as NSGAResponse;
         console.log("[NSGA2] Front size:", nsga._debug?.frontSize, "Unique days:", nsga._debug?.uniqueDays);
