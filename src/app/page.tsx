@@ -194,24 +194,29 @@ export default function Home() {
 
       const data = await res.json();
 
-      // Fetch route geometries for map visualization (road-following polylines)
-      if (data.days?.length > 0) {
-        fetchAllRouteGeometries(data.days).then(geo => {
-          if (geo.size > 0) setRouteGeometry(geo);
-        });
-      }
+      let geometryDays: Array<{ day: number; stops: Array<{ lat: number; lng: number; isHome?: boolean }> }> | undefined;
+
       if (data.algorithm === "nsga2") {
         const nsga = data as NSGAResponse;
-        console.log("[NSGA2] Front size:", nsga._debug?.frontSize, "Unique days:", nsga._debug?.uniqueDays);
+        console.log("[NSGA2] balanced:", nsga.balanced.days, "d", nsga.balanced.totalDistance, "km");
         setNsgaResult({ balanced: nsga.balanced, minDistance: nsga.minDistance, minDuration: nsga.minDuration });
         setSelectedNsga("balanced");
         setResult({ days: nsga.balanced.dayRoutes, totalDistance: nsga.balanced.totalDistance, totalDays: nsga.balanced.days, totalLocations: locations.length });
         setHiddenDays(new Set(nsga.balanced.dayRoutes.slice(1).map((d) => d.day)));
+        geometryDays = nsga.balanced.dayRoutes;
       } else {
         const optResult = data as OptimizeResponse;
         setResult(optResult);
         setNsgaResult(null);
         setHiddenDays(new Set(optResult.days.slice(1).map((d: any) => d.day)));
+        geometryDays = optResult.days;
+      }
+
+      // Fetch route geometries for map visualization (road-following polylines)
+      if (geometryDays && geometryDays.length > 0) {
+        fetchAllRouteGeometries(geometryDays).then(geo => {
+          if (geo.size > 0) setRouteGeometry(geo);
+        });
       }
       setRoutingMode("osrm");
       setOptimizePhase("done");
