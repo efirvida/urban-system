@@ -169,7 +169,7 @@ export default function Home() {
       // ── Phase 1: Build distance matrix (OSRM Table Service — 1 request!) ──
       setOptimizePhase("matrix");
       const { osrmMatrix, durationMatrix } = await buildDistanceMatrices(
-        config.homeLat, config.homeLng, locations, setMatrixProgress
+        config.homeLat, config.homeLng, locations, setMatrixProgress, config.avgSpeed
       );
       const distanceObj: Record<string, number> = {};
       osrmMatrix.forEach((v, k) => { distanceObj[k] = v; });
