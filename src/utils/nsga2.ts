@@ -65,10 +65,11 @@ export function runNSGA2(
     const kb = b === -1 ? 0 : b + 1;
     const k = ka < kb ? `${ka},${kb}` : `${kb},${ka}`;
     if (precomputed?.[k] !== undefined) return precomputed[k];
-    const p1 = a === -1 ? home : locations[a];
-    const p2 = b === -1 ? home : locations[b];
-    if (!p1 || !p2) return 0;
-    return haversineDistance(p1.lat, p1.lng, p2.lat, p2.lng);
+    const lat1 = a === -1 ? home.lat : (locations[a]?.lat ?? home.lat);
+    const lng1 = a === -1 ? home.lng : (locations[a]?.lng ?? home.lng);
+    const lat2 = b === -1 ? home.lat : (locations[b]?.lat ?? home.lat);
+    const lng2 = b === -1 ? home.lng : (locations[b]?.lng ?? home.lng);
+    return haversineDistance(lat1, lng1, lat2, lng2);
   }
 
   function routeDist(route: number[]): number {

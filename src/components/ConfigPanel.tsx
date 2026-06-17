@@ -117,62 +117,86 @@ export default function ConfigPanel({
         </div>
       </div>
 
-      {/* Constraint value */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+      {/* Constraint value — big stepper */}
+      <div className="bg-gray-50 rounded-lg p-3">
+        <label className="block text-xs font-medium text-gray-600 mb-2 text-center">
           {config.constraintType === "hours"
-            ? "Horas por jornada"
+            ? "Jornada laboral"
             : config.constraintType === "visits"
-            ? "Máximo de visitas"
-            : "Capacidad máxima"}
+            ? "Visitas por día"
+            : "Capacidad del vehículo"}
         </label>
-        <input
-          type="number"
-          min="1"
-          step={config.constraintType === "hours" ? "0.5" : "1"}
-          value={config.constraintValue}
-          onChange={(e) =>
-            update({ constraintValue: parseFloat(e.target.value) || 1 })
-          }
-          className="input-field"
-        />
+        <div className="flex items-center justify-center gap-4">
+          <button
+            type="button"
+            onClick={() => update({ constraintValue: Math.max(1, config.constraintValue - (config.constraintType === "hours" ? 0.5 : 1)) })}
+            className="w-10 h-10 rounded-full bg-white border border-gray-300 text-gray-600 text-lg font-bold hover:bg-gray-100 flex items-center justify-center"
+          >
+            −
+          </button>
+          <div className="text-center min-w-[80px]">
+            <div className="text-3xl font-bold text-gray-900">
+              {config.constraintType === "hours" ? config.constraintValue.toFixed(1) : config.constraintValue}
+            </div>
+            <div className="text-xs text-gray-400 mt-0.5">
+              {config.constraintType === "hours" ? "horas" : config.constraintType === "visits" ? "paradas" : "unidades"}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => update({ constraintValue: config.constraintValue + (config.constraintType === "hours" ? 0.5 : 1) })}
+            className="w-10 h-10 rounded-full bg-white border border-gray-300 text-gray-600 text-lg font-bold hover:bg-gray-100 flex items-center justify-center"
+          >
+            +
+          </button>
+        </div>
         {config.constraintType === "hours" && (
-          <p className="text-xs text-gray-400 mt-1">
-            Incluye viaje + {config.visitTime} min por visita
-          </p>
+          <div className="text-xs text-gray-400 mt-2 text-center">
+            Incluye viaje + paradas ({config.visitTime} min c/u)
+          </div>
         )}
       </div>
 
-      {/* Speed & visit time (only for hours) */}
+      {/* Speed & visit time — inline sliders for hours mode */}
       {config.constraintType === "hours" && (
-        <div className="grid grid-cols-2 gap-2 p-3 bg-gray-50 rounded-md">
+        <div className="space-y-3 bg-gray-50 rounded-lg p-3">
           <div>
-            <label className="block text-xs text-gray-500 mb-0.5">
-              Velocidad (km/h)
-            </label>
+            <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <span>Velocidad</span>
+              <span className="font-medium text-gray-700">{config.avgSpeed} km/h</span>
+            </div>
             <input
-              type="number"
-              min="1"
+              type="range"
+              min="20"
+              max="120"
+              step="5"
               value={config.avgSpeed}
-              onChange={(e) =>
-                update({ avgSpeed: parseFloat(e.target.value) || 60 })
-              }
-              className="input-field"
+              onChange={(e) => update({ avgSpeed: parseInt(e.target.value) })}
+              className="w-full accent-blue-600"
             />
+            <div className="flex justify-between text-[10px] text-gray-300 mt-0.5">
+              <span>20</span>
+              <span>120</span>
+            </div>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-0.5">
-              Tiempo visita (min)
-            </label>
+            <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <span>Tiempo por parada</span>
+              <span className="font-medium text-gray-700">{config.visitTime} min</span>
+            </div>
             <input
-              type="number"
-              min="1"
+              type="range"
+              min="5"
+              max="60"
+              step="5"
               value={config.visitTime}
-              onChange={(e) =>
-                update({ visitTime: parseFloat(e.target.value) || 30 })
-              }
-              className="input-field"
+              onChange={(e) => update({ visitTime: parseInt(e.target.value) })}
+              className="w-full accent-blue-600"
             />
+            <div className="flex justify-between text-[10px] text-gray-300 mt-0.5">
+              <span>5 min</span>
+              <span>60 min</span>
+            </div>
           </div>
         </div>
       )}
