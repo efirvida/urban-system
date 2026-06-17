@@ -363,6 +363,11 @@ export function runNSGA2(
   const pareto = pop.filter(ind => ind.rank === 0);
   pareto.sort((a, b) => a.objectives[0] - b.objectives[0]);
 
+  console.log(`[NSGA2] Front size: ${pareto.length}`);
+  pareto.forEach((ind, i) => {
+    console.log(`  [${i}] lf=${ind.loadFactor.toFixed(2)} days=${ind.routes.length} dist=${ind.objectives[0].toFixed(0)}km maxDay=${ind.objectives[1].toFixed(1)}h`);
+  });
+
   const toPS = (ind: Individual): ParetoSolution => ({
     days: ind.routes.length,
     totalDistance: Math.round(ind.objectives[0] * 100) / 100,
