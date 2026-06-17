@@ -166,24 +166,39 @@ export default function Home() {
     setOptimizePhase("algorithm");
 
     try {
-      // ── Build distance matrix ──
+      // ── Build distance matrix (OSRM + Haversine fallback) ──
       const all = [{ lat: config.homeLat, lng: config.homeLng }, ...locations];
+      const N = all.length;
+      const expectedPairs = (N * (N - 1)) / 2;
       const distanceMatrix: Record<string, number> = {};
-      for (let i = 0; i < all.length; i++)
-        for (let j = i + 1; j < all.length; j++)
-          distanceMatrix[`${i},${j}`] = haversineDistance(all[i].lat, all[i].lng, all[j].lat, all[j].lng);
-
-      // Fire OSRM improvements in background (no progress needed, matrix is ready)
       const hv = (i: number, j: number) => haversineDistance(all[i].lat, all[i].lng, all[j].lat, all[j].lng);
-      const osmrPairs: Array<{ i: number; j: number }> = [];
-      for (let i = 0; i < all.length; i++)
-        for (let j = i + 1; j < all.length; j++)
-          if (hv(i, j) > 0.05) osmrPairs.push({ i, j });
+
+      // Step 1: Pre-fill all with Haversine (instant, guarantees complete matrix)
+      for (let i = 0; i < N; i++)
+        for (let j = i + 1; j < N; j++)
+          distanceMatrix[`${i},${j}`] = hv(i, j);
+
+      // Verify matrix completeness
+      const matrixSize = Object.keys(distanceMatrix).length;
+      if (matrixSize !== expectedPairs) {
+        console.warn(`Matrix incomplete: ${matrixSize}/${expectedPairs}, refilling...`);
+        for (let i = 0; i < N; i++)
+          for (let j = i + 1; j < N; j++)
+            if (distanceMatrix[`${i},${j}`] === undefined) distanceMatrix[`${i},${j}`] = hv(i, j);
+      }
+
+      // Step 2: Try OSRM improvements in background (fire & forget)
+      // Matrix is already 100% complete with Haversine
+      const osrmPairs2: Array<{ i: number; j: number }> = [];
+      for (let i = 0; i < N; i++)
+        for (let j = i + 1; j < N; j++)
+          if (hv(i, j) > 0.05) osrmPairs2.push({ i, j });
+
       (async () => {
         let oi = 0;
         await Promise.all(Array.from({ length: 4 }, async () => {
-          while (oi < osmrPairs.length) {
-            const { i, j } = osmrPairs[oi++];
+          while (oi < osrmPairs2.length) {
+            const { i, j } = osrmPairs2[oi++];
             try {
               const c = new AbortController(); const t = setTimeout(() => c.abort(), 3000);
               const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${all[i].lng},${all[i].lat};${all[j].lng},${all[j].lat}?overview=false`, { signal: c.signal });
@@ -193,6 +208,8 @@ export default function Home() {
           }
         }));
       })();
+
+      console.log(`[Matrix] ${matrixSize}/${expectedPairs} pairs ready, OSRM improvements in background`);
 
       // ── Run optimization (CLIENT-SIDE, no server) ──
       setOptimizePhase("algorithm");
