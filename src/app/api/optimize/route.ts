@@ -8,10 +8,11 @@ import { runNSGA2 } from "@/utils/nsga2";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { locations, config, distanceMatrix: clientMatrix, googleMapsKey: clientKey, algorithm } = body as {
+    const { locations, config, distanceMatrix: clientMatrix, durationMatrix, googleMapsKey: clientKey, algorithm } = body as {
       locations: Location[];
       config: Config;
       distanceMatrix?: Record<string, number>;
+      durationMatrix?: Record<string, number>;
       googleMapsKey?: string;
       algorithm?: string;
     };

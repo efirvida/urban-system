@@ -166,13 +166,15 @@ export default function Home() {
     setMatrixProgress(null);
 
     try {
-      // ── Phase 1: Build distance matrix (OSRM + Haversine) ──
+      // ── Phase 1: Build distance matrix (OSRM Table Service — 1 request!) ──
       setOptimizePhase("matrix");
-      const { osrmMatrix } = await buildDistanceMatrices(
+      const { osrmMatrix, durationMatrix } = await buildDistanceMatrices(
         config.homeLat, config.homeLng, locations, setMatrixProgress
       );
       const distanceObj: Record<string, number> = {};
       osrmMatrix.forEach((v, k) => { distanceObj[k] = v; });
+      const durationObj: Record<string, number> = {};
+      if (durationMatrix) durationMatrix.forEach((v, k) => { durationObj[k] = v; });
 
       // ── Phase 2: Run optimizer ──
       setOptimizePhase("algorithm");
@@ -184,6 +186,7 @@ export default function Home() {
         body: JSON.stringify({
           locations, config,
           distanceMatrix: distanceObj,
+          durationMatrix: durationObj,
           algorithm: algorithm === "nsga2" ? "nsga2" : undefined,
         }),
       });
