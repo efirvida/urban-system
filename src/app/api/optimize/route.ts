@@ -152,15 +152,10 @@ export async function POST(request: NextRequest) {
       }
 
       const home = { name: "Casa", lat: normalizedConfig.homeLat, lng: normalizedConfig.homeLng };
-      // Timeout wrapper
-      const nsgaResult: Awaited<ReturnType<typeof runNSGA2>> | null = await new Promise((resolve, reject) => {
-        const t = setTimeout(() => { console.warn("[Timeout] NSGA2 exceeded limit"); resolve(null); }, OPTIM_TIMEOUT);
-        try {
-          const r = runNSGA2(locations, home, normalizedConfig, distanceMatrix);
-          clearTimeout(t);
-          resolve(r);
-        } catch (e) { clearTimeout(t); reject(e); }
-      });
+      // Race NSGA2 vs timeout
+      const nsgaPromise = runNSGA2(locations, home, normalizedConfig, distanceMatrix);
+      const timeoutPromise = new Promise<null>(resolve => setTimeout(() => { console.warn("[Timeout] NSGA2 exceeded limit"); resolve(null); }, OPTIM_TIMEOUT));
+      const nsgaResult = await Promise.race([nsgaPromise, timeoutPromise]);
       if (!nsgaResult) throw new Error("La optimización tomó demasiado tiempo. Probá con modo Auto.");
 
       const uniqueDays = [...new Set(nsgaResult.paretoFront.map(s => s.days))].sort((a: number, b: number) => a - b);
