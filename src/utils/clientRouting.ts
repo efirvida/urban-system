@@ -57,14 +57,13 @@ export async function buildDistanceMatrices(
     }
   }
 
-  // Try OSRM Table service — ONE request for ALL pairs
-  const osrmMatrix = new Map<string, number>();
+  // Try OSRM Table service for DURATIONS only (distances stay Haversine)
+  const osrmMatrix = new Map(haversineMatrix); // start with Haversine distances
   const durationMatrix = new Map<string, number>();
   let realCount = 0;
-  let fallbackCount = 0;
 
   const coords = all.map(p => `${p.lng},${p.lat}`).join(";");
-  const url = `https://router.project-osrm.org/table/v1/driving/${coords}?annotations=duration`;
+  const url = `https://router.project-osrm.org/table/v1/driving/${coords}`;
 
   onProgress({
     phase: "matrix",
@@ -83,13 +82,8 @@ export async function buildDistanceMatrices(
         for (let i = 0; i < n && i < dur.length; i++) {
           for (let j = i + 1; j < n && j < dur[i].length; j++) {
             if (dur[i][j] !== null && dur[i][j] > 0) {
-              const sec = dur[i][j];
-              const hours = sec / 3600;
-              // Estimate distance from duration using 60 km/h average
-              const km = hours * 60;
-              const key = `${i},${j}`;
-              osrmMatrix.set(key, km);
-              durationMatrix.set(key, hours);
+              const hours = dur[i][j] / 3600;
+              durationMatrix.set(`${i},${j}`, hours);
               realCount++;
             }
           }
@@ -100,28 +94,17 @@ export async function buildDistanceMatrices(
     console.warn("[OSRM Table] Failed:", err);
   }
 
-  // Fill missing pairs with Haversine
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      const key = `${i},${j}`;
-      if (!osrmMatrix.has(key)) {
-        osrmMatrix.set(key, haversineMatrix.get(key)!);
-        fallbackCount++;
-      }
-    }
-  }
-
   onProgress({
     phase: "matrix",
     stage: "Matriz completa",
     current: totalPairs, total: totalPairs,
     percent: 100, etaSeconds: 0,
     realCount: realCount,
-    haversineCount: fallbackCount,
+    haversineCount: 0,
   });
 
   return {
-    osrmMatrix,
+    osrmMatrix, // Haversine distances (OSRM durations in durationMatrix)
     durationMatrix: realCount > 0 ? durationMatrix : undefined,
     haversineMatrix,
   };
