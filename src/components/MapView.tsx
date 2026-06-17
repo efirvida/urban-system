@@ -216,6 +216,23 @@ export default function MapView({
           const dayGeo = routeGeometry?.get(day.day);
           if (dayGeo && dayGeo.length > 1) {
             coords.push(...dayGeo);
+            // Ensure route connects to home: OSRM snaps waypoints to roads,
+            // which may offset the start/end from the actual home position.
+            // Prepend/append the real home coordinate if there's a gap.
+            const firstStop = day.stops[0];
+            const lastStop = day.stops[day.stops.length - 1];
+            if (firstStop.isHome) {
+              const d0 = coords[0];
+              if (Math.abs(d0[0] - firstStop.lng) > 0.00001 || Math.abs(d0[1] - firstStop.lat) > 0.00001) {
+                coords.unshift([firstStop.lng, firstStop.lat]);
+              }
+            }
+            if (lastStop.isHome) {
+              const dn = coords[coords.length - 1];
+              if (Math.abs(dn[0] - lastStop.lng) > 0.00001 || Math.abs(dn[1] - lastStop.lat) > 0.00001) {
+                coords.push([lastStop.lng, lastStop.lat]);
+              }
+            }
           } else {
             // Fallback: straight lines between ALL consecutive stops (home → POIs → home)
             for (let s = 0; s < day.stops.length - 1; s++) {
