@@ -11,8 +11,7 @@ import {
 } from "@/types";
 import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
-import { buildDistanceMatrices, MatrixProgress } from "@/utils/clientRouting";
-import { buildGoogleMatrix } from "@/utils/googleRouting";
+import { MatrixProgress } from "@/utils/clientRouting";
 
 import FileUpload from "@/components/FileUpload";
 import ColumnMapper from "@/components/ColumnMapper";
@@ -56,7 +55,6 @@ export default function Home() {
     constraintValue: 8,
     avgSpeed: 60,
     visitTime: 30,
-    googleMapsKey: "",
   });
   const [result, setResult] = useState<OptimizeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -159,48 +157,14 @@ export default function Home() {
     setMatrixProgress(null);
 
     try {
-      // ── Phase 1: Build distance matrix ──
-      setOptimizePhase("matrix");
-
-      let distanceObj: Record<string, number>;
-
-      if (config.googleMapsKey) {
-        // Use Google Maps Distance Matrix API
-        const matrix = await buildGoogleMatrix(
-          config.googleMapsKey,
-          config.homeLat,
-          config.homeLng,
-          locations,
-          (cur, tot) => setMatrixProgress({
-            phase: "matrix",
-            stage: `Google Maps (${cur}/${tot})...`,
-            current: cur, total: tot,
-            percent: Math.round((cur / tot) * 100),
-            etaSeconds: 0, realCount: cur, haversineCount: 0,
-          })
-        );
-        distanceObj = {};
-        matrix.forEach((v, k) => { distanceObj[k] = v; });
-      } else {
-        // Default: OSRM + Haversine
-        const { osrmMatrix } = await buildDistanceMatrices(
-          config.homeLat,
-          config.homeLng,
-          locations,
-          setMatrixProgress
-        );
-        distanceObj = {};
-        osrmMatrix.forEach((v, k) => { distanceObj[k] = v; });
-      }
-
-      // ── Phase 2: Run optimizer ──
+      // ── Run optimizer (server builds distance matrix) ──
       setOptimizePhase("algorithm");
       setMatrixProgress(null);
 
       const res = await fetch("/api/optimize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locations, config, distanceMatrix: distanceObj }),
+        body: JSON.stringify({ locations, config }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
 

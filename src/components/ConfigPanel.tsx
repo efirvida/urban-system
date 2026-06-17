@@ -177,25 +177,6 @@ export default function ConfigPanel({
         </div>
       )}
 
-      {/* Google Maps API Key */}
-      <hr className="border-gray-200" />
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          🗺️ Google Maps API Key
-        </label>
-        <input
-          type="text"
-          placeholder="AIzaSy... (opcional)"
-          value={config.googleMapsKey || ""}
-          onChange={(e) => update({ googleMapsKey: e.target.value })}
-          className="input-field font-mono text-xs"
-        />
-        <p className="text-xs text-gray-400 mt-1">
-          Si no se provee, usa OSRM + Haversine. 
-          Google Maps Distance Matrix API tiene crédito gratuito de $200/mes.
-        </p>
-      </div>
-
       {/* Summary */}
       <div className="text-xs text-gray-400 bg-gray-50 rounded-md p-2 text-center">
         {locationCount > 0

@@ -1,123 +1,78 @@
 /**
- * Google Maps Distance Matrix provider.
- * Requires a Google Cloud API key with Distance Matrix API enabled.
- *
- * Pricing: $5/1000 requests, $200 monthly free credit.
- * For 47 locations → ~3 requests total → ~$0.015/optimization.
+ * Server-side Google Maps Distance Matrix provider.
+ * Reads GOOGLE_MAPS_API_KEY from environment.
+ * Builds a distance matrix with just 3-4 API calls (batched 25×25).
  */
 
 import { haversineDistance } from "./haversine";
 
-interface GoogleDistanceMatrixResponse {
+const GOOGLE_API = "https://maps.googleapis.com/maps/api/distancematrix/json";
+
+interface Element {
   status: string;
-  rows: Array<{
-    elements: Array<{
-      status: string;
-      duration?: { value: number };
-      distance?: { value: number };
-    }>;
-  }>;
+  distance?: { value: number }; // meters
 }
 
-/**
- * Build a distance matrix using Google Maps Distance Matrix API.
- * Uses efficient batching: up to 25 origins × 25 destinations per request.
- *
- * Falls back to Haversine for any pair that fails.
- */
+/** Build distance matrix using Google Maps API (server-side). */
 export async function buildGoogleMatrix(
-  apiKey: string,
-  homeLat: number,
-  homeLng: number,
   locations: Array<{ lat: number; lng: number }>,
-  onProgress: (current: number, total: number) => void
-): Promise<Map<string, number>> {
-  const matrix = new Map<string, number>();
-  const all = [{ lat: homeLat, lng: homeLng }, ...locations];
-  const n = all.length;
-  const totalPairs = (n * (n - 1)) / 2;
-  let done = 0;
+  apiKey: string
+): Promise<{ matrix: Record<string, number>; realCount: number; fallbackCount: number }> {
+  const n = locations.length;
+  const matrix: Record<string, number> = {};
+  let realCount = 0;
+  let fallbackCount = 0;
 
-  const report = () => onProgress(done, totalPairs);
-
-  // Helper to set a pair
-  const setPair = (i: number, j: number, km: number) => {
+  const set = (i: number, j: number, km: number) => {
     const key = i < j ? `${i},${j}` : `${j},${i}`;
-    matrix.set(key, km);
+    if (!(key in matrix)) matrix[key] = km;
   };
 
-  const getPair = (i: number, j: number): number | undefined => {
+  const get = (i: number, j: number): number | undefined => {
     const key = i < j ? `${i},${j}` : `${j},${i}`;
-    return matrix.get(key);
+    return matrix[key];
   };
 
-  // Batch all origin rows into requests of up to 25 origins
-  const BATCH_SIZE = 25;
-
-  for (let originStart = 0; originStart < n; originStart += BATCH_SIZE) {
-    const originEnd = Math.min(originStart + BATCH_SIZE, n);
-    const origins: string[] = [];
-
-    for (let i = originStart; i < originEnd; i++) {
-      for (let j = 0; j < n; j++) {
-        if (i === j) continue;
-        if (getPair(i, j) !== undefined) continue; // already have it
-        origins.push(`${all[i].lat},${all[i].lng}`);
-        break; // one destination per origin per request is fine
-      }
-    }
-
-    if (origins.length === 0) continue;
-
-    // For this batch of origins, collect all needed destinations
+  // Batch origins in groups of up to 25
+  const BATCH = 25;
+  for (let oStart = 0; oStart < n; oStart += BATCH) {
+    const oEnd = Math.min(oStart + BATCH, n);
     const originIndices: number[] = [];
-    const destIndices: number[][] = [];
+    const allDestIndices = new Set<number>();
 
-    for (let i = originStart; i < originEnd; i++) {
-      const dests: number[] = [];
+    for (let i = oStart; i < oEnd; i++) {
       for (let j = 0; j < n; j++) {
         if (i === j) continue;
-        if (getPair(Math.min(i, j), Math.max(i, j)) !== undefined) continue;
-        dests.push(j);
-      }
-      if (dests.length > 0) {
+        if (get(i, j) !== undefined) continue;
         originIndices.push(i);
-        destIndices.push(dests);
+        for (let j2 = 0; j2 < n; j2++) {
+          if (i !== j2 && get(i, j2) === undefined) allDestIndices.add(j2);
+        }
+        break;
       }
     }
 
     if (originIndices.length === 0) continue;
 
-    // Build a batch request: use the first origin's destinations
-    // The Distance Matrix API can handle multiple origins × multiple destinations
-    const allOrigins = originIndices.map(i => `${all[i].lat},${all[i].lng}`);
-    const allDests = [...new Set(destIndices.flat())].map(j => `${all[j].lat},${all[j].lng}`);
-
-    if (allOrigins.length === 0 || allDests.length === 0) continue;
-
-    const url =
-      `https://maps.googleapis.com/maps/api/distancematrix/json` +
-      `?origins=${allOrigins.join("|")}` +
-      `&destinations=${allDests.join("|")}` +
-      `&key=${apiKey}` +
-      `&units=metric` +
-      `&avoid=indoor`;
+    const origins = originIndices.map(i => `${locations[i].lat},${locations[i].lng}`);
+    const dests = [...allDestIndices].map(j => `${locations[j].lat},${locations[j].lng}`);
 
     try {
+      const url = `${GOOGLE_API}?origins=${encodeURIComponent(origins.join("|"))}&destinations=${encodeURIComponent(dests.join("|"))}&key=${apiKey}&units=metric`;
       const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
       if (res.ok) {
-        const data: GoogleDistanceMatrixResponse = await res.json();
+        const data = await res.json();
         if (data.status === "OK" && data.rows) {
-          for (let oi = 0; oi < data.rows.length; oi++) {
-            const row = data.rows[oi];
-            const realOriginIdx = originIndices[oi];
-            for (let di = 0; di < row.elements.length; di++) {
-              const el = row.elements[di];
-              const realDestIdx = [...new Set(destIndices.flat())][di];
+          for (let oi = 0; oi < data.rows.length && oi < originIndices.length; oi++) {
+            const oiActual = originIndices[oi];
+            const elements: Element[] = data.rows[oi].elements || [];
+            const destArray = [...allDestIndices];
+            for (let di = 0; di < elements.length && di < destArray.length; di++) {
+              const el = elements[di];
+              const djActual = destArray[di];
               if (el.status === "OK" && el.distance?.value !== undefined) {
-                const km = el.distance.value / 1000;
-                setPair(realOriginIdx, realDestIdx, km);
-                done++;
+                set(oiActual, djActual, el.distance.value / 1000);
+                realCount++;
               }
             }
           }
@@ -125,21 +80,20 @@ export async function buildGoogleMatrix(
       }
     } catch {}
 
-    // Fill remaining pairs with Haversine
-    for (let i = originStart; i < originEnd; i++) {
+    // Fill any missing pairs in this batch with Haversine
+    for (let i = oStart; i < oEnd && i < n; i++) {
       for (let j = 0; j < n; j++) {
         if (i === j) continue;
-        const key = i < j ? `${i},${j}` : `${j},${i}`;
-        if (matrix.has(key)) continue;
-        const km = haversineDistance(all[i].lat, all[i].lng, all[j].lat, all[j].lng);
-        matrix.set(key, km);
-        done++;
+        if (get(i, j) !== undefined) continue;
+        const km = haversineDistance(
+          locations[i].lat, locations[i].lng,
+          locations[j].lat, locations[j].lng
+        );
+        set(i, j, km);
+        fallbackCount++;
       }
     }
-
-    report();
   }
 
-  report();
-  return matrix;
+  return { matrix, realCount, fallbackCount };
 }

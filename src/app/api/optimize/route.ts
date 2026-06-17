@@ -1,15 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Location, Config, OptimizeResponse, ApiError } from "@/types";
 import { optimizeRoutes } from "@/utils/routerOptimizer";
+import { buildGoogleMatrix } from "@/utils/googleRouting";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { locations, config, distanceMatrix } = body as {
+    const { locations, config, distanceMatrix: clientMatrix } = body as {
       locations: Location[];
       config: Config;
       distanceMatrix?: Record<string, number>;
     };
+
+    // Resolve distance matrix: client-provided, Google Maps, or server-side OSRM/Haversine
+    let distanceMatrix = clientMatrix;
+
+    if (!distanceMatrix) {
+      const googleKey = process.env.GOOGLE_MAPS_API_KEY;
+      if (googleKey && locations.length > 0) {
+        const all = [{ lat: config.homeLat, lng: config.homeLng }, ...locations];
+        const result = await buildGoogleMatrix(all, googleKey);
+        distanceMatrix = result.matrix;
+      } else {
+        // No Google key → build pure Haversine matrix (instant, no API calls)
+        distanceMatrix = {};
+        const { haversineDistance } = await import("@/utils/haversine");
+        const all = [{ lat: config.homeLat, lng: config.homeLng }, ...locations];
+        for (let i = 0; i < all.length; i++) {
+          for (let j = i + 1; j < all.length; j++) {
+            const key = `${i},${j}`;
+            distanceMatrix[key] = haversineDistance(all[i].lat, all[i].lng, all[j].lat, all[j].lng);
+          }
+        }
+      }
+    }
 
     // ─── Validation ─────────────────────────────────────────
 
