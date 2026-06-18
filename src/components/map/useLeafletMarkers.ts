@@ -60,15 +60,6 @@ export function useLeafletMarkers(
     ]);
     const dataChanged = spatialKey !== dataKeyRef.current;
 
-    // Track data identity to only fitBounds when locations/routes/home actually change
-    const dataKey = JSON.stringify([
-      locations?.length, locations?.[0]?.lat,
-      routes?.map(d => `${d.day}:${d.stops.length}`).join(","),
-      home?.lat,
-    ]);
-    const prevKey = useRef("").current;
-    useRef(dataKey).current = dataKey;
-
     // ── Home marker (circleMarker — L.marker/L.divIcon no funciona) ──
     if (home && home.lat && home.lng) {
       const circle = L.circleMarker([home.lat, home.lng], {
