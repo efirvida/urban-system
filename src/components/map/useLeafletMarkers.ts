@@ -42,12 +42,6 @@ export function useLeafletMarkers(
     const map = mapRef.current;
     if (!map) return;
 
-    // Remove ALL existing markers from the map
-    for (const [, m] of markersRef.current) {
-      m.remove();
-    }
-    markersRef.current.clear();
-
     const { data } = options;
     const { locations, routes, hiddenDays, home } = data;
     const allPoints: [number, number][] = [];
@@ -59,6 +53,13 @@ export function useLeafletMarkers(
       home?.lat, home?.lng,
     ]);
     const dataChanged = spatialKey !== dataKeyRef.current;
+    if (dataChanged) dataKeyRef.current = spatialKey;
+
+    // Remove ALL existing markers from the map (rápido, no noticeable flicker)
+    for (const [, m] of markersRef.current) {
+      m.remove();
+    }
+    markersRef.current.clear();
 
     // ── Home marker (circleMarker — L.marker/L.divIcon no funciona) ──
     if (home && home.lat && home.lng) {
