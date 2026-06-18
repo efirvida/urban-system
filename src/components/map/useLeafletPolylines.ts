@@ -98,12 +98,10 @@ export function useLeafletPolylines(
       });
       group.addLayer(route);
 
-      // Toggle visibility
-      if (isHidden) {
-        map.removeLayer(group);
-      } else if (!map.hasLayer(group)) {
-        group.addTo(map);
-      }
+      // Toggle visibility — set opacity to 0 instead of removeLayer/addLayer
+      // (which can have timing issues with group membership)
+      glow.setStyle({ opacity: isHidden ? 0 : isHighlighted ? 0.3 : 0.25 });
+      route.setStyle({ opacity: isHidden ? 0 : isHighlighted ? 1 : 0.1 });
     }
   }, [mapRef, options]); // eslint-disable-line react-hooks/exhaustive-deps
 
