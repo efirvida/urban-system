@@ -308,8 +308,13 @@ export default function Home() {
     } else {
       setSelectedPOI({ ...selectedPOI, day: target });
       setHighlightDay(target);
+      // Aislar el día destino en el mapa — ocultar los demás días
+      setHiddenDays((prev) => {
+        const allDays = editDaysPreview?.map((d) => d.day) ?? [];
+        return new Set(allDays.filter((d) => d !== target));
+      });
     }
-  }, [selectedPOI, previewTargetDay]);
+  }, [selectedPOI, previewTargetDay, editDaysPreview]);
 
   const handleCancelMove = useCallback(() => {
     setPreviewDays(null);
