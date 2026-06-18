@@ -77,15 +77,27 @@
 
 /* Route stop label — centered number on circleMarker */
 .route-stop-label {
-  background: transparent !important;
+  background: none !important;
   border: none !important;
   box-shadow: none !important;
-  color: white !important;
-  font-weight: 700 !important;
-  font-size: 12px !important;
+  color: #fff !important;
+  font-weight: 800 !important;
+  font-size: 13px !important;
   font-family: inherit !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5) !important;
+  line-height: 1 !important;
+  pointer-events: none !important;
 }
-.route-stop-label::before {
+.route-stop-label:before,
+.route-stop-label:after {
+  display: none !important;
+}
+.leaflet-tooltip-top.route-stop-label:before,
+.leaflet-tooltip-bottom.route-stop-label:before,
+.leaflet-tooltip-left.route-stop-label:before,
+.leaflet-tooltip-right.route-stop-label:before {
   display: none !important;
 }
 .leaflet-control-attribution {
