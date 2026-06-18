@@ -17,8 +17,6 @@
  * already align with the `real`/`estimated` source tags.
  */
 
-import { haversineDistance } from "./haversine";
-
 const ROUTES_URL = "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix";
 
 interface RouteMatrixElement {

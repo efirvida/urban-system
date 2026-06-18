@@ -37,148 +37,105 @@ export function useLeafletMarkers(
     onDragHomeRef.current = options.onDragHome;
   }, [options.onPOIClick, options.onDragHome]);
 
-  // Track data hash to avoid unnecessary marker rebuilds
-  const dataHashRef = useRef("");
+  // LayerGroup approach: clear and rebuild markers on every meaningful change.
+  // This is simpler and more reliable than diffing individual markers.
+  const groupRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
+    // Lazy-init layer group (cleared on every effect run to remove stale markers)
+    if (!groupRef.current) {
+      groupRef.current = L.layerGroup().addTo(map);
+    }
+    const group = groupRef.current;
+    group.clearLayers();
+    markersRef.current.clear();
+
     const { data } = options;
-    const markers = markersRef.current;
-    const keepIds = new Set<string>();
+    const { locations, routes, hiddenDays, home } = data;
     const allPoints: [number, number][] = [];
 
-    // Build a naive hash of the marker-relevant data to detect real changes
-    const hash = JSON.stringify([
-      data.home,
-      data.locations?.length,
-      data.routes?.map(d => `${d.day}:${d.stops.length}`),
-      [...(data.hiddenDays ?? [])].sort(),
-    ]);
-    if (hash === dataHashRef.current) return; // Skip if nothing meaningful changed
-    dataHashRef.current = hash;
-
-    // Home marker
-    if (data.home && data.home.lat && data.home.lng) {
-      const homeId = "home";
-      keepIds.add(homeId);
-      const existing = markers.get(homeId);
-      if (existing) {
-        existing.setLatLng([data.home.lat, data.home.lng]);
-      } else {
-        const marker = L.marker([data.home.lat, data.home.lng], {
-          icon: createHomeIcon(!!options.homeDraggable),
-          draggable: !!options.homeDraggable,
-        }).addTo(map);
-        marker.bindPopup(`<strong>Casa</strong><br/>${data.home.lat.toFixed(4)}, ${data.home.lng.toFixed(4)}`);
-        marker.on("dragend", () => {
-          const pos = marker.getLatLng();
-          onDragHomeRef.current?.(pos.lat, pos.lng);
-        });
-        markers.set(homeId, marker);
-      }
-      allPoints.push([data.home.lng, data.home.lat]);
+    // ── Home marker ──
+    if (home && home.lat && home.lng) {
+      const marker = L.marker([home.lat, home.lng], {
+        icon: createHomeIcon(!!options.homeDraggable),
+        draggable: !!options.homeDraggable,
+      }).addTo(group);
+      marker.bindPopup(`<strong>Casa</strong><br/>${home.lat.toFixed(4)}, ${home.lng.toFixed(4)}`);
+      marker.on("dragend", () => {
+        const pos = marker.getLatLng();
+        onDragHomeRef.current?.(pos.lat, pos.lng);
+      });
+      markersRef.current.set("home", marker);
+      allPoints.push([home.lng, home.lat]);
     }
 
-    // Update home draggability
-    if (options.homeDraggable !== undefined) {
-      const homeMarker = markers.get("home");
-      if (homeMarker) {
-        if (options.homeDraggable) homeMarker.dragging?.enable();
-        else homeMarker.dragging?.disable();
-      }
-    }
-
-    // Location pins — blue if assigned to a route, red if unassigned
-    if (data.locations) {
-      // Compute which locations are assigned to a route
+    // ── Location pins (colored dots) ──
+    if (locations) {
+      // Compute which locations are covered by route stops
       const assignedCoords = new Set<string>();
-      if (data.routes) {
-        for (const day of data.routes) {
+      if (routes) {
+        for (const day of routes) {
           for (const s of day.stops) {
             if (s.isHome) continue;
             assignedCoords.add(`${s.lat.toFixed(5)},${s.lng.toFixed(5)}`);
           }
         }
       }
-      for (let i = 0; i < data.locations.length; i++) {
-        const loc = data.locations[i];
-        const id = `loc-${i}`;
+
+      for (let i = 0; i < locations.length; i++) {
+        const loc = locations[i];
         const isAssigned = assignedCoords.has(`${loc.lat.toFixed(5)},${loc.lng.toFixed(5)}`);
-        keepIds.add(id);
-        const existing = markers.get(id);
-        if (existing) {
-          existing.setLatLng([loc.lat, loc.lng]);
-        } else {
-          const marker = L.marker([loc.lat, loc.lng], {
-            icon: createPinIcon(isAssigned),
-            interactive: false,
-          }).addTo(map);
-          const dayInfo = data.routes
-            ?.flatMap(d => d.stops.filter(s => !s.isHome && Math.abs(s.lat - loc.lat) < 0.00001 && Math.abs(s.lng - loc.lng) < 0.00001).map(s => `Día ${d.day}`))
-            .join(", ");
-          const popupHtml = `<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}${dayInfo ? `<br/>${dayInfo}` : "<br/>📍 Sin ruta"}`;
-          marker.bindPopup(popupHtml);
-          markers.set(id, marker);
-        }
+        const marker = L.marker([loc.lat, loc.lng], {
+          icon: createPinIcon(isAssigned),
+          interactive: false,
+        }).addTo(group);
+        // Find route info for popup
+        const dayInfo = routes
+          ?.flatMap(d => d.stops.filter(s => !s.isHome && Math.abs(s.lat - loc.lat) < 0.00001 && Math.abs(s.lng - loc.lng) < 0.00001).map(s => `Día ${d.day}`))
+          .join(", ");
+        marker.bindPopup(
+          `<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}${dayInfo ? `<br/>${dayInfo}` : "<br/>📍 Sin ruta"}`
+        );
+        markersRef.current.set(`loc-${i}`, marker);
         allPoints.push([loc.lng, loc.lat]);
       }
     }
 
-    // Route stop markers
-    if (data.routes) {
-      for (const day of data.routes) {
-        const isHidden = data.hiddenDays?.has(day.day);
+    // ── Route stop markers (numbered circles) ──
+    if (routes) {
+      for (const day of routes) {
+        const isHidden = hiddenDays?.has(day.day);
         const color = getColor(day.day - 1);
 
         for (const stop of day.stops) {
           if (stop.isHome) continue;
+          if (isHidden) continue;
+
           const id = `rs-${day.day}-${stop.sequence}`;
-
-          if (isHidden) {
-            const existing = markers.get(id);
-            if (existing) { existing.remove(); markers.delete(id); }
-            continue;
-          }
-
-          keepIds.add(id);
-          const existing = markers.get(id);
-          if (existing) {
-            existing.setLatLng([stop.lat, stop.lng]);
-            // Store POI data on marker for selection highlight
-            (existing as any)._poiData = { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name };
-          } else {
-            const marker = L.marker([stop.lat, stop.lng], {
-              icon: createRouteStopIcon(stop.sequence, color),
-            }).addTo(map);
-            marker.bindPopup(
-              `<strong>${stop.name}</strong><br/>Día ${day.day} · #${stop.sequence}<br/>${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`
-            );
-            (marker as any)._poiData = { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name };
-            marker.on("click", () => {
-              const d = (marker as any)._poiData as { lat: number; lng: number; day: number; name: string } | undefined;
-              if (d && onPOIClickRef.current) {
-                onPOIClickRef.current(d.lat, d.lng, d.day, d.name);
-              }
-            });
-            markers.set(id, marker);
-          }
+          const marker = L.marker([stop.lat, stop.lng], {
+            icon: createRouteStopIcon(stop.sequence, color),
+          }).addTo(group);
+          marker.bindPopup(
+            `<strong>${stop.name}</strong><br/>Día ${day.day} · #${stop.sequence}<br/>${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`
+          );
+          (marker as any)._poiData = { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name };
+          marker.on("click", () => {
+            const d = (marker as any)._poiData as { lat: number; lng: number; day: number; name: string } | undefined;
+            if (d && onPOIClickRef.current) {
+              onPOIClickRef.current(d.lat, d.lng, d.day, d.name);
+            }
+          });
+          markersRef.current.set(id, marker);
           allPoints.push([stop.lng, stop.lat]);
         }
       }
     }
 
-    // Remove stale markers
-    for (const [id, marker] of markers) {
-      if (!keepIds.has(id)) {
-        marker.remove();
-        markers.delete(id);
-      }
-    }
-
-    // Fit bounds if we have points
-    if (allPoints.length > 0 && map) {
+    // Fit bounds
+    if (allPoints.length > 0) {
       try {
         const bounds = L.latLngBounds(allPoints.map((p) => [p[1], p[0]] as [number, number]));
         map.fitBounds(bounds, { padding: [80, 80], maxZoom: 16 });
