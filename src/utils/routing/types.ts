@@ -33,6 +33,16 @@ export interface CachedLeg extends RouteLegResult {
 }
 
 /**
+ * UI-side alias of the provider source name. The map uses this to choose
+ * solid vs dashed styling: "haversine" estimates get dashed lines, real
+ * roads get solid. Lives in the routing package because both
+ * `clientRouting.ts` (matrix builder) and the API surface the same three
+ * possible sources; previously duplicated as a local type in
+ * `clientRouting.ts`.
+ */
+export type RouteSource = "geoapify" | "osrm" | "haversine";
+
+/**
  * Pluggable routing strategy.
  *
  * Contract: `route()` MUST NOT throw. On any failure (network, parse, no

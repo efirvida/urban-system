@@ -37,15 +37,15 @@ Chain strategy: size:exception
 
 ## Phase 2: ClientRouting Rewrite
 
-- [ ] 2.1 Rewrite `src/utils/clientRouting.ts` — `buildDistanceMatrices()` delegates to `RoutingService.buildDistanceMatrix()`; drop inline OSRM loop and 5-worker pool
-- [ ] 2.2 Refactor `fetchAllRouteGeometries()` to read geometry from enriched routing cache (`cache.ts`) instead of geometry-only cache
-- [ ] 2.3 Delete from `clientRouting.ts`: `distCache` Map, `osrmPair()`, `RouteSource` local type, Haversine fallback; preserve public API signatures
+- [x] 2.1 Rewrite `src/utils/clientRouting.ts` — `buildDistanceMatrices()` delegates to `RoutingService.buildDistanceMatrix()`; drop inline OSRM loop and 5-worker pool
+- [x] 2.2 Refactor `fetchAllRouteGeometries()` to read geometry from enriched routing cache (`cache.ts`) instead of geometry-only cache
+- [x] 2.3 Delete from `clientRouting.ts`: `distCache` Map, `osrmPair()`, `RouteSource` local type, Haversine fallback; preserve public API signatures
 
 ## Phase 3: Frontend Wiring
 
-- [ ] 3.1 Replace inline OSRM per-pair loops in `src/app/page.tsx:470-632` with single `RoutingService.buildDistanceMatrix()` call
-- [ ] 3.2 Remove `geoapifyTried` state, Geoapify merge block (`page.tsx:666-691`), and `apiPayload.geoapifyTried` field
-- [ ] 3.3 Simplify `loadCachedMatrix`/`saveCachedMatrix` (`page.tsx:41-110`) — drop `geoapifyTried` field and sources map; cache stores `{distances, home}` only
+- [x] 3.1 Replace inline OSRM per-pair loops in `src/app/page.tsx:470-632` with single `RoutingService.buildDistanceMatrix()` call
+- [x] 3.2 Remove `geoapifyTried` state, Geoapify merge block (`page.tsx:666-691`), and `apiPayload.geoapifyTried` field
+- [x] 3.3 Simplify `loadCachedMatrix`/`saveCachedMatrix` (`page.tsx:41-110`) — drop `geoapifyTried` field and sources map; cache stores `{distances, home}` only
 
 ## Phase 4: Backend Cleanup
 
