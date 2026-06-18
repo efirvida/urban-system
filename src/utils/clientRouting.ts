@@ -73,7 +73,7 @@ function routeLegKey(lat1: number, lng1: number, lat2: number, lng2: number): st
   return RC_PREFIX + `${lat1.toFixed(5)},${lng1.toFixed(5)}|${lat2.toFixed(5)},${lng2.toFixed(5)}`;
 }
 
-function getCachedLeg(lat1: number, lng1: number, lat2: number, lng2: number): [number, number][] | null {
+export function getCachedLeg(lat1: number, lng1: number, lat2: number, lng2: number): [number, number][] | null {
   try {
     const raw = localStorage.getItem(routeLegKey(lat1, lng1, lat2, lng2));
     return raw ? JSON.parse(raw) : null;

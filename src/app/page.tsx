@@ -14,7 +14,7 @@ import {
 } from "@/types";
 import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
-import { fetchAllRouteGeometries, MatrixProgress, RouteSource } from "@/utils/clientRouting";
+import { fetchAllRouteGeometries, MatrixProgress, RouteSource, getCachedLeg } from "@/utils/clientRouting";
 import { reoptimizeDay } from "@/utils/routerOptimizer";
 
 // ─── Matrix cache (localStorage) ─────────────────────────────
@@ -147,6 +147,31 @@ const PHASES = [
 ] as const;
 
 type PhaseKey = (typeof PHASES)[number]["key"];
+
+/** Rebuild route geometries from cached legs (no API calls). */
+function rebuildGeometriesFromCache(
+  days: DayRoute[],
+  setRouteGeometry: React.Dispatch<React.SetStateAction<Map<number, [number, number][]> | null>>
+) {
+  const geo = new Map<number, [number, number][]>();
+  for (const day of days) {
+    const dayCoords: [number, number][] = [];
+    for (let i = 0; i < day.stops.length - 1; i++) {
+      const a = day.stops[i], b = day.stops[i + 1];
+      const leg = getCachedLeg(a.lat, a.lng, b.lat, b.lng);
+      if (leg && leg.length > 0) {
+        const clone = [...leg];
+        if (dayCoords.length > 0 && clone.length > 0) clone.shift();
+        dayCoords.push(...clone);
+      } else {
+        // Leg not cached — use straight line
+        dayCoords.push([a.lng, a.lat], [b.lng, b.lat]);
+      }
+    }
+    if (dayCoords.length > 0) geo.set(day.day, dayCoords);
+  }
+  if (geo.size > 0) setRouteGeometry(geo);
+}
 
 // ─── Component ──────────────────────────────────────────────
 
@@ -784,10 +809,11 @@ export default function Home() {
   useEffect(() => {
     if (!editMode || !editDaysPreview || editDaysPreview.length === 0) return;
     const timer = setTimeout(() => {
-      refetchGeometries(editDaysPreview);
+      // Reconstruir geometrías desde legs cacheados (sin llamar a la API)
+      rebuildGeometriesFromCache(editDaysPreview, setRouteGeometry);
     }, 800);
     return () => clearTimeout(timer);
-  }, [editDaysPreview, editMode, refetchGeometries]);
+  }, [editDaysPreview, editMode]);
 
   /** Apply handler — commits editor's working days to the result. */
   const handleApply = useCallback((newDays: DayRoute[]) => {
