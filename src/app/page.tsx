@@ -929,7 +929,8 @@ export default function Home() {
           <>
             {stepsNode}
             <div className="mt-3 space-y-3">
-              {(result) && (() => {
+              {/* Solution selector — solo cuando no estamos editando */}
+              {!editMode && (() => {
                 // Build sorted solutions list — one per algorithm variant
                 interface SolItem { id: string; days: number; dist: number; hours: number; routes: DayRoute[]; }
                 const maxH = (routes: DayRoute[]) => Math.round(Math.max(...routes.map(r => r.totalTime || 0), 0) * 100) / 100;
@@ -969,7 +970,8 @@ export default function Home() {
                   </div>
                 );
               })()}
-              <ResultsPanel
+              {!editMode && (
+                <ResultsPanel
                 days={result.days}
                 totalDistance={result.totalDistance}
                 totalDays={result.totalDays}
@@ -986,6 +988,7 @@ export default function Home() {
                 expandedDay={sidebarExpandedDay}
                 onExpandedDayChange={setSidebarExpandedDay}
               />
+              )}
 
               {/* Unreachable POIs — visible only when the API pre-filter excluded any */}
               {result.unreachable && result.unreachable.length > 0 && (
