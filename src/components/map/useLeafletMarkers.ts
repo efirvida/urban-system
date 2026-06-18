@@ -105,39 +105,55 @@ export function useLeafletMarkers(
       }
     }
 
-    // ── Route stop markers (numbered circles) usando circleMarker + tooltip ──
+    // ── Route stop markers ──
+    // Todos los stops se muestran siempre como círculos de color.
+    // Si el día está visible: círculo grande (14) + número + click handler.
+    // Si el día está oculto: círculo chico (8) sin número, solo para referencia.
     if (routes) {
       for (const day of routes) {
         const isHidden = hiddenDays?.has(day.day);
         const color = getColor(day.day - 1);
         for (const stop of day.stops) {
           if (stop.isHome) continue;
-          if (isHidden) continue;
           const id = `rs-${day.day}-${stop.sequence}`;
-          const circle = L.circleMarker([stop.lat, stop.lng], {
-            radius: 14,
-            color: "white",
-            weight: 3,
-            fillColor: color,
-            fillOpacity: 1,
-          }).addTo(map);
-          circle.bindTooltip(String(stop.sequence), {
-            permanent: true,
-            direction: "center",
-            className: "route-stop-label",
-          });
-          circle.bindPopup(
-            `<strong>${stop.name}</strong><br/>Día ${day.day} · #${stop.sequence}<br/>${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`
-          );
-          (circle as any)._poiData = { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name };
-          circle.on("click", () => {
-            const d = (circle as any)._poiData as { lat: number; lng: number; day: number; name: string } | undefined;
-            if (d && onPOIClickRef.current) {
-              onPOIClickRef.current(d.lat, d.lng, d.day, d.name);
-            }
-          });
-          markersRef.current.set(id, circle as any);
-          allPoints.push([stop.lng, stop.lat]);
+          if (isHidden) {
+            // Círculo pequeño sin número — muestra que el POI existe pero está en otro día
+            const circle = L.circleMarker([stop.lat, stop.lng], {
+              radius: 6,
+              color: "white",
+              weight: 2,
+              fillColor: color,
+              fillOpacity: 0.5,
+            }).addTo(map);
+            markersRef.current.set(id, circle as any);
+            allPoints.push([stop.lng, stop.lat]);
+          } else {
+            // Círculo grande con número
+            const circle = L.circleMarker([stop.lat, stop.lng], {
+              radius: 14,
+              color: "white",
+              weight: 3,
+              fillColor: color,
+              fillOpacity: 1,
+            }).addTo(map);
+            circle.bindTooltip(String(stop.sequence), {
+              permanent: true,
+              direction: "center",
+              className: "route-stop-label",
+            });
+            circle.bindPopup(
+              `<strong>${stop.name}</strong><br/>Día ${day.day} · #${stop.sequence}<br/>${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`
+            );
+            (circle as any)._poiData = { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name };
+            circle.on("click", () => {
+              const d = (circle as any)._poiData as { lat: number; lng: number; day: number; name: string } | undefined;
+              if (d && onPOIClickRef.current) {
+                onPOIClickRef.current(d.lat, d.lng, d.day, d.name);
+              }
+            });
+            markersRef.current.set(id, circle as any);
+            allPoints.push([stop.lng, stop.lat]);
+          }
         }
       }
     }
