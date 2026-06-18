@@ -288,6 +288,8 @@ export default function Home() {
 
   /** Toggle a day's visibility on the map. */
   const handleToggleDay = useCallback((day: number) => {
+    setHighlightDay(null);
+    setSelectedPOI(null);
     setHiddenDays((prev) => {
       const next = new Set(prev);
       if (next.has(day)) next.delete(day);
