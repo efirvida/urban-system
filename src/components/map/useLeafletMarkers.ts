@@ -101,6 +101,7 @@ export function useLeafletMarkers(
           fillOpacity: 1,
         }).addTo(map);
         circle.bindPopup(`<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}<br/>📍 Sin ruta`);
+        (circle as any)._poiData = { lat: loc.lat, lng: loc.lng, day: -1, name: loc.name };
         markersRef.current.set(`pin-${i}`, circle as any);
         allPoints.push([loc.lng, loc.lat]);
       }
