@@ -313,8 +313,8 @@ export default function Home() {
       const editRoutes = preview ?? result.days;
       return {
         routes: editRoutes,
-        // In edit mode, only show route markers — skip raw location pins to avoid duplicates
-        locations: editMode ? undefined : locations,
+        // In results mode, only show route markers — raw location pins are in edit mode
+        locations: undefined,
         home,
         hiddenDays,
         // During editing or preview, use straight lines for instant visual feedback
