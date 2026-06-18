@@ -51,18 +51,16 @@ export function useLeafletMarkers(
     const { locations, routes, hiddenDays, home } = data;
     const allPoints: [number, number][] = [];
 
-    // ── Home marker ──
+    // ── Home marker (circleMarker — L.marker/L.divIcon no funciona) ──
     if (home && home.lat && home.lng) {
-      const marker = L.marker([home.lat, home.lng], {
-        icon: createHomeIcon(!!options.homeDraggable),
-        draggable: !!options.homeDraggable,
+      const circle = L.circleMarker([home.lat, home.lng], {
+        radius: 12,
+        color: "white",
+        weight: 3,
+        fillColor: "#2563eb",
+        fillOpacity: 0.85,
       }).addTo(map);
-      marker.bindPopup(`<strong>Casa</strong><br/>${home.lat.toFixed(4)}, ${home.lng.toFixed(4)}`);
-      marker.on("dragend", () => {
-        const pos = marker.getLatLng();
-        onDragHomeRef.current?.(pos.lat, pos.lng);
-      });
-      markersRef.current.set("home", marker);
+      circle.bindPopup(`<strong>Casa</strong><br/>${home.lat.toFixed(4)}, ${home.lng.toFixed(4)}`);
       allPoints.push([home.lng, home.lat]);
     }
 
@@ -82,7 +80,7 @@ export function useLeafletMarkers(
         const isAssigned = assignedCoords.has(`${loc.lat.toFixed(5)},${loc.lng.toFixed(5)}`);
         const fillColor = isAssigned ? "#3b82f6" : "#ef4444";
         const circle = L.circleMarker([loc.lat, loc.lng], {
-          radius: 6,
+          radius: 8,
           color: "white",
           weight: 2,
           fillColor,
@@ -93,7 +91,7 @@ export function useLeafletMarkers(
       }
     }
 
-    // ── Route stop markers (numbered circles) ──
+    // ── Route stop markers (numbered circles) usando circleMarker + tooltip ──
     if (routes) {
       for (const day of routes) {
         const isHidden = hiddenDays?.has(day.day);
@@ -102,20 +100,29 @@ export function useLeafletMarkers(
           if (stop.isHome) continue;
           if (isHidden) continue;
           const id = `rs-${day.day}-${stop.sequence}`;
-          const marker = L.marker([stop.lat, stop.lng], {
-            icon: createRouteStopIcon(stop.sequence, color),
+          const circle = L.circleMarker([stop.lat, stop.lng], {
+            radius: 15,
+            color: "white",
+            weight: 3,
+            fillColor: color,
+            fillOpacity: 1,
           }).addTo(map);
-          marker.bindPopup(
+          circle.bindTooltip(String(stop.sequence), {
+            permanent: true,
+            direction: "center",
+            className: "route-stop-label",
+          });
+          circle.bindPopup(
             `<strong>${stop.name}</strong><br/>Día ${day.day} · #${stop.sequence}<br/>${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`
           );
-          (marker as any)._poiData = { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name };
-          marker.on("click", () => {
-            const d = (marker as any)._poiData as { lat: number; lng: number; day: number; name: string } | undefined;
+          (circle as any)._poiData = { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name };
+          circle.on("click", () => {
+            const d = (circle as any)._poiData as { lat: number; lng: number; day: number; name: string } | undefined;
             if (d && onPOIClickRef.current) {
               onPOIClickRef.current(d.lat, d.lng, d.day, d.name);
             }
           });
-          markersRef.current.set(id, marker);
+          markersRef.current.set(id, circle as any);
           allPoints.push([stop.lng, stop.lat]);
         }
       }
