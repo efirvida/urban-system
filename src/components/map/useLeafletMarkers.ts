@@ -141,7 +141,7 @@ export function useLeafletMarkers(
         map.fitBounds(bounds, { padding: [80, 80], maxZoom: 16 });
       } catch {}
     }
-  }, [mapRef, options.data, options.homeDraggable]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mapRef, options]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Selected POI highlight
   useEffect(() => {
