@@ -283,24 +283,29 @@ export default function Home() {
 
   const handleAcceptMove = useCallback(() => {
     if (!selectedPOI || previewTargetDay === null || previewTargetDay === selectedPOI.day) return;
-
-    // 0 = unassigned (Sin ruta)
     const target = previewTargetDay === 0 ? null : previewTargetDay;
-    editorRef.current?.commitMove(
-      { name: selectedPOI.name, lat: selectedPOI.lat, lng: selectedPOI.lng, fromDay: selectedPOI.day },
-      target
-    );
 
-    // Clear preview state
+    if (selectedPOI.day === -1 && target !== null) {
+      // POI was unassigned — add it to the target day
+      editorRef.current?.addPOI?.(
+        { name: selectedPOI.name, lat: selectedPOI.lat, lng: selectedPOI.lng },
+        target
+      );
+    } else {
+      // POI was assigned — move it
+      editorRef.current?.commitMove(
+        { name: selectedPOI.name, lat: selectedPOI.lat, lng: selectedPOI.lng, fromDay: selectedPOI.day },
+        target
+      );
+    }
+
     setPreviewDays(null);
     setPreviewTargetDay(null);
 
     if (target === null) {
-      // If unassigned, clear selection (POI no longer on any route)
       setSelectedPOI(null);
       setHighlightDay(null);
     } else {
-      // Update selection to new day
       setSelectedPOI({ ...selectedPOI, day: target });
       setHighlightDay(target);
     }

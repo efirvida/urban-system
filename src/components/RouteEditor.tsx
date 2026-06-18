@@ -61,6 +61,8 @@ export interface RouteEditorHandle {
     poi: { name: string; lat: number; lng: number; fromDay: number },
     toDay: number | null
   ) => void;
+  /** Add an unassigned POI to a specific day. */
+  addPOI?: (poi: { name: string; lat: number; lng: number }, toDay: number) => void;
 }
 
 const UNDO_CAP = 20;
@@ -517,15 +519,38 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
     [workingDays]
   );
 
-  // ── Expose commitMove via ref (called by the floating MapPOIActionBar) ──
+  // ── Expose commitMove + addPOI via ref (called by the floating MapPOIActionBar) ──
   useImperativeHandle(
     ref,
     () => ({
       commitMove: (poi, toDay) => {
         handleMovePOI(poi.name, poi.lat, poi.lng, poi.fromDay, toDay);
       },
+      addPOI: (poi, toDay) => {
+        const toDayIdx = workingDays.findIndex((d) => d.day === toDay);
+        if (toDayIdx === -1) return;
+        const targetDay = workingDays[toDayIdx];
+        const targetPois = stopsToLocations(
+          targetDay.stops.filter((s) => !s.isHome)
+        ).concat([{ name: poi.name, lat: poi.lat, lng: poi.lng }]);
+        const newTarget = reoptimizeDay(targetPois, home, config, matrix, targetDay.day, nameToIndex);
+        pushUndo({
+          type: "add",
+          poiName: poi.name,
+          fromDay: POOL_DAY,
+          toDay: targetDay.day,
+        });
+        setWorkingDays((prev) => {
+          const next = [...prev];
+          next[toDayIdx] = newTarget;
+          return next;
+        });
+        setUnassigned((prev) =>
+          prev.filter((p) => !(p.name === poi.name && p.lat === poi.lat && p.lng === poi.lng))
+        );
+      },
     }),
-    [handleMovePOI]
+    [handleMovePOI, workingDays, home, config, matrix, nameToIndex, pushUndo]
   );
 
   // ── Render ──
