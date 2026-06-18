@@ -14,18 +14,17 @@ import {
 } from "@/types";
 import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
-import { fetchAllRouteGeometries, MatrixProgress, RouteSource } from "@/utils/clientRouting";
+import { buildDistanceMatrices, fetchAllRouteGeometries, MatrixProgress, RouteSource } from "@/utils/clientRouting";
 import { reoptimizeDay } from "@/utils/routerOptimizer";
 
 // ─── Matrix cache (localStorage) ─────────────────────────────
-// Format: { d: Record<"i,j", km>, s: Record<"i,j", "h"|"o"|"g">, t?: string[] }
-//   h = Haversine, o = OSRM, g = Geoapify
-//   t = keys where Geoapify was already attempted (success or fail)
+// Format: { d: Record<"i,j", km>, home?: { lat, lng } }
+// Per-leg caches live in the routing cache (`routing/cache.ts`), so
+// this matrix cache only records the aggregated distances to skip
+// rebuilding the whole matrix when the location set is unchanged.
 
 interface CachedMatrix {
   d: Record<string, number>;
-  s: Record<string, string>;
-  t?: string[];
   home?: { lat: number; lng: number }; // home coord when cached
 }
 
@@ -38,7 +37,20 @@ function locationsHash(locs: Location[]): string {
   return Math.abs(h).toString(36);
 }
 
-function loadCachedMatrix(locs: Location[], currentHomeLat?: number, currentHomeLng?: number): { distances: Record<string, number>; geoapifyTried: string[]; cachedHome?: { lat: number; lng: number } } | null {
+/**
+ * Load a previously-cached matrix for this exact set of locations.
+ *
+ * If the cached home coordinate is within ~300m of the current home,
+ * all pairs (including home↔POI) are returned. Otherwise only the
+ * POI↔POI pairs come back and the caller rebuilds the home pairs via
+ * `buildDistanceMatrices`, which uses the routing cache's per-leg
+ * store to avoid re-fetching the same POI↔POI pairs.
+ */
+function loadCachedMatrix(
+  locs: Location[],
+  currentHomeLat?: number,
+  currentHomeLng?: number,
+): { distances: Record<string, number>; cachedHome?: { lat: number; lng: number } } | null {
   try {
     const key = MC_PREFIX + locationsHash(locs);
     const raw = localStorage.getItem(key);
@@ -53,27 +65,17 @@ function loadCachedMatrix(locs: Location[], currentHomeLat?: number, currentHome
     }
 
     const distances: Record<string, number> = {};
-    const sources: Record<string, string> = {};
-    const geoapifyTried: string[] = [];
 
     if (homeMatches && parsed.d) {
       // Home matches → load ALL pairs including home
       for (const k of Object.keys(parsed.d)) {
         distances[k] = parsed.d[k];
-        sources[k] = parsed.s[k] || "h";
-        if ((parsed.t && parsed.t.includes(k)) || sources[k] === "g" || sources[k] === "x") {
-          geoapifyTried.push(k);
-        }
       }
     } else {
       // Home changed or missing → load only POI pairs
       for (const k of Object.keys(parsed.d)) {
         if (k.startsWith("0,")) continue;
         distances[k] = parsed.d[k];
-        sources[k] = parsed.s[k] || "h";
-        if ((parsed.t && parsed.t.includes(k)) || sources[k] === "g" || sources[k] === "x") {
-          geoapifyTried.push(k);
-        }
       }
     }
 
@@ -85,31 +87,23 @@ function loadCachedMatrix(locs: Location[], currentHomeLat?: number, currentHome
       localStorage.removeItem(key);
       return null;
     }
-    console.log(`[Cache] HIT: ${key} (${Object.keys(distances).length} pairs, ${geoapifyTried.length} tried, homeMatch=${homeMatches})`);
-    return { distances, geoapifyTried, cachedHome: parsed.home };
+    console.log(`[Cache] HIT: ${key} (${Object.keys(distances).length} pairs, homeMatch=${homeMatches})`);
+    return { distances, cachedHome: parsed.home };
   } catch { return null; }
 }
 
 function saveCachedMatrix(
   locs: Location[],
   distances: Record<string, number>,
-  sources: Record<string, string>,
-  geoapifyTried?: string[],
   homeLat?: number,
   homeLng?: number
 ): void {
   try {
     const key = MC_PREFIX + locationsHash(locs);
-    // Clone to avoid mutating the originals
-    const toStore: CachedMatrix = { d: { ...distances }, s: { ...sources } };
-    if (geoapifyTried && geoapifyTried.length > 0) toStore.t = [...geoapifyTried];
+    const toStore: CachedMatrix = { d: { ...distances } };
     if (homeLat !== undefined && homeLng !== undefined) toStore.home = { lat: homeLat, lng: homeLng };
-    // Keep home pairs in cache so subsequent runs with same home don't need OSRM again
     localStorage.setItem(key, JSON.stringify(toStore));
-    const oCount = Object.values(toStore.s).filter(v => v === "o").length;
-    const hCount = Object.values(toStore.s).filter(v => v === "h").length;
-    const gCount = Object.values(toStore.s).filter(v => v === "g").length;
-    console.log(`[Cache] SAVED: ${key} (${Object.keys(toStore.d).length} total pairs, g=${gCount} o=${oCount} h=${hCount})`);
+    console.log(`[Cache] SAVED: ${key} (${Object.keys(toStore.d).length} total pairs)`);
   } catch (err) {
     console.warn("[Cache] Failed to save:", err);
   }
@@ -471,167 +465,53 @@ export default function Home() {
     await new Promise(r => setTimeout(r, 100));
 
     try {
-      // ── Paso 1: Construir matriz base (cache → Haversine → OSRM) ──
-      // distances: Record<"i,j", km> — lo que se envía al server para optimizar
-      // sources: Record<"i,j", "h"|"o"> — para saber qué se calculó
-      // geoapifyTried: string[] — pares que ya pasaron por Geoapify
-
-      const all = [{ lat: config.homeLat, lng: config.homeLng }, ...locations];
-      const N = all.length;
+      // ── Paso 1: Construir matriz base ──
+      // The matrix cache (`vrp_matrix_<hash>`) stores a full set of
+      // distances for a given location set. The routing cache
+      // (`routing/cache.ts`) stores individual legs and is the source
+      // of truth when the matrix cache misses or only has POI pairs.
+      const N = locations.length + 1; // home + POIs
       const totalPairs = (N * (N - 1)) / 2;
+      const fullPairCount = (locations.length * (locations.length + 1)) / 2;
 
       let distances: Record<string, number> = {};
-      let sources: Record<string, string> = {};
-      let geoapifyTried: string[] = [];
-
-      // Helper: check if two points are essentially the same location
-      const isSamePoint = (a: typeof all[0], b: typeof all[0]) =>
-        Math.abs(a.lat - b.lat) < 0.0001 && Math.abs(a.lng - b.lng) < 0.0001;
-
-      // 1a. Intentar cargar del cache
       const cached = loadCachedMatrix(locations, config.homeLat, config.homeLng);
-      if (cached) {
+      const cachedHasFullMatrix = cached && Object.keys(cached.distances).length >= fullPairCount;
+
+      if (cachedHasFullMatrix) {
+        // Full matrix cache hit — skip the rebuild entirely.
         distances = cached.distances;
-        geoapifyTried = cached.geoapifyTried;
-        for (const k of Object.keys(distances)) {
-          sources[k] = geoapifyTried.includes(k) ? "g" : "o";
-        }
-
-        // If cache loaded full matrix (home matched), skip rebuild
-        const hasHomePairs = Object.keys(distances).length >= totalPairs;
-        console.log(`${FLOW} Cache HIT: ${Object.keys(distances).length}/${totalPairs} pairs, ${geoapifyTried.length} tried, homeCached=${hasHomePairs}`);
-
-        if (!hasHomePairs) {
-          // Home changed: rebuild home pairs via OSRM
-          geoapifyTried = geoapifyTried.filter(k => !k.startsWith("0,"));
-          console.log(`${FLOW} Home pairs rebuilt: ${N - 1} pairs`);
-
-          // OSRM para pares del home con progreso UI
-          const homeOsrm: Array<{ i: number; j: number }> = [];
-          for (let j = 1; j < N; j++)
-            if (!isSamePoint(all[0], all[j])) homeOsrm.push({ i: 0, j });
-
-          if (homeOsrm.length > 0) {
-            setOptimizePhase("matrix");
-            setMatrixProgress({
-              phase: "matrix", stage: `OSRM home: 0/${homeOsrm.length}`,
-              current: 0, total: homeOsrm.length, percent: 0,
-              etaSeconds: 999, realCount: 0, haversineCount: homeOsrm.length,
-            });
-            await new Promise(r => setTimeout(r, 50));
-            console.log(`${FLOW} OSRM home: ${homeOsrm.length} pares`);
-            let oi = 0, osrmOk = 0, osrmFail = 0;
-            await Promise.all(Array.from({ length: 4 }, async () => {
-              while (oi < homeOsrm.length) {
-                const p = homeOsrm[oi++];
-                if ((osrmOk + osrmFail) % 10 === 0) await new Promise(r => setTimeout(r, 0));
-                try {
-                  const c = new AbortController();
-                  const t = setTimeout(() => c.abort(), 5000);
-                  const url = `https://router.project-osrm.org/route/v1/driving/${all[p.i].lng},${all[p.i].lat};${all[p.j].lng},${all[p.j].lat}?overview=false`;
-                  const res = await fetch(url, { signal: c.signal });
-                  clearTimeout(t);
-                  if (res.ok) {
-                    const d = await res.json();
-                    if (d.code === "Ok" && d.routes?.length) {
-                      const key = `${p.i},${p.j}`;
-                      distances[key] = d.routes[0].distance / 1000;
-                      sources[key] = "o";
-                      osrmOk++;
-                    } else osrmFail++;
-                  } else osrmFail++;
-                } catch { osrmFail++; }
-                if ((osrmOk + osrmFail) % 10 === 0) {
-                  const done = osrmOk + osrmFail;
-                  const elapsed = (Date.now() - t0) / 1000;
-                  const speed = done / Math.max(elapsed, 0.1);
-                  setMatrixProgress({
-                    phase: "matrix", stage: `OSRM home: ${osrmOk} ok · ${osrmFail} fallback`,
-                    current: done, total: homeOsrm.length,
-                    percent: Math.round((done / homeOsrm.length) * 100),
-                    etaSeconds: speed > 0 ? Math.round((homeOsrm.length - done) / speed) : 999,
-                    realCount: osrmOk, haversineCount: homeOsrm.length - osrmOk,
-                  });
-                }
-              }
-            }));
-            console.log(`${FLOW} OSRM home: ${osrmOk} ok, ${osrmFail} fallback`);
-          }
-        } else {
-          console.log(`${FLOW} Home unchanged, skipping OSRM home`);
-        }
-      }
-
-      // 1b. Cache MISS: construir desde cero con OSRM
-      if (!cached) {
-        console.log(`${FLOW} ── Phase: MATRIX (OSRM) ──`);
+        console.log(`${FLOW} Cache HIT (full): ${Object.keys(distances).length}/${fullPairCount} pairs`);
+      } else {
+        // Partial or miss — delegate to RoutingService. The service
+        // checks the per-leg routing cache first, so the actual network
+        // work is limited to the legs that are not yet cached.
+        const reason = cached ? "partial" : "miss";
+        console.log(`${FLOW} Cache ${reason} — building matrix via RoutingService (${totalPairs} pairs)`);
         setOptimizePhase("matrix");
         await new Promise(r => setTimeout(r, 50));
-
-        // OSRM para todos los pares (excepto mismo punto)
-        const osrmCandidates: Array<{ i: number; j: number }> = [];
-        for (let i = 0; i < N; i++)
-          for (let j = i + 1; j < N; j++)
-            if (!isSamePoint(all[i], all[j])) osrmCandidates.push({ i, j });
-
-        const osrmTotal = osrmCandidates.length;
-        if (osrmTotal > 0) {
-          console.log(`${FLOW} OSRM: ${osrmTotal} pares > 0.5km`);
-          const tOsrm = Date.now();
-          let oi = 0, osrmOk = 0, osrmFail = 0;
-
-          setMatrixProgress({
-            phase: "matrix", stage: `OSRM: 0/${osrmTotal}`,
-            current: 0, total: totalPairs, percent: 0,
-            etaSeconds: 999, realCount: 0, haversineCount: totalPairs,
-          });
-
-          await Promise.all(Array.from({ length: 4 }, async () => {
-            while (oi < osrmTotal) {
-              const p = osrmCandidates[oi++];
-              if ((osrmOk + osrmFail) % 10 === 0) await new Promise(r => setTimeout(r, 0));
-              try {
-                const c = new AbortController();
-                const t = setTimeout(() => c.abort(), 5000);
-                const url = `https://router.project-osrm.org/route/v1/driving/${all[p.i].lng},${all[p.i].lat};${all[p.j].lng},${all[p.j].lat}?overview=false`;
-                const res = await fetch(url, { signal: c.signal });
-                clearTimeout(t);
-                if (res.ok) {
-                  const d = await res.json();
-                  if (d.code === "Ok" && d.routes?.length) {
-                    const key = `${p.i},${p.j}`;
-                    distances[key] = d.routes[0].distance / 1000;
-                    sources[key] = "o";
-                    osrmOk++;
-                  } else osrmFail++;
-                } else osrmFail++;
-              } catch { osrmFail++; }
-
-              if ((osrmOk + osrmFail) % 10 === 0) {
-                const done = osrmOk + osrmFail;
-                const elapsed = (Date.now() - tOsrm) / 1000;
-                const speed = done / Math.max(elapsed, 0.1);
-                setMatrixProgress({
-                  phase: "matrix", stage: `OSRM: ${osrmOk} ok · ${osrmFail} fallback (${done}/${osrmTotal})`,
-                  current: done, total: totalPairs,
-                  percent: Math.round((done / totalPairs) * 100),
-                  etaSeconds: speed > 0 ? Math.round((osrmTotal - done) / speed) : 999,
-                  realCount: osrmOk,
-                  haversineCount: totalPairs - osrmOk,
-                });
-              }
-            }
-          }));
-          console.log(`${FLOW} OSRM: ${osrmOk} ok, ${osrmFail} fallback in ${Date.now() - tOsrm}ms`);
-        } else {
-          console.log(`${FLOW} OSRM: skipped (all pairs ≤ 0.5km)`);
+        const tBuild = Date.now();
+        const { osrmMatrix } = await buildDistanceMatrices(
+          config.homeLat,
+          config.homeLng,
+          locations,
+          (p) => setMatrixProgress(p),
+        );
+        // Convert the Map<"i,j", number> the wrapper returns into a
+        // Record<"i,j", number> for the optimizer. Unreachable pairs
+        // (Infinity) are preserved so the optimizer can reject them.
+        for (const [key, value] of osrmMatrix) {
+          distances[key] = value;
         }
-
-        // Guardar cache inmediatamente (antes de Geoapify)
-        saveCachedMatrix(locations, distances, sources, undefined, config.homeLat, config.homeLng);
+        const realCount = Object.values(distances).filter((v) => Number.isFinite(v)).length;
+        const unreachableCount = totalPairs - realCount;
+        console.log(`${FLOW} Matrix built: ${realCount} real, ${unreachableCount} unreachable in ${Date.now() - tBuild}ms`);
+        // Persist the full matrix to the localStorage cache so the
+        // next run with the same locations can skip the build entirely.
+        saveCachedMatrix(locations, distances, config.homeLat, config.homeLng);
       }
 
-      // ── Paso 2: Enviar al server (Geoapify mejora los pares que faltan) ──
+      // ── Paso 2: Enviar al server ──
       setOptimizePhase("algorithm");
       await new Promise(r => setTimeout(r, 100));
       console.log(`${FLOW} ── Phase: ALGORITHM (${algorithm}) ──`);
@@ -640,7 +520,6 @@ export default function Home() {
       const apiPayload: Record<string, unknown> = {
         locations, config, algorithm,
         distanceMatrix: distances,
-        geoapifyTried,
         // PR 6 (real-roads-only): feature flag — when true, the API
         // builds a `DistanceMatrix` with per-pair source metadata and
         // passes it through to the optimizer. Default `false` keeps the
@@ -648,7 +527,7 @@ export default function Home() {
         useStrictMatrix: config?.useStrictMatrix ?? false,
       };
 
-      console.log(`${FLOW} POST /api/optimize — ${locations.length} locs, ${Object.keys(distances).length} pairs, ${geoapifyTried.length} geoapify-tried`);
+      console.log(`${FLOW} POST /api/optimize — ${locations.length} locs, ${Object.keys(distances).length} pairs`);
       const apiRes = await fetch("/api/optimize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -662,33 +541,6 @@ export default function Home() {
 
       const apiData = await apiRes.json();
       console.log(`${FLOW} API response in ${Date.now() - tAlgo}ms`);
-
-      // ── Paso 3: Mergear resultados de Geoapify al cache ──
-      if (apiData._matrixCache || apiData._geoapifyTried) {
-        const geoCache = (apiData._matrixCache as Record<string, number>) || {};
-        const geoFailed = (apiData._geoapifyTried as string[]) || [];
-        let geoOk = 0;
-
-        // Override con pares exitosos de Geoapify → source="g"
-        for (const key of Object.keys(geoCache)) {
-          distances[key] = geoCache[key];
-          sources[key] = "g";
-          geoOk++;
-        }
-
-        // Geoapify falló: source se mantiene "o" si OSRM lo calculó, "h" si no
-        // Pero ge registramos como "tried" para no llamar a Geoapify devuelta
-        for (const key of geoFailed) {
-          if (sources[key] !== "o") sources[key] = "x"; // Haversine fallback
-          // si sources[key] ya es "o", lo dejamos — OSRM es mejor que Haversine
-        }
-
-        const allTried = [...geoapifyTried, ...Object.keys(geoCache), ...geoFailed];
-        // Deduplicate
-        const triedSet = new Set(allTried);
-        saveCachedMatrix(locations, distances, sources, [...triedSet], config.homeLat, config.homeLng);
-        console.log(`${FLOW} Geoapify merged: ${geoOk} ok, ${geoFailed.length} failed, tried=${triedSet.size}`);
-      }
 
       // ── Parse combined result (both algorithms ran on server) ──
       let optResult: OptimizeResponse;
@@ -737,15 +589,16 @@ export default function Home() {
       setResult(optResult);
       console.log(`${FLOW} Best: ${bestCnt}d · ${bestDist}km`);
 
-      // ── Source breakdown ──
+      // ── Source breakdown (post-refactor: per-leg provider lives in the
+      //     routing cache, not the matrix). The matrix just carries
+      //     distances; the optimizer's _meta tells us how many pairs the
+      //     server considered unreachable. ──
       {
-        const hCount = Object.values(sources).filter(v => v === "h").length;
-        const oCount = Object.values(sources).filter(v => v === "o").length;
-        const gCount = Object.values(sources).filter(v => v === "g").length;
-        const xCount = Object.values(sources).filter(v => v === "x").length;
+        const realCount = Object.values(distances).filter((v) => Number.isFinite(v)).length;
+        const unreachableCount = Object.values(distances).length - realCount;
         console.log(`${FLOW} ── Phase: DONE ──`);
         console.log(`${FLOW} Total elapsed: ${Date.now() - t0}ms`);
-        console.log(`${FLOW} Source breakdown: Haversine=${hCount} OSRM=${oCount} GeoapifyOK=${gCount} GeoapifyFail=${xCount} Total=${hCount+oCount+gCount+xCount}`);
+        console.log(`${FLOW} Matrix: ${realCount} real · ${unreachableCount} unreachable · total=${Object.keys(distances).length}`);
       }
 
       // Fetch route geometries (async, background)
