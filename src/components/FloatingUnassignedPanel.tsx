@@ -16,7 +16,7 @@ export default function FloatingUnassignedPanel({
   if (pois.length === 0) return null;
 
   return (
-    <div className="absolute right-4 top-4 z-30 max-w-[220px] pointer-events-none">
+    <div className="absolute right-4 top-4 z-30 max-w-[340px] pointer-events-none">
       <div className="pointer-events-auto bg-white rounded-xl shadow-lg border border-red-100 overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-2 px-3 py-2.5 bg-gradient-to-r from-red-50 to-amber-50 border-b border-red-100">

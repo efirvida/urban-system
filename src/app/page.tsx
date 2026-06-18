@@ -1209,10 +1209,9 @@ export default function Home() {
               }
             }
           }
-          // POI not found in any day — it's truly unassigned (edit mode only)
-          if (editMode) {
-            setSelectedPOI({ name, lat, lng, day: -1 });
-          }
+          // POI not found in any day — highlight it on the map as unassigned
+          setSelectedPOI({ name, lat, lng, day: -1 });
+          setHighlightDay(-1);
         }}
       />
 
