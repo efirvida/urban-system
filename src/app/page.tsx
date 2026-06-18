@@ -1023,6 +1023,11 @@ export default function Home() {
                   onPOISelect={(name, lat, lng, day) => {
                     setSelectedPOI({ name, lat, lng, day });
                     setHighlightDay(day);
+                    setSidebarExpandedDay(day);
+                    setHiddenDays((prev) => {
+                      const allDays = result?.days.map((d) => d.day) ?? [];
+                      return new Set(allDays.filter((d) => d !== day));
+                    });
                   }}
                   onApply={handleApply}
                   onDirtyChange={setEditorDirty}

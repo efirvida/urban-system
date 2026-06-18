@@ -189,14 +189,24 @@ export function useLeafletMarkers(
         Math.abs(poiData.lng - sel.lng) < 0.000001;
       if (isMatch) {
         (marker as any).setStyle?.({ radius: 18, color: "white", weight: 4, fillOpacity: 1 });
-      } else {
-        // Restore — the markers effect already set the correct size for hidden/visible
-        // Just remove any lingering CSS transform/boxShadow from the old approach
-        const el = marker.getElement();
-        if (el) {
-          (el as HTMLElement).style.transform = "";
-          (el as HTMLElement).style.boxShadow = "";
+      } else if ((marker as any)._poiData) {
+        // Restore to default size — the markers effect already set the right
+        // size for hidden/visible, but the highlight effect's previous run may
+        // have overridden it to 18. Ensure we revert if so.
+        const d = (marker as any)._poiData as { day: number };
+        const isRouteStop = d && d.day > 0;
+        if (isRouteStop) {
+          const borderRadius = options.data.hiddenDays?.has(d.day) ? 8 : 14;
+          (marker as any).setStyle?.({ radius: borderRadius, color: "white", weight: 3, fillOpacity: 1 });
+        } else {
+          (marker as any).setStyle?.({ radius: 8, color: "white", weight: 2, fillOpacity: 1 });
         }
+      }
+      // Clean up any lingering CSS transform/boxShadow from the old scale approach
+      const el = marker.getElement();
+      if (el) {
+        (el as HTMLElement).style.transform = "";
+        (el as HTMLElement).style.boxShadow = "";
       }
     }
   }, [options.selectedPOI, options.data]);
