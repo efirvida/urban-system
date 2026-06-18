@@ -134,6 +134,7 @@ const MapView = dynamic(() => import("@/components/MapView").then(m => m.default
 import Sidebar from "@/components/Sidebar";
 import RouteEditor, { RouteEditorHandle } from "@/components/RouteEditor";
 import MapPOIActionBar from "@/components/MapPOIActionBar";
+import FloatingUnassignedPanel from "@/components/FloatingUnassignedPanel";
 
 // ─── Phase definition ───────────────────────────────────────
 
@@ -216,6 +217,19 @@ export default function Home() {
     const source = editDaysPreview ?? result?.days ?? [];
     return [...new Set(source.map((d) => d.day))].sort((a, b) => a - b);
   }, [editDaysPreview, result]);
+
+  /** Unassigned POIs during editing — locations not in any route stop. */
+  const unassignedDuringEdit = useMemo(() => {
+    if (!editMode || !editDaysPreview || !locations) return [];
+    const assigned = new Set<string>();
+    for (const day of editDaysPreview) {
+      for (const s of day.stops) {
+        if (s.isHome) continue;
+        assigned.add(`${s.lat.toFixed(5)},${s.lng.toFixed(5)}`);
+      }
+    }
+    return locations.filter((l) => !assigned.has(`${l.lat.toFixed(5)},${l.lng.toFixed(5)}`));
+  }, [editMode, editDaysPreview, locations]);
 
   /** Calculate preview routes when the user selects a target day or "Sin ruta". */
   const handlePreviewDay = useCallback(
@@ -1128,6 +1142,27 @@ export default function Home() {
           onCancel={handleCancelMove}
         />
       )}
+
+      {/* ── Floating unassigned POIs panel (edit mode only) ── */}
+      <FloatingUnassignedPanel
+        pois={unassignedDuringEdit}
+        onPOIClick={(lat, lng, name) => {
+          // Find the day this POI belongs to (if any) and select it
+          if (editDaysPreview) {
+            for (const day of editDaysPreview) {
+              for (const s of day.stops) {
+                if (!s.isHome && Math.abs(s.lat - lat) < 0.00001 && Math.abs(s.lng - lng) < 0.00001) {
+                  setSelectedPOI({ name, lat, lng, day: day.day });
+                  setHighlightDay(day.day);
+                  return;
+                }
+              }
+            }
+          }
+          // POI not found in any day — it's truly unassigned
+          setSelectedPOI({ name, lat, lng, day: -1 });
+        }}
+      />
 
       {/* ── Error toast ── */}
       {error && (
