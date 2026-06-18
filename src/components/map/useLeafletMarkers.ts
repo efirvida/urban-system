@@ -37,20 +37,14 @@ export function useLeafletMarkers(
     onDragHomeRef.current = options.onDragHome;
   }, [options.onPOIClick, options.onDragHome]);
 
-  // LayerGroup approach: clear and rebuild markers on every meaningful change.
-  // This is simpler and more reliable than diffing individual markers.
-  const groupRef = useRef<L.LayerGroup | null>(null);
-
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Lazy-init layer group (cleared on every effect run to remove stale markers)
-    if (!groupRef.current) {
-      groupRef.current = L.layerGroup().addTo(map);
+    // Remove ALL existing markers from the map
+    for (const [, m] of markersRef.current) {
+      m.remove();
     }
-    const group = groupRef.current;
-    group.clearLayers();
     markersRef.current.clear();
 
     const { data } = options;
@@ -62,7 +56,7 @@ export function useLeafletMarkers(
       const marker = L.marker([home.lat, home.lng], {
         icon: createHomeIcon(!!options.homeDraggable),
         draggable: !!options.homeDraggable,
-      }).addTo(group);
+      }).addTo(map);
       marker.bindPopup(`<strong>Casa</strong><br/>${home.lat.toFixed(4)}, ${home.lng.toFixed(4)}`);
       marker.on("dragend", () => {
         const pos = marker.getLatLng();
@@ -74,7 +68,6 @@ export function useLeafletMarkers(
 
     // ── Location pins (colored dots) ──
     if (locations) {
-      // Compute which locations are covered by route stops
       const assignedCoords = new Set<string>();
       if (routes) {
         for (const day of routes) {
@@ -84,15 +77,13 @@ export function useLeafletMarkers(
           }
         }
       }
-
       for (let i = 0; i < locations.length; i++) {
         const loc = locations[i];
         const isAssigned = assignedCoords.has(`${loc.lat.toFixed(5)},${loc.lng.toFixed(5)}`);
         const marker = L.marker([loc.lat, loc.lng], {
           icon: createPinIcon(isAssigned),
           interactive: false,
-        }).addTo(group);
-        // Find route info for popup
+        }).addTo(map);
         const dayInfo = routes
           ?.flatMap(d => d.stops.filter(s => !s.isHome && Math.abs(s.lat - loc.lat) < 0.00001 && Math.abs(s.lng - loc.lng) < 0.00001).map(s => `Día ${d.day}`))
           .join(", ");
@@ -109,15 +100,13 @@ export function useLeafletMarkers(
       for (const day of routes) {
         const isHidden = hiddenDays?.has(day.day);
         const color = getColor(day.day - 1);
-
         for (const stop of day.stops) {
           if (stop.isHome) continue;
           if (isHidden) continue;
-
           const id = `rs-${day.day}-${stop.sequence}`;
           const marker = L.marker([stop.lat, stop.lng], {
             icon: createRouteStopIcon(stop.sequence, color),
-          }).addTo(group);
+          }).addTo(map);
           marker.bindPopup(
             `<strong>${stop.name}</strong><br/>Día ${day.day} · #${stop.sequence}<br/>${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`
           );
