@@ -65,6 +65,7 @@ export default function MapView({
     hiddenDays: data.hiddenDays,
     highlightDay,
     onPOIClick,
+    selectedPOI,
   });
 
   // Home + location pins (non-route markers)
