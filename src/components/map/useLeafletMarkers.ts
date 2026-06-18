@@ -176,25 +176,27 @@ export function useLeafletMarkers(
     }
   }, [mapRef, options]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Selected POI highlight
+  // Selected POI highlight — cambia el radio del círculo sin usar CSS transform
+  // (scale en SVG mueve el elemento porque el transform-origin no es el centro)
   useEffect(() => {
     const sel = options.selectedPOI;
     for (const [, marker] of markersRef.current) {
-      const el = marker.getElement() as HTMLElement | null;
-      if (!el) continue;
       const poiData = (marker as any)._poiData as { lat: number; lng: number; day: number } | undefined;
-      const isMatch = sel && poiData &&
+      if (!poiData) continue;
+      const isMatch = sel &&
         poiData.day === sel.day &&
         Math.abs(poiData.lat - sel.lat) < 0.000001 &&
         Math.abs(poiData.lng - sel.lng) < 0.000001;
       if (isMatch) {
-        el.style.transform = "scale(1.4)";
-        el.style.boxShadow = "0 0 0 4px rgba(59, 130, 246, 0.6), 0 0 0 6px rgba(59, 130, 246, 0.3)";
-        el.style.zIndex = "20";
+        (marker as any).setStyle?.({ radius: 18, color: "white", weight: 4, fillOpacity: 1 });
       } else {
-        el.style.transform = "";
-        el.style.boxShadow = "";
-        el.style.zIndex = "";
+        // Restore — the markers effect already set the correct size for hidden/visible
+        // Just remove any lingering CSS transform/boxShadow from the old approach
+        const el = marker.getElement();
+        if (el) {
+          (el as HTMLElement).style.transform = "";
+          (el as HTMLElement).style.boxShadow = "";
+        }
       }
     }
   }, [options.selectedPOI, options.data]);
