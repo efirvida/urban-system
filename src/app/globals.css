@@ -60,14 +60,6 @@
 }
 
 /* ─── Leaflet overrides ──────────────────────────────── */
-/* Keep all Leaflet panes below the sidebar (z-20) */
-.leaflet-pane {
-  z-index: 1 !important;
-}
-.leaflet-top,
-.leaflet-bottom {
-  z-index: 2 !important;
-}
 .leaflet-control-zoom {
   border: 1px solid #e5e7eb !important;
   border-radius: 8px !important;
