@@ -26,8 +26,23 @@ export interface RouteLegResult {
   source: string;
 }
 
-/** A `RouteLegResult` stamped with the time it was cached — drives LRU eviction. */
-export interface CachedLeg extends RouteLegResult {
+/**
+ * Per-leg cache entry — same as `RouteLegResult` but without `geometry`.
+ *
+ * Geometry is excluded from the cache because:
+ * 1. It's the primary consumer of localStorage quota (hundreds of coords per leg).
+ * 2. The matrix builder only needs `distanceKm`.
+ * 3. Map geometry is fetched separately by `fetchAllRouteGeometries()`.
+ *
+ * `timestamp` drives LRU eviction in `cache.ts`.
+ */
+export interface CachedLeg {
+  /** Distance in kilometers. */
+  distanceKm: number;
+  /** Duration in seconds. */
+  durationSeconds: number;
+  /** Provider name (e.g. "geoapify", "osrm"). */
+  source: string;
   /** `Date.now()` at write time. */
   timestamp: number;
 }

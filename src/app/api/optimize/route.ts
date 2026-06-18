@@ -6,40 +6,11 @@ import {
   ApiError,
   UnreachablePoi,
   DistanceMatrix,
-  RoutingSource,
+  MatrixEntry,
 } from "@/types";
 import { optimizeRoutes } from "@/utils/routerOptimizer";
 import { runNSGA2 } from "@/utils/nsga2";
-import { buildGeoapifyMatrix } from "@/utils/geoapifyMatrix";
 import { filterUnreachable } from "@/utils/unreachableFilter";
-
-/**
- * Build a `DistanceMatrix` (per-pair `MatrixEntry`) from the legacy matrix.
- *
- * Source is determined by:
- * - Key missing or Infinity → "unreachable"
- * - Key in `geoapifyCache` → "real" (Geoapify returned a distance)
- * - Everything else → "real" (finite distance from OSRM/frontend)
- */
-function buildDistanceMatrix(
-  matrix: Record<string, number>,
-  geoapifyCache: Record<string, number>
-): DistanceMatrix {
-  const out: DistanceMatrix = {};
-  for (const key of Object.keys(matrix)) {
-    const d = matrix[key];
-    let source: RoutingSource;
-    if (d === undefined || !Number.isFinite(d)) {
-      source = "unreachable";
-    } else if (geoapifyCache[key] !== undefined) {
-      source = "real";
-    } else {
-      source = "real";
-    }
-    out[key] = { distance: d, source };
-  }
-  return out;
-}
 
 export async function POST(request: NextRequest) {
   console.log("[API] /api/optimize called");
@@ -51,14 +22,12 @@ export async function POST(request: NextRequest) {
       config,
       algorithm,
       distanceMatrix: frontendMatrix,
-      geoapifyTried,
       useStrictMatrix: useStrictMatrixTopLevel,
     } = body as {
       locations: Location[];
       config: Config;
       algorithm?: string;
       distanceMatrix?: Record<string, number>;
-      geoapifyTried?: string[];
       useStrictMatrix?: boolean;
     };
 
@@ -67,8 +36,7 @@ export async function POST(request: NextRequest) {
         ? useStrictMatrixTopLevel
         : Boolean(config?.useStrictMatrix);
 
-    const triedCount = geoapifyTried?.length ?? 0;
-    console.log("[API] Body:", { locations: locations?.length, algorithm, hasMatrix: !!frontendMatrix, geoapifyTried: triedCount, useStrictMatrix });
+    console.log("[API] Body:", { locations: locations?.length, algorithm, hasMatrix: !!frontendMatrix, useStrictMatrix });
 
     if (!locations?.length) {
       return NextResponse.json({ error: "Se requiere al menos una ubicación." } satisfies ApiError, { status: 400 });
@@ -85,68 +53,27 @@ export async function POST(request: NextRequest) {
 
     const home = { name: "Casa", lat: normConfig.homeLat, lng: normConfig.homeLng };
     const totalPairs = (locations.length * (locations.length + 1)) / 2;
-    const geoapifyKey = process.env.GEOAPIFY_API_KEY;
 
-    // ── Step 1: Start with frontend matrix (or empty) ──
-    let matrix: Record<string, number> = frontendMatrix ? { ...frontendMatrix } : {};
+    // ── Step 1: Use the frontend-provided matrix (complete, real-only or Infinity) ──
+    const matrix: Record<string, number> = frontendMatrix ? { ...frontendMatrix } : {};
 
-    if (frontendMatrix && Object.keys(frontendMatrix).length > 0) {
+    if (Object.keys(matrix).length > 0) {
       console.log(`[API] Frontend matrix: ${Object.keys(matrix).length}/${totalPairs} pairs`);
     } else {
       console.log(`[API] No frontend matrix — starting empty`);
     }
 
-    // ── Step 2: Geoapify overrides (only for untried pairs) ──
-    const triedSet = new Set(geoapifyTried || []);
-    const allTried = triedSet.size >= totalPairs;
-    const geoapifyCache: Record<string, number> = {};
-
-    if (geoapifyKey && !allTried) {
-      console.log(`[API] Geoapify: ${triedSet.size}/${totalPairs} already tried, computing missing...`);
-
-      try {
-        const geoMatrix = await buildGeoapifyMatrix(locations, home, geoapifyKey);
-
-        let overrides = 0;
-        let skipped = 0;
-
-        for (const key of Object.keys(geoMatrix)) {
-          if (triedSet.has(key)) {
-            skipped++;
-            continue;
-          }
-          // Geoapify returned a real road distance — use it
-          matrix[key] = geoMatrix[key];
-          geoapifyCache[key] = geoMatrix[key];
-          overrides++;
-        }
-
-        console.log(`[API] Geoapify: ${overrides} overrides, ${skipped} already tried`);
-      } catch (err) {
-        console.warn(`[API] Geoapify failed, using frontend matrix as fallback:`, err instanceof Error ? err.message : err);
-      }
-    } else if (geoapifyKey && allTried) {
-      console.log(`[API] Geoapify skipped — all ${totalPairs} pairs already tried`);
-    }
-
-    // ── Log final matrix stats ──
-    {
-      let geoCount = 0, finiteCount = 0, infCount = 0;
-      for (const key of Object.keys(matrix)) {
-        if (geoapifyCache[key]) geoCount++;
-        else if (Number.isFinite(matrix[key])) finiteCount++;
-        else infCount++;
-      }
-      console.log(`[API] Final matrix: ${Object.keys(matrix).length}/${totalPairs} pairs — Geoapify:${geoCount} OSRM:${finiteCount} Infinity:${infCount}`);
-    }
-
-    // ── Build DistanceMatrix when strict flag is on ──
+    // ── Build DistanceMatrix when strict flag is on (inline, no helper) ──
     let strictMatrix: DistanceMatrix | undefined;
     if (useStrictMatrix) {
-      strictMatrix = buildDistanceMatrix(matrix, geoapifyCache);
+      strictMatrix = {};
       let realCount = 0, unreachCount = 0;
-      for (const key of Object.keys(strictMatrix)) {
-        if (strictMatrix[key].source === "real") realCount++;
+      for (const key of Object.keys(matrix)) {
+        const d = matrix[key];
+        const source: MatrixEntry["source"] =
+          d === undefined || !Number.isFinite(d) ? "unreachable" : "real";
+        strictMatrix[key] = { distance: d, source };
+        if (source === "real") realCount++;
         else unreachCount++;
       }
       console.log(`[API] Strict matrix: ${realCount} real, ${unreachCount} unreachable`);

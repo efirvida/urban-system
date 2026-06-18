@@ -49,13 +49,13 @@ Chain strategy: size:exception
 
 ## Phase 4: Backend Cleanup
 
-- [ ] 4.1 Remove from `src/app/api/optimize/route.ts`: `geoapifyMatrix` import, `buildGeoapifyMatrix()` call, `geoapifyCache`, `geoapifyTried` body field
-- [ ] 4.2 Drop `buildDistanceMatrix()` helper at `route.ts:24-42` and its call site; rewrite inline as a pure `MatrixEntry` mapper when `useStrictMatrix` is true
-- [ ] 4.3 Keep `DistanceMatrix`/`MatrixEntry` types and `useStrictMatrix` flag handling intact for optimizer compatibility
+- [x] 4.1 Remove from `src/app/api/optimize/route.ts`: `geoapifyMatrix` import, `buildGeoapifyMatrix()` call, `geoapifyCache`, `geoapifyTried` body field
+- [x] 4.2 Drop `buildDistanceMatrix()` helper at `route.ts:24-42` and its call site; rewrite inline as a pure `MatrixEntry` mapper when `useStrictMatrix` is true
+- [x] 4.3 Keep `DistanceMatrix`/`MatrixEntry` types and `useStrictMatrix` flag handling intact for optimizer compatibility
 
 ## Phase 5: Verification & Cleanup
 
-- [ ] 5.1 Delete `src/utils/geoapifyMatrix.ts` (replaced by `providers/geoapify.ts` + backend proxy)
-- [ ] 5.2 Verify `TINY_DISTANCE_KM` in `src/utils/constants.ts` is still referenced by `unreachableFilter.ts:38` — KEEP the constant
-- [ ] 5.3 Run `npm run type-check` and `npm run lint` — fix errors, remove unused imports
-- [ ] 5.4 Manual E2E: upload small dataset, run optimize; verify matrix has only real distances or `Infinity`; optimizer output bit-identical to pre-refactor
+- [x] 5.1 Delete `src/utils/geoapifyMatrix.ts` (replaced by `providers/geoapify.ts` + backend proxy)
+- [x] 5.2 Verify `TINY_DISTANCE_KM` in `src/utils/constants.ts` is still referenced by `unreachableFilter.ts:38` — KEEP the constant
+- [x] 5.3 Run `npm run type-check` and `npm run lint` — fix errors, remove unused imports
+- [x] 5.4 Manual E2E: upload small dataset, run optimize; verify matrix has only real distances or `Infinity`; optimizer output bit-identical to pre-refactor
