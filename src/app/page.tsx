@@ -14,7 +14,6 @@ import {
 } from "@/types";
 import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
-import { haversineDistance } from "@/utils/haversine";
 import { fetchAllRouteGeometries, MatrixProgress, RouteSource } from "@/utils/clientRouting";
 import { reoptimizeDay } from "@/utils/routerOptimizer";
 
@@ -49,8 +48,8 @@ function loadCachedMatrix(locs: Location[], currentHomeLat?: number, currentHome
     // Check if cached home matches current home (within 300m)
     let homeMatches = false;
     if (parsed.home && currentHomeLat !== undefined && currentHomeLng !== undefined) {
-      const d = haversineDistance(currentHomeLat, currentHomeLng, parsed.home.lat, parsed.home.lng);
-      homeMatches = d <= 0.3;
+      const d = Math.abs(currentHomeLat - parsed.home.lat) + Math.abs(currentHomeLng - parsed.home.lng);
+      homeMatches = d <= 0.005; // ~equivalent to 300m at mid-latitudes
     }
 
     const distances: Record<string, number> = {};
@@ -409,11 +408,14 @@ export default function Home() {
       const all = [{ lat: config.homeLat, lng: config.homeLng }, ...locations];
       const N = all.length;
       const totalPairs = (N * (N - 1)) / 2;
-      const hv = (i: number, j: number) => haversineDistance(all[i].lat, all[i].lng, all[j].lat, all[j].lng);
 
       let distances: Record<string, number> = {};
       let sources: Record<string, string> = {};
       let geoapifyTried: string[] = [];
+
+      // Helper: check if two points are essentially the same location
+      const isSamePoint = (a: typeof all[0], b: typeof all[0]) =>
+        Math.abs(a.lat - b.lat) < 0.0001 && Math.abs(a.lng - b.lng) < 0.0001;
 
       // 1a. Intentar cargar del cache
       const cached = loadCachedMatrix(locations, config.homeLat, config.homeLng);
@@ -421,7 +423,7 @@ export default function Home() {
         distances = cached.distances;
         geoapifyTried = cached.geoapifyTried;
         for (const k of Object.keys(distances)) {
-          sources[k] = geoapifyTried.includes(k) ? "g" : "h";
+          sources[k] = geoapifyTried.includes(k) ? "g" : "o";
         }
 
         // If cache loaded full matrix (home matched), skip rebuild
@@ -429,19 +431,14 @@ export default function Home() {
         console.log(`${FLOW} Cache HIT: ${Object.keys(distances).length}/${totalPairs} pairs, ${geoapifyTried.length} tried, homeCached=${hasHomePairs}`);
 
         if (!hasHomePairs) {
-          // Home changed: rebuild home pairs with Haversine + OSRM
-          for (let j = 1; j < N; j++) {
-            const k = `0,${j}`;
-            distances[k] = hv(0, j);
-            sources[k] = "h";
-          }
+          // Home changed: rebuild home pairs via OSRM
           geoapifyTried = geoapifyTried.filter(k => !k.startsWith("0,"));
           console.log(`${FLOW} Home pairs rebuilt: ${N - 1} pairs`);
 
           // OSRM para pares del home con progreso UI
           const homeOsrm: Array<{ i: number; j: number }> = [];
           for (let j = 1; j < N; j++)
-            if (hv(0, j) > 0.5) homeOsrm.push({ i: 0, j });
+            if (!isSamePoint(all[0], all[j])) homeOsrm.push({ i: 0, j });
 
           if (homeOsrm.length > 0) {
             setOptimizePhase("matrix");
@@ -494,27 +491,17 @@ export default function Home() {
         }
       }
 
-      // 1b. Cache MISS: construir desde cero con Haversine + OSRM
+      // 1b. Cache MISS: construir desde cero con OSRM
       if (!cached) {
-        console.log(`${FLOW} ── Phase: MATRIX (Haversine + OSRM) ──`);
+        console.log(`${FLOW} ── Phase: MATRIX (OSRM) ──`);
         setOptimizePhase("matrix");
         await new Promise(r => setTimeout(r, 50));
 
-        // Haversine para TODOS los pares (instántaneo)
-        for (let i = 0; i < N; i++) {
-          for (let j = i + 1; j < N; j++) {
-            const k = `${i},${j}`;
-            distances[k] = hv(i, j);
-            sources[k] = "h";
-          }
-        }
-        console.log(`${FLOW} Haversine: ${totalPairs} pairs`);
-
-        // OSRM para pares > 0.5km
+        // OSRM para todos los pares (excepto mismo punto)
         const osrmCandidates: Array<{ i: number; j: number }> = [];
         for (let i = 0; i < N; i++)
           for (let j = i + 1; j < N; j++)
-            if (hv(i, j) > 0.5) osrmCandidates.push({ i, j });
+            if (!isSamePoint(all[i], all[j])) osrmCandidates.push({ i, j });
 
         const osrmTotal = osrmCandidates.length;
         if (osrmTotal > 0) {

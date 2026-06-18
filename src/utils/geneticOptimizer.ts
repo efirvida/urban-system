@@ -9,7 +9,6 @@
  */
 
 import { Location, Config, DayRoute, Stop, DistanceMatrix } from "@/types";
-import { haversineDistance } from "./haversine";
 
 // ─── Distance helpers ────────────────────────────────────────
 
@@ -42,13 +41,8 @@ function pd(
     // fallback when we promised a real-road matrix).
     return Infinity;
   }
-  // No matrix supplied at all — fall back to Haversine (e.g. reoptimizeDay).
-  return haversineDistance(
-    a === -1 ? home.lat : locs[a].lat,
-    a === -1 ? home.lng : locs[a].lng,
-    b === -1 ? home.lat : locs[b].lat,
-    b === -1 ? home.lng : locs[b].lng
-  );
+  // No matrix supplied — treat as unreachable.
+  return Infinity;
 }
 
 function routeDist(route: number[], locs: Location[], home: Location, pre?: Record<string, number>, strict?: DistanceMatrix): number {

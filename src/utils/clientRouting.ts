@@ -7,7 +7,6 @@
  * 3. Concurrency: 5 simultaneous requests
  */
 
-import { haversineDistance } from "./haversine";
 
 export interface MatrixProgress {
   phase: "matrix";
@@ -244,20 +243,13 @@ export async function buildDistanceMatrices(
 ): Promise<{
   osrmMatrix: Map<string, number>;
   durationMatrix?: Map<string, number>;
-  haversineMatrix: Map<string, number>;
 }> {
   const all = [{ lat: homeLat, lng: homeLng }, ...locations];
   const n = all.length;
   const totalPairs = (n * (n - 1)) / 2;
 
-  // Haversine fallback matrix
-  const haversineMatrix = new Map<string, number>();
-  for (let i = 0; i < n; i++)
-    for (let j = i + 1; j < n; j++)
-      haversineMatrix.set(`${i},${j}`, haversineDistance(all[i].lat, all[i].lng, all[j].lat, all[j].lng));
-
   const osrmMatrix = new Map<string, number>();
-  let realCount = 0, haversineCount = 0, done = 0;
+  let realCount = 0, unreachableCount = 0, done = 0;
   const startTime = Date.now();
 
   const report = () => {
@@ -269,7 +261,7 @@ export async function buildDistanceMatrices(
       current: done, total: totalPairs,
       percent: Math.round((done / totalPairs) * 100),
       etaSeconds: speed > 0 ? Math.round((totalPairs - done) / speed) : 999,
-      realCount, haversineCount,
+      realCount, haversineCount: unreachableCount,
     });
   };
 
@@ -289,13 +281,26 @@ export async function buildDistanceMatrices(
       const { i, j } = pair;
       const key = `${i},${j}`;
       const p1 = all[i], p2 = all[j];
-      const H = haversineMatrix.get(key)!;
 
-      if (H < 0.05) { osrmMatrix.set(key, H); haversineCount++; done++; if (done % 20 === 0) report(); continue; }
+      // Same point → 0
+      if (p1.lat === p2.lat && p1.lng === p2.lng) {
+        osrmMatrix.set(key, 0);
+        realCount++;
+        done++;
+        if (done % 20 === 0) report();
+        continue;
+      }
 
       const ck = cacheKey(p1.lat, p1.lng, p2.lat, p2.lng);
       const cached = distCache.get(ck);
-      if (cached !== undefined) { osrmMatrix.set(key, cached); if (Math.abs(cached - H) > 0.1) realCount++; else haversineCount++; done++; if (done % 20 === 0) report(); continue; }
+      if (cached !== undefined) {
+        osrmMatrix.set(key, cached);
+        if (Number.isFinite(cached)) realCount++;
+        else unreachableCount++;
+        done++;
+        if (done % 20 === 0) report();
+        continue;
+      }
 
       try {
         const d = await osrmPair(p1.lat, p1.lng, p2.lat, p2.lng);
@@ -303,11 +308,15 @@ export async function buildDistanceMatrices(
           osrmMatrix.set(key, d);
           distCache.set(ck, d);
           if (distCache.size > 10000) { const first = distCache.keys().next().value; if (first) distCache.delete(first); }
-          if (Math.abs(d - H) > 0.1) realCount++; else haversineCount++;
+          realCount++;
         } else {
-          osrmMatrix.set(key, H); haversineCount++;
+          osrmMatrix.set(key, Infinity);
+          unreachableCount++;
         }
-      } catch { osrmMatrix.set(key, H); haversineCount++; }
+      } catch {
+        osrmMatrix.set(key, Infinity);
+        unreachableCount++;
+      }
       done++;
       if (done % 10 === 0 || done === totalPairs) report();
     }
@@ -316,5 +325,5 @@ export async function buildDistanceMatrices(
   await Promise.all(Array.from({ length: MAX_WORKERS }, () => worker()));
   report();
 
-  return { osrmMatrix, durationMatrix: undefined, haversineMatrix };
+  return { osrmMatrix, durationMatrix: undefined };
 }

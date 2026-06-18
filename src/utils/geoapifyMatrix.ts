@@ -17,7 +17,6 @@
  */
 
 import { Location } from "@/types";
-import { haversineDistance } from "./haversine";
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -186,67 +185,15 @@ export async function buildGeoapifyMatrix(
       const cells = await callGeoapifyBatch(sources, targets, sourceOffset, targetOffset, apiKey);
 
       // Store only upper triangle (i < j)
-      // When Geoapify returns null distance (no road found), fallback to Haversine
-      let stored = 0;
-      let haversineFallback = 0;
       for (const cell of cells) {
         if (cell.source_index < cell.target_index) {
           const key = `${cell.source_index},${cell.target_index}`;
           if (cell.distance !== null && cell.distance !== undefined && cell.distance >= 0) {
             matrix[key] = Math.round((cell.distance / 1000) * 100) / 100;
-          } else {
-            // Fallback to Haversine straight-line distance
-            const a = all[cell.source_index];
-            const b = all[cell.target_index];
-            matrix[key] = Math.round(haversineDistance(a.lat, a.lng, b.lat, b.lng) * 100) / 100;
-            haversineFallback++;
           }
-          stored++;
+          // null distance → skip; downstream treats missing key as unreachable
         }
       }
-      console.log(`[Geoapify]   → stored ${stored} pairs (${haversineFallback} Haversine fallback)`);
-    }
-  }
-
-  // ── Second pass: retry failed pairs individually ──
-  // Find pairs that still have Haversine-equivalent distances
-  const haversineRef = all.map((p, i) => all.map((q, j) =>
-    i < j ? haversineDistance(p.lat, p.lng, q.lat, q.lng) : 0
-  ));
-  const retryKeys: string[] = [];
-  for (const key of Object.keys(matrix)) {
-    const [i, j] = key.split(',').map(Number);
-    if (Math.abs(matrix[key] - haversineRef[i][j]) < 0.01) {
-      retryKeys.push(key);
-    }
-  }
-
-  if (retryKeys.length > 0) {
-    const MAX_RETRIES = 100; // budget: retry up to 100 failed pairs
-    const batch = retryKeys.slice(0, MAX_RETRIES);
-    console.log(`[Geoapify] Second pass: retrying ${batch.length}/${retryKeys.length} Haversine pairs individually`);
-    let retryOk = 0;
-
-    await Promise.all(Array.from({ length: 3 }, async () => {
-      while (batch.length > 0) {
-        const key = batch.pop()!;
-        const [i, j] = key.split(',').map(Number);
-        const src = [{ location: [all[i].lng, all[i].lat] as [number, number] }];
-        const tgt = [{ location: [all[j].lng, all[j].lat] as [number, number] }];
-        try {
-          const cells = await callGeoapifyBatch(src, tgt, i, j, apiKey);
-          if (cells.length > 0 && cells[0].distance !== null && cells[0].distance >= 0) {
-            matrix[key] = Math.round((cells[0].distance / 1000) * 100) / 100;
-            retryOk++;
-          }
-        } catch {}
-      }
-    }));
-
-    if (retryOk > 0) {
-      console.log(`[Geoapify] Second pass: ${retryOk}/${batch.length + retryOk} pairs resolved via individual API calls`);
-    } else {
-      console.log(`[Geoapify] Second pass: no additional pairs resolved`);
     }
   }
 

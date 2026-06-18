@@ -122,15 +122,11 @@ export async function buildGoogleMatrix(
       console.warn("[GoogleMatrix] Request failed:", err);
     }
 
-    // Fill remaining with Haversine
+    // Fill remaining as unreachable
     for (let i = oStart; i < oEnd; i++) {
       for (let j = 0; j < n; j++) {
         if (i === j || has(i, j)) continue;
-        const km = haversineDistance(
-          locations[i].lat, locations[i].lng,
-          locations[j].lat, locations[j].lng
-        );
-        set(i, j, km);
+        set(i, j, Infinity);
         fallbackCount++;
       }
     }

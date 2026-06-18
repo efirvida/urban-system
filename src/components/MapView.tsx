@@ -76,13 +76,8 @@ export default function MapView({
     return () => cancelAnimationFrame(id);
   }, [invalidateSize]);
 
-  // Home + location pins + route-stop markers (with click → onPOIClick, drag → onDragHome)
-  // Must come AFTER invalidateSize so the map has proper dimensions.
-  const markerData = useRef(data);
-  markerData.current = data;
-
   useLeafletMarkers(mapRef, {
-    data: markerData.current,
+    data,
     homeDraggable,
     onPOIClick,
     onDragHome,

@@ -1,6 +1,5 @@
 import { Location, Config, DayRoute, Stop, DistanceMatrix } from "@/types";
 import { improveWithGA } from "./geneticOptimizer";
-import { haversineDistance } from "./haversine";
 
 /**
  * Look up distance from the precomputed matrix.
@@ -614,20 +613,13 @@ export function reoptimizeDay(
         if (strictMatrix) {
           const entry = strictMatrix[key];
           if (entry !== undefined) return entry.distance;
-          console.warn(
-            `[reoptimizeDay] Missing strict key "${key}" (a="${a.name}", b="${b.name}"), falling back to Haversine`
-          );
-          return haversineDistance(a.lat, a.lng, b.lat, b.lng);
         }
         // Legacy path — Record<string, number>.
         const v = matrix[key];
         if (v !== undefined) return v;
-        console.warn(
-          `[reoptimizeDay] Missing matrix key "${key}" (a="${a.name}", b="${b.name}"), falling back to Haversine`
-        );
       }
     }
-    return haversineDistance(a.lat, a.lng, b.lat, b.lng);
+    return Infinity;
   };
 
   // ── Step 1: Nearest Neighbor from home ──

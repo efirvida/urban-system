@@ -8,7 +8,6 @@
  */
 
 import { Location, Config, DayRoute, Stop, DistanceMatrix } from "@/types";
-import { haversineDistance } from "./haversine";
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -86,12 +85,8 @@ export async function runNSGA2(
       // fallback when we promised a real-road matrix).
       return Infinity;
     }
-    // No matrix supplied at all — fall back to Haversine.
-    const lat1 = a === -1 ? home.lat : (locations[a]?.lat ?? home.lat);
-    const lng1 = a === -1 ? home.lng : (locations[a]?.lng ?? home.lng);
-    const lat2 = b === -1 ? home.lat : (locations[b]?.lat ?? home.lat);
-    const lng2 = b === -1 ? home.lng : (locations[b]?.lng ?? home.lng);
-    return haversineDistance(lat1, lng1, lat2, lng2);
+    // No matrix supplied — treat as unreachable.
+    return Infinity;
   }
 
   function routeDist(route: number[]): number {
