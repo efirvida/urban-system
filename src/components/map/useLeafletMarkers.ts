@@ -66,8 +66,8 @@ export function useLeafletMarkers(
         radius: 12,
         color: "white",
         weight: 3,
-        fillColor: "#2563eb",
-        fillOpacity: 0.85,
+        fillColor: "#f59e0b",
+        fillOpacity: 0.9,
       }).addTo(map);
       circle.bindPopup(`<strong>Casa</strong><br/>${home.lat.toFixed(4)}, ${home.lng.toFixed(4)}`);
       allPoints.push([home.lng, home.lat]);
