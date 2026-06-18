@@ -268,6 +268,13 @@ export default function Home() {
         return;
       }
 
+      // Mostrar SOLO el día destino durante el preview
+      setHighlightDay(targetDay);
+      setHiddenDays((prev) => {
+        const allDays = editDaysPreview?.map((d) => d.day) ?? [];
+        return new Set(allDays.filter((d) => d !== targetDay));
+      });
+
       const home: Location = { name: "Casa", lat: config.homeLat, lng: config.homeLng };
       const stopsToLocs = (stops: Array<{ name: string; lat: number; lng: number; isHome?: boolean }>) =>
         stops.filter((s) => !s.isHome).map((s) => ({ name: s.name, lat: s.lat, lng: s.lng }));
@@ -357,7 +364,15 @@ export default function Home() {
   const handleCancelMove = useCallback(() => {
     setPreviewDays(null);
     setPreviewTargetDay(null);
-  }, []);
+    // Restaurar highlight al día del POI seleccionado
+    if (selectedPOI) {
+      setHighlightDay(selectedPOI.day);
+      setHiddenDays((prev) => {
+        const allDays = editDaysPreview?.map((d) => d.day) ?? result?.days.map((d) => d.day) ?? [];
+        return new Set(allDays.filter((d) => d !== selectedPOI.day));
+      });
+    }
+  }, [selectedPOI, editDaysPreview, result]);
 
   /** Toggle a day's visibility on the map. */
   const handleToggleDay = useCallback((day: number) => {
