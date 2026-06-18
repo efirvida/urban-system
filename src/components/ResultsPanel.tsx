@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Eye,
   EyeOff,
@@ -42,6 +42,13 @@ export default function ResultsPanel({
   const [internalDay, setInternalDay] = useState<number | null>(1);
   const activeExpanded = controlledDay !== undefined ? controlledDay : internalDay;
 
+  // Scroll to the expanded day when it changes
+  useEffect(() => {
+    if (activeExpanded === null) return;
+    const el = document.getElementById(`result-day-${activeExpanded}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [activeExpanded]);
+
   return (
     <div className="space-y-4">
       {/* Global summary */}
@@ -82,7 +89,7 @@ export default function ResultsPanel({
         const visitStops = day.stops.filter((s) => !s.isHome);
 
         return (
-          <div key={day.day} className="card-base overflow-hidden">
+          <div key={day.day} id={`result-day-${day.day}`} className="card-base overflow-hidden">
           <div
             className="card-header flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer"
             onClick={() => {
