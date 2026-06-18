@@ -82,7 +82,7 @@ export default function OptimizeProgress({
     <div className="py-6">
       <div className="text-center mb-6">
         <h3 className="text-lg font-semibold text-gray-800 mb-1">
-          {isComplete ? "✅ Matriz de distancias completa" : "🔄 Consultando rutas reales"}
+          {isComplete ? "✅ Matriz de distancias completa" : "🔄 Calculando rutas"}
         </h3>
         <p className="text-sm text-gray-400">
           {p.stage}
@@ -124,16 +124,21 @@ export default function OptimizeProgress({
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 gap-3 max-w-xs mx-auto mb-6">
+      <div className="grid grid-cols-3 gap-2 max-w-sm mx-auto mb-6">
         <div className="bg-blue-50 rounded-lg p-3 text-center">
           <div className="text-lg font-bold text-blue-700">{p.current}</div>
           <div className="text-xs text-blue-500">de {p.total}</div>
           <div className="text-xs text-blue-400 mt-0.5">pares calculados</div>
         </div>
         <div className="bg-green-50 rounded-lg p-3 text-center">
-          <div className="text-lg font-bold text-green-700">{p.realCount}</div>
-          <div className="text-xs text-green-500">rutas reales</div>
-          <div className="text-xs text-green-400 mt-0.5">Geoapify + OSRM</div>
+          <div className="text-lg font-bold text-green-700">{p.geoapifyCount}</div>
+          <div className="text-xs text-green-500">Geoapify</div>
+          <div className="text-xs text-green-400 mt-0.5">con ruta</div>
+        </div>
+        <div className="bg-blue-50 rounded-lg p-3 text-center">
+          <div className="text-lg font-bold text-blue-700">{p.osrmCount}</div>
+          <div className="text-xs text-blue-500">OSRM</div>
+          <div className="text-xs text-blue-400 mt-0.5">con ruta</div>
         </div>
         <div className="bg-amber-50 rounded-lg p-3 text-center">
           <div className="text-lg font-bold text-amber-700">{p.unreachableCount}</div>

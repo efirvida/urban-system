@@ -23,7 +23,8 @@ export interface MatrixProgress {
   total: number;
   percent: number;
   etaSeconds: number;
-  realCount: number;
+  geoapifyCount: number;
+  osrmCount: number;
   unreachableCount: number;
 }
 
@@ -92,22 +93,23 @@ export class RoutingService {
     // Pre-seed the trivial cases (same point) so they count toward
     // progress without touching the network.
     const workPairs: Array<{ i: number; j: number; a: Point; b: Point }> = [];
-    let realCount = 0;
+    let geoapifyCount = 0;
+    let osrmCount = 0;
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         const a = points[i];
         const b = points[j];
         if (a && b && a.lat === b.lat && a.lng === b.lng) {
           matrix[`${i},${j}`] = 0;
-          realCount++;
         } else if (a && b) {
           workPairs.push({ i, j, a, b });
         }
       }
     }
 
+    const totalReal = () => geoapifyCount + osrmCount;
     let unreachableCount = 0;
-    let done = realCount;
+    let done = 0;
     const startTime = Date.now();
 
     const report = (): void => {
@@ -117,14 +119,15 @@ export class RoutingService {
       onProgress({
         phase: "matrix",
         stage:
-          realCount > 0
-            ? `Real: ${realCount} pares`
+          totalReal() > 0
+            ? `Geoapify: ${geoapifyCount} · OSRM: ${osrmCount}`
             : "Calculando distancias...",
         current: done,
         total: totalPairs,
         percent: totalPairs === 0 ? 100 : Math.round((done / totalPairs) * 100),
         etaSeconds: speed > 0 ? Math.round((totalPairs - done) / speed) : 999,
-        realCount,
+        geoapifyCount,
+        osrmCount,
         unreachableCount,
       });
     };
@@ -141,7 +144,8 @@ export class RoutingService {
         const result = await this.route(pair.a, pair.b);
         if (result && Number.isFinite(result.distanceKm)) {
           matrix[key] = result.distanceKm;
-          realCount++;
+          if (result.source === "geoapify") geoapifyCount++;
+          else osrmCount++;
         } else {
           matrix[key] = Infinity;
           unreachableCount++;
