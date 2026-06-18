@@ -49,10 +49,14 @@ export class RoutingService {
   async route(a: Point, b: Point): Promise<RouteLegResult | null> {
     const cached = getCachedLeg(a.lat, a.lng, b.lat, b.lng);
     if (cached) {
-      // Project cache into the result shape — drops `timestamp` which
-      // callers should not need.
-      const { timestamp: _timestamp, ...leg } = cached;
-      return leg;
+      // Project cache into the result shape — adds empty geometry since
+      // the cache does not store geometry (see cache.ts).
+      return {
+        distanceKm: cached.distanceKm,
+        durationSeconds: cached.durationSeconds,
+        geometry: [],
+        source: cached.source,
+      };
     }
 
     for (const provider of this.providers) {

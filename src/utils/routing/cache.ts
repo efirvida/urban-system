@@ -19,7 +19,7 @@
 import type { CachedLeg, Point, RouteLegResult } from "./types";
 
 const RC_PREFIX = "route_";
-const CACHE_CAP = 5000;
+const CACHE_CAP = 2000; // smaller cap since entries are smaller (no geometry)
 
 /**
  * Build a directional cache key for a leg (A → B).
@@ -47,9 +47,10 @@ export function routeLegKeyFromPoints(a: Point, b: Point): string {
 }
 
 /**
- * Read a cached leg, returning `null` for misses OR for entries written by
- * the legacy geometry-only cache (which had no `geometry` property on an
- * object — its top-level value WAS the geometry array).
+ * Read a cached leg, returning `null` for misses.
+ *
+ * Legacy entries (pre-refactor geometry-only arrays) are silently rejected,
+ * triggering a re-fetch on the next matrix build.
  */
 export function getCachedLeg(
   lat1: number,
@@ -61,11 +62,9 @@ export function getCachedLeg(
     const raw = localStorage.getItem(routeLegKey(lat1, lng1, lat2, lng2));
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    // Reject legacy shape (raw geometry array) and any malformed entry.
     if (
       !parsed ||
       typeof parsed !== "object" ||
-      !Array.isArray((parsed as CachedLeg).geometry) ||
       typeof (parsed as CachedLeg).distanceKm !== "number" ||
       typeof (parsed as CachedLeg).source !== "string"
     ) {
@@ -77,7 +76,13 @@ export function getCachedLeg(
   }
 }
 
-/** Write a leg result to the cache, stamping the current time. */
+/**
+ * Write a leg result to the cache, stamping the current time.
+ *
+ * Only distance, duration, and source are persisted — geometry is excluded
+ * to keep localStorage usage low. Map geometry is fetched separately by
+ * `fetchAllRouteGeometries`.
+ */
 export function setCachedLeg(
   lat1: number,
   lng1: number,
@@ -86,7 +91,12 @@ export function setCachedLeg(
   leg: RouteLegResult,
 ): void {
   try {
-    const entry: CachedLeg = { ...leg, timestamp: Date.now() };
+    const entry: CachedLeg = {
+      distanceKm: leg.distanceKm,
+      durationSeconds: leg.durationSeconds,
+      source: leg.source,
+      timestamp: Date.now(),
+    };
     localStorage.setItem(routeLegKey(lat1, lng1, lat2, lng2), JSON.stringify(entry));
     evictIfNeeded();
   } catch {
