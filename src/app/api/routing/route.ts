@@ -84,8 +84,9 @@ async function tryGeoapify(stops: RouteStop[], apiKey: string): Promise<RouteRes
     const props = feature.properties || {};
 
     const coordinates: [number, number][] = feature.geometry?.coordinates?.map((c: number[]) => [c[0], c[1] as number]) || [];
-    const totalDist = (props.distance?.value || 0) / 1000;
-    const totalTime = props.time?.value || 0;
+    // Geoapify returns distance as a plain number in meters (not {value, unit}).
+    const totalDist = (typeof props.distance === "number" ? props.distance : 0) / 1000;
+    const totalTime = typeof props.time === "number" ? props.time : 0;
 
     const numLegs = stops.length - 1;
     const legDist = totalDist / numLegs;
