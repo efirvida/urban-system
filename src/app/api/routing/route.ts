@@ -71,7 +71,7 @@ async function tryOSRM(stops: RouteStop[]): Promise<RouteResponse | null> {
 
 async function tryGeoapify(stops: RouteStop[], apiKey: string): Promise<RouteResponse | null> {
   if (stops.length < 2) return null;
-  const waypoints = stops.map(s => `${s.lng},${s.lat}`).join("|");
+  const waypoints = stops.map(s => `${s.lat},${s.lng}`).join("|");
   const url = `https://api.geoapify.com/v1/routing?waypoints=${waypoints}&mode=drive&type=short&apiKey=${apiKey}`;
 
   try {
