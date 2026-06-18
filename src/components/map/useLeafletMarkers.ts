@@ -125,6 +125,13 @@ export function useLeafletMarkers(
               fillColor: color,
               fillOpacity: 0.5,
             }).addTo(map);
+            (circle as any)._poiData = { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name };
+            circle.on("click", () => {
+              const d = (circle as any)._poiData as { lat: number; lng: number; day: number; name: string } | undefined;
+              if (d && onPOIClickRef.current) {
+                onPOIClickRef.current(d.lat, d.lng, d.day, d.name);
+              }
+            });
             markersRef.current.set(id, circle as any);
             allPoints.push([stop.lng, stop.lat]);
           } else {
