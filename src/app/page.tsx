@@ -217,38 +217,43 @@ export default function Home() {
     return [...new Set(source.map((d) => d.day))].sort((a, b) => a - b);
   }, [editDaysPreview, result]);
 
-  /** Calculate preview routes when the user selects a target day. */
+  /** Calculate preview routes when the user selects a target day or "Sin ruta". */
   const handlePreviewDay = useCallback(
     (targetDay: number | null) => {
       if (!selectedPOI || !editDaysPreview) return;
       setPreviewTargetDay(targetDay);
 
+      // null means cancel preview (same as current)
       if (targetDay === null || targetDay === selectedPOI.day) {
-        // Cancel preview — restore the route preview to current working state
         setPreviewDays(null);
         return;
       }
 
-      // Build preview: remove POI from its current day, add to target
-      const sourceDay = editDaysPreview.find((d) => d.day === selectedPOI.day);
-      const targetDayData = editDaysPreview.find((d) => d.day === targetDay);
-      if (!sourceDay || !targetDayData) return;
-
       const home: Location = { name: "Casa", lat: config.homeLat, lng: config.homeLng };
-
       const stopsToLocs = (stops: Array<{ name: string; lat: number; lng: number; isHome?: boolean }>) =>
         stops.filter((s) => !s.isHome).map((s) => ({ name: s.name, lat: s.lat, lng: s.lng }));
+
+      const sourceDay = editDaysPreview.find((d) => d.day === selectedPOI.day);
+      if (!sourceDay) return;
+
+      // targetDay === 0 means "Sin ruta" (remove from route)
+      if (targetDay === 0) {
+        const sourcePois = stopsToLocs(sourceDay.stops).filter((s) => s.name !== selectedPOI.name);
+        const newSource = reoptimizeDay(sourcePois, home, config, undefined, sourceDay.day);
+        const preview = editDaysPreview.map((d) => d.day === sourceDay.day ? newSource : d);
+        setPreviewDays(preview);
+        return;
+      }
+
+      // Move to another existing day
+      const targetDayData = editDaysPreview.find((d) => d.day === targetDay);
+      if (!targetDayData) return;
 
       const sourcePois = stopsToLocs(sourceDay.stops).filter((s) => s.name !== selectedPOI.name);
       const targetPois = stopsToLocs(targetDayData.stops).concat([
         { name: selectedPOI.name, lat: selectedPOI.lat, lng: selectedPOI.lng },
       ]);
 
-      // Note: matrix is passed as undefined here — page.tsx doesn't yet
-      // have the precomputed distance matrix in the optimization result
-      // flow. PR 6 of the "real-roads-only" change will propagate the
-      // matrix to these call sites. For now reoptimizeDay falls back to
-      // Haversine, which is acceptable for an editor preview.
       const newSource = reoptimizeDay(sourcePois, home, config, undefined, sourceDay.day);
       const newTarget = reoptimizeDay(targetPois, home, config, undefined, targetDayData.day);
 
@@ -264,21 +269,27 @@ export default function Home() {
 
   const handleAcceptMove = useCallback(() => {
     if (!selectedPOI || previewTargetDay === null || previewTargetDay === selectedPOI.day) return;
+
+    // 0 = unassigned (Sin ruta)
+    const target = previewTargetDay === 0 ? null : previewTargetDay;
     editorRef.current?.commitMove(
-      {
-        name: selectedPOI.name,
-        lat: selectedPOI.lat,
-        lng: selectedPOI.lng,
-        fromDay: selectedPOI.day,
-      },
-      previewTargetDay
+      { name: selectedPOI.name, lat: selectedPOI.lat, lng: selectedPOI.lng, fromDay: selectedPOI.day },
+      target
     );
+
     // Clear preview state
     setPreviewDays(null);
     setPreviewTargetDay(null);
-    // Update selection to new day
-    setSelectedPOI({ ...selectedPOI, day: previewTargetDay });
-    setHighlightDay(previewTargetDay);
+
+    if (target === null) {
+      // If unassigned, clear selection (POI no longer on any route)
+      setSelectedPOI(null);
+      setHighlightDay(null);
+    } else {
+      // Update selection to new day
+      setSelectedPOI({ ...selectedPOI, day: target });
+      setHighlightDay(target);
+    }
   }, [selectedPOI, previewTargetDay]);
 
   const handleCancelMove = useCallback(() => {

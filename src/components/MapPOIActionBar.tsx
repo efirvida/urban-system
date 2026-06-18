@@ -3,11 +3,16 @@
 import { MapPin, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/** Special value meaning "remove from route" (unassigned). */
+export const UNASSIGNED = 0;
+
 interface MapPOIActionBarProps {
   poiName: string;
   currentDay: number;
   availableDays: number[];
+  /** Preview target: a day number, UNASSIGNED (0) for unassigned, or null if no preview. */
   previewTargetDay: number | null;
+  /** Called when user selects a day. day=UNASSIGNED means remove from route, day=null means deselect. */
   onSelectDay: (day: number | null) => void;
   onAccept: () => void;
   onCancel: () => void;
@@ -49,27 +54,26 @@ export default function MapPOIActionBar({
                 key={d}
                 onClick={() => onSelectDay(isSelected ? null : d)}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-                  isSelected && "ring-2 ring-blue-500 bg-blue-50 text-blue-700",
-                  isCurrent && !isSelected && "bg-gray-100 text-gray-400 cursor-not-allowed",
-                  !isCurrent && !isSelected && "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200",
+                  "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border",
+                  isSelected && "ring-2 ring-blue-500 bg-blue-50 text-blue-700 border-blue-300",
+                  isCurrent && "bg-blue-100 text-blue-700 border-blue-200 font-semibold",
+                  !isCurrent && !isSelected && "bg-white text-gray-700 hover:bg-gray-50 border-gray-200",
                 )}
-                disabled={isCurrent && !isSelected}
               >
-                Día {d}
+                {isCurrent && !isSelected && "✓ "}Día {d}
               </button>
             );
           })}
           <button
-            onClick={() => onSelectDay(previewTargetDay === null ? null : null)}
+            onClick={() => onSelectDay(previewTargetDay === UNASSIGNED ? null : UNASSIGNED)}
             className={cn(
               "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border",
-              previewTargetDay === null && currentDay !== 0
-                ? "ring-2 ring-amber-500 bg-amber-50 text-amber-700"
+              previewTargetDay === UNASSIGNED
+                ? "ring-2 ring-amber-500 bg-amber-50 text-amber-700 border-amber-300"
                 : "bg-white text-gray-700 hover:bg-gray-50 border-gray-200",
             )}
           >
-            Sin ruta
+            {previewTargetDay === UNASSIGNED ? "✓ " : ""}Sin ruta
           </button>
         </div>
 
