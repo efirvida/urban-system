@@ -37,6 +37,9 @@ export function useLeafletMarkers(
     onDragHomeRef.current = options.onDragHome;
   }, [options.onPOIClick, options.onDragHome]);
 
+  // Track data hash to avoid unnecessary marker rebuilds
+  const dataHashRef = useRef("");
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -45,6 +48,16 @@ export function useLeafletMarkers(
     const markers = markersRef.current;
     const keepIds = new Set<string>();
     const allPoints: [number, number][] = [];
+
+    // Build a naive hash of the marker-relevant data to detect real changes
+    const hash = JSON.stringify([
+      data.home,
+      data.locations?.length,
+      data.routes?.map(d => `${d.day}:${d.stops.length}`),
+      [...(data.hiddenDays ?? [])].sort(),
+    ]);
+    if (hash === dataHashRef.current) return; // Skip if nothing meaningful changed
+    dataHashRef.current = hash;
 
     // Home marker
     if (data.home && data.home.lat && data.home.lng) {
@@ -77,21 +90,36 @@ export function useLeafletMarkers(
       }
     }
 
-    // Location pins (only when not editing)
+    // Location pins — blue if assigned to a route, red if unassigned
     if (data.locations) {
+      // Compute which locations are assigned to a route
+      const assignedCoords = new Set<string>();
+      if (data.routes) {
+        for (const day of data.routes) {
+          for (const s of day.stops) {
+            if (s.isHome) continue;
+            assignedCoords.add(`${s.lat.toFixed(5)},${s.lng.toFixed(5)}`);
+          }
+        }
+      }
       for (let i = 0; i < data.locations.length; i++) {
         const loc = data.locations[i];
         const id = `loc-${i}`;
+        const isAssigned = assignedCoords.has(`${loc.lat.toFixed(5)},${loc.lng.toFixed(5)}`);
         keepIds.add(id);
         const existing = markers.get(id);
         if (existing) {
           existing.setLatLng([loc.lat, loc.lng]);
         } else {
           const marker = L.marker([loc.lat, loc.lng], {
-            icon: createPinIcon(),
+            icon: createPinIcon(isAssigned),
             interactive: false,
           }).addTo(map);
-          marker.bindPopup(`<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`);
+          const dayInfo = data.routes
+            ?.flatMap(d => d.stops.filter(s => !s.isHome && Math.abs(s.lat - loc.lat) < 0.00001 && Math.abs(s.lng - loc.lng) < 0.00001).map(s => `Día ${d.day}`))
+            .join(", ");
+          const popupHtml = `<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}${dayInfo ? `<br/>${dayInfo}` : "<br/>📍 Sin ruta"}`;
+          marker.bindPopup(popupHtml);
           markers.set(id, marker);
         }
         allPoints.push([loc.lng, loc.lat]);

@@ -20,10 +20,11 @@ export function createRouteStopIcon(sequence: number, color: string): L.DivIcon 
   });
 }
 
-/** Location pin dot */
-export function createPinIcon(): L.DivIcon {
+/** Location pin dot — blue (#3b82f6) for assigned, red (#ef4444) for unassigned */
+export function createPinIcon(assigned: boolean = true): L.DivIcon {
+  const color = assigned ? "#3b82f6" : "#ef4444";
   return L.divIcon({
-    html: `<div style="width:12px;height:12px;border-radius:50%;background:#3b82f6;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>`,
+    html: `<div style="width:12px;height:12px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>`,
     className: "",
     iconSize: [12, 12],
     iconAnchor: [6, 6],
