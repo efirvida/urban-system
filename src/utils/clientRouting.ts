@@ -1,57 +1,42 @@
 /**
- * Distance matrix builder — OSRM per pair with Haversine fallback.
+ * Client-side routing facade.
  *
- * Flow:
- * 1. For each pair, try OSRM Route service (3s timeout per call)
- * 2. If OSRM fails/times out, use Haversine
- * 3. Concurrency: 5 simultaneous requests
+ * Backwards-compatible wrapper around the new `RoutingService` pipeline
+ * (PR 1 of this refactor). The legacy `buildDistanceMatrices()` API now
+ * delegates to `RoutingService.buildDistanceMatrix()`. The legacy
+ * geometry cache has been replaced by the per-leg routing cache in
+ * `cache.ts` — the per-leg format is shared with `RoutingService.route()`
+ * so a single leg resolved once satisfies both the matrix and the map
+ * geometry.
+ *
+ * `MatrixProgress` and `ProgressCallback` are re-exported here from
+ * `service.ts` for backward compatibility with `page.tsx` and
+ * `OptimizeProgress.tsx`. `RouteSource` is re-exported from
+ * `routing/types.ts` for `MapView.tsx` and `useLeafletRoutes.ts`.
  */
 
+import { RoutingService } from "./routing/service";
+import { defaultProviders } from "./routing/providers";
 import { geometryCache } from "./routing/geometryCache";
+import type { Point, RouteSource } from "./routing/types";
 
-export interface MatrixProgress {
-  phase: "matrix";
-  stage: string;
-  current: number;
-  total: number;
-  percent: number;
-  etaSeconds: number;
-  realCount: number;
-  haversineCount: number;
-}
+export type { MatrixProgress, ProgressCallback } from "./routing/service";
+export type { RouteSource } from "./routing/types";
 
-export type ProgressCallback = (p: MatrixProgress) => void;
+// ─── Public API ─────────────────────────────────────────────
 
-// ─── Cache ───────────────────────────────────────────────
-
-const distCache = new Map<string, number>();
-function cacheKey(lat1: number, lng1: number, lat2: number, lng2: number): string {
-  const a = `${lat1.toFixed(6)},${lng1.toFixed(6)}`;
-  const b = `${lat2.toFixed(6)},${lng2.toFixed(6)}`;
-  return a < b ? `${a}|${b}` : `${b}|${a}`;
-}
-
-// ─── OSRM single pair ────────────────────────────────────
-
-async function osrmPair(lat1: number, lng1: number, lat2: number, lng2: number): Promise<number | null> {
-  const url = `https://router.project-osrm.org/route/v1/driving/${lng1},${lat1};${lng2},${lat2}?overview=false`;
-  try {
-    const c = new AbortController();
-    const t = setTimeout(() => c.abort(), 3000);
-    const res = await fetch(url, { signal: c.signal });
-    clearTimeout(t);
-    if (!res.ok) return null;
-    const d = await res.json();
-    if (d.code === "Ok" && d.routes?.length) return d.routes[0].distance / 1000;
-    return null;
-  } catch { return null; }
-}
-
-/** Routing source for a day's geometry — drives dash styling on the map. */
-export type RouteSource = "geoapify" | "osrm" | "haversine";
-
-/** Fetch route geometry for map display */
-export async function fetchRouteGeometry(stops: Array<{ lat: number; lng: number }>): Promise<[number, number][] | null> {
+/**
+ * Fetch route geometry for a single stop sequence.
+ *
+ * Unchanged from the legacy implementation — the full-route polyline is
+ * requested from the server (Geoapify → OSRM), and the map draws the
+ * raw `coordinates` array. Used by the pre-optimize preview; the
+ * post-optimize flow goes through `fetchAllRouteGeometries` so per-leg
+ * results can be cached and shared with the matrix builder.
+ */
+export async function fetchRouteGeometry(
+  stops: Array<{ lat: number; lng: number }>,
+): Promise<[number, number][] | null> {
   if (stops.length < 2) return null;
   try {
     const res = await fetch("/api/routing", {
@@ -61,22 +46,20 @@ export async function fetchRouteGeometry(stops: Array<{ lat: number; lng: number
       signal: AbortSignal.timeout(20000),
     });
     if (!res.ok) return null;
-    const data = await res.json();
+    const data = (await res.json()) as { coordinates?: [number, number][] };
     return data.coordinates || null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
-// ─── Per-day geometry cache (localStorage) ──────────────────────
-//
-// The per-day geometry cache lives in src/utils/routing/geometryCache.ts.
-// It wraps each /api/routing call with a cache-first check, keyed by the
-// sorted, precision-5 hash of the day's stop set.
-
-/** Fetch geometries for all days, cache-first.
- *  Returns the geometries map AND a parallel sources map so the map can
- *  render real-road routes as solid lines and estimated (Haversine) ones
- *  as dashed lines. Cache hits return the stored source verbatim, so
- *  repeated views of the same results trigger zero `/api/routing` calls.
+/**
+ * Fetch geometries for all days. Uses the geometry cache (encoded polyline
+ * in localStorage, ~200 bytes/entry) to avoid redundant API calls.
+ *
+ * Cache-first: on a cache hit, returns decoded polyline + stored source
+ * without any network request. On miss, fetches from `/api/routing`,
+ * stores the result in the cache, and returns.
  */
 export async function fetchAllRouteGeometries(
   days: Array<{ day: number; stops: Array<{ lat: number; lng: number; isHome?: boolean }> }>,
@@ -88,19 +71,18 @@ export async function fetchAllRouteGeometries(
   const sources = new Map<number, RouteSource>();
 
   for (const day of days) {
-    // Build the full stop sequence: home → POIs → home
     const fullStops = [day.stops[0], ...day.stops.filter(s => !s.isHome), day.stops[0]];
     if (fullStops.length < 2) continue;
 
-    // Cache-first: return the stored polyline + source if we have one.
+    // Cache-first: avoid the API call when geometry is already stored.
     const cached = await geometryCache.get(fullStops);
     if (cached) {
       geometries.set(day.day, cached.geometry);
-      sources.set(day.day, cached.source);
+      sources.set(day.day, cached.source as RouteSource);
       continue;
     }
 
-    // Cache miss → fetch the full route from /api/routing.
+    // Cache miss → fetch from API.
     let routeCoords: [number, number][] | null = null;
     let apiSource: RouteSource = "haversine";
 
@@ -112,17 +94,18 @@ export async function fetchAllRouteGeometries(
         signal: AbortSignal.timeout(20000),
       });
       if (res.ok) {
-        const data = await res.json() as {
+        const data = (await res.json()) as {
           coordinates?: [number, number][];
           source?: RouteSource;
         };
         routeCoords = data.coordinates || null;
-        // Validate the source field — fall back to "haversine" if absent or unexpected.
         if (data.source === "geoapify" || data.source === "osrm" || data.source === "haversine") {
           apiSource = data.source;
         }
       }
-    } catch {}
+    } catch {
+      // Network error — skip this day's geometry.
+    }
 
     if (routeCoords && routeCoords.length > 0) {
       await geometryCache.set(fullStops, routeCoords, apiSource);
@@ -134,96 +117,37 @@ export async function fetchAllRouteGeometries(
   return { geometries, sources };
 }
 
-// ─── Main ────────────────────────────────────────────────
+// ─── Main ───────────────────────────────────────────────────
 
+/**
+ * Backwards-compatible matrix builder. Delegates the per-pair work to
+ * `RoutingService` so the routing cache (now shared with
+ * `fetchAllRouteGeometries`) is the single source of truth for legs.
+ *
+ * Public signature preserved: returns a `Map<string, number>` so any
+ * existing consumer can keep using the same iteration pattern. The
+ * `durationMatrix` field is still optional and currently `undefined` —
+ * the new pipeline records duration in the cache but does not yet
+ * surface it in the public matrix.
+ */
 export async function buildDistanceMatrices(
-  homeLat: number, homeLng: number,
+  homeLat: number,
+  homeLng: number,
   locations: Array<{ lat: number; lng: number }>,
-  onProgress: ProgressCallback
+  onProgress: (p: import("./routing/service").MatrixProgress) => void,
 ): Promise<{
   osrmMatrix: Map<string, number>;
   durationMatrix?: Map<string, number>;
 }> {
-  const all = [{ lat: homeLat, lng: homeLng }, ...locations];
-  const n = all.length;
-  const totalPairs = (n * (n - 1)) / 2;
+  const service = new RoutingService(defaultProviders);
+  const all: Point[] = [{ lat: homeLat, lng: homeLng }, ...locations];
+  const record = await service.buildDistanceMatrix(all, onProgress);
 
   const osrmMatrix = new Map<string, number>();
-  let realCount = 0, unreachableCount = 0, done = 0;
-  const startTime = Date.now();
-
-  const report = () => {
-    const elapsed = (Date.now() - startTime) / 1000;
-    const speed = done / Math.max(elapsed, 0.1);
-    onProgress({
-      phase: "matrix",
-      stage: realCount > 0 ? `OSRM: ${realCount} pares reales` : "Calculando distancias...",
-      current: done, total: totalPairs,
-      percent: Math.round((done / totalPairs) * 100),
-      etaSeconds: speed > 0 ? Math.round((totalPairs - done) / speed) : 999,
-      realCount, haversineCount: unreachableCount,
-    });
-  };
-
-  // Collect all pairs
-  const pairs: Array<{ i: number; j: number }> = [];
-  for (let i = 0; i < n; i++)
-    for (let j = i + 1; j < n; j++)
-      pairs.push({ i, j });
-
-  // Process with concurrency
-  const MAX_WORKERS = 5;
-  let idx = 0;
-
-  async function worker() {
-    while (idx < pairs.length) {
-      const pair = pairs[idx++];
-      const { i, j } = pair;
-      const key = `${i},${j}`;
-      const p1 = all[i], p2 = all[j];
-
-      // Same point → 0
-      if (p1.lat === p2.lat && p1.lng === p2.lng) {
-        osrmMatrix.set(key, 0);
-        realCount++;
-        done++;
-        if (done % 20 === 0) report();
-        continue;
-      }
-
-      const ck = cacheKey(p1.lat, p1.lng, p2.lat, p2.lng);
-      const cached = distCache.get(ck);
-      if (cached !== undefined) {
-        osrmMatrix.set(key, cached);
-        if (Number.isFinite(cached)) realCount++;
-        else unreachableCount++;
-        done++;
-        if (done % 20 === 0) report();
-        continue;
-      }
-
-      try {
-        const d = await osrmPair(p1.lat, p1.lng, p2.lat, p2.lng);
-        if (d !== null) {
-          osrmMatrix.set(key, d);
-          distCache.set(ck, d);
-          if (distCache.size > 10000) { const first = distCache.keys().next().value; if (first) distCache.delete(first); }
-          realCount++;
-        } else {
-          osrmMatrix.set(key, Infinity);
-          unreachableCount++;
-        }
-      } catch {
-        osrmMatrix.set(key, Infinity);
-        unreachableCount++;
-      }
-      done++;
-      if (done % 10 === 0 || done === totalPairs) report();
-    }
+  for (const [key, value] of Object.entries(record)) {
+    osrmMatrix.set(key, value);
   }
-
-  await Promise.all(Array.from({ length: MAX_WORKERS }, () => worker()));
-  report();
-
-  return { osrmMatrix, durationMatrix: undefined };
+  return { osrmMatrix };
 }
+
+

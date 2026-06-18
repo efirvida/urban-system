@@ -1,11 +1,16 @@
 /**
- * Geoapify route provider — calls the existing backend proxy
- * `POST /api/routing` so the `GEOAPIFY_API_KEY` env var stays server-side.
+ * Server-side route provider — calls `POST /api/routing` so the
+ * `GEOAPIFY_API_KEY` env var stays server-side.
  *
- * Only returns success when the backend reports `source === "geoapify"`.
- * If the key is missing or the call falls through to OSRM/Haversine on
- * the server, this provider returns `null` and the `RoutingService` tries
- * the next provider (typically the public OSRM fallback).
+ * The backend tries Geoapify first, falls back to OSRM if Geoapify
+ * fails (no credits, timeout, unmapped area), and returns `"haversine"`
+ * only when neither provider could find a real road.
+ *
+ * This provider accepts any real-road result from the server
+ * (source: "geoapify" OR "osrm"). Only rejects when the server itself
+ * found no route (source: "haversine"). The OSRM client-side provider
+ * is a true last resort — it only fires when the backend stack
+ * (Geoapify → server-side OSRM) failed entirely.
  */
 
 import type { Point, RouteLegResult, RouteProvider } from "../types";
@@ -33,10 +38,11 @@ export class GeoapifyProvider implements RouteProvider {
       });
       if (!res.ok) return null;
       const data = (await res.json()) as ApiRoutingResponse;
-      // The whole point of this provider: succeed ONLY when the backend
-      // actually used Geoapify. Otherwise the OSRM provider re-does the
-      // work — see design.md §Data Flow.
-      if (data.source !== "geoapify") return null;
+      // Accept ANY real-road result from the server. When Geoapify
+      // credits are exhausted the backend falls to OSRM automatically;
+      // rejecting that would force the client-side OSRM provider to
+      // re-do the same work, doubling latency.
+      if (data.source === "haversine") return null;
       if (typeof data.distance !== "number" || typeof data.time !== "number") {
         return null;
       }
