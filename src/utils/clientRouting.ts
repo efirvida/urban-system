@@ -1,12 +1,13 @@
 /**
  * Distance matrix builder — OSRM per pair with Haversine fallback.
- * 
+ *
  * Flow:
  * 1. For each pair, try OSRM Route service (3s timeout per call)
  * 2. If OSRM fails/times out, use Haversine
  * 3. Concurrency: 5 simultaneous requests
  */
 
+import { geometryCache } from "./routing/geometryCache";
 
 export interface MatrixProgress {
   phase: "matrix";
@@ -65,49 +66,17 @@ export async function fetchRouteGeometry(stops: Array<{ lat: number; lng: number
   } catch { return null; }
 }
 
-// ─── Per-leg route cache (localStorage) ──────────────────────
+// ─── Per-day geometry cache (localStorage) ──────────────────────
+//
+// The per-day geometry cache lives in src/utils/routing/geometryCache.ts.
+// It wraps each /api/routing call with a cache-first check, keyed by the
+// sorted, precision-5 hash of the day's stop set.
 
-const RC_PREFIX = "route_";
-
-function routeLegKey(lat1: number, lng1: number, lat2: number, lng2: number): string {
-  return RC_PREFIX + `${lat1.toFixed(5)},${lng1.toFixed(5)}|${lat2.toFixed(5)},${lng2.toFixed(5)}`;
-}
-
-function getCachedLeg(lat1: number, lng1: number, lat2: number, lng2: number): [number, number][] | null {
-  try {
-    const raw = localStorage.getItem(routeLegKey(lat1, lng1, lat2, lng2));
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
-}
-
-function setCachedLeg(lat1: number, lng1: number, lat2: number, lng2: number, coords: [number, number][]): void {
-  try { localStorage.setItem(routeLegKey(lat1, lng1, lat2, lng2), JSON.stringify(coords)); } catch {}
-}
-
-/** Extract unique consecutive pairs from a full coordinate array given waypoint indices */
-function extractLeg(fullCoords: [number, number][], startIdx: number, endIdx: number): [number, number][] {
-  // Find the indices in the full coords that correspond to the waypoints
-  // For simplicity, return the sub-array from the full route
-  // This is approximate — the API returns the full route, we just split it
-  return fullCoords.slice(startIdx, endIdx + 1);
-}
-
-/** Find closest point index in coordinates to a given lng/lat */
-function findClosestIdx(coords: [number, number][], lng: number, lat: number): number {
-  let minD = Infinity, minI = 0;
-  for (let i = 0; i < coords.length; i++) {
-    const d = Math.abs(coords[i][0] - lng) + Math.abs(coords[i][1] - lat);
-    if (d < minD) { minD = d; minI = i; }
-  }
-  return minI;
-}
-
-/** Fetch geometries for all days with per-leg caching.
+/** Fetch geometries for all days, cache-first.
  *  Returns the geometries map AND a parallel sources map so the map can
  *  render real-road routes as solid lines and estimated (Haversine) ones
- *  as dashed lines. When a day resolves from the per-leg cache (no fresh
- *  API call), its source is conservatively tagged as "haversine" — the
- *  cache does not store the original provider.
+ *  as dashed lines. Cache hits return the stored source verbatim, so
+ *  repeated views of the same results trigger zero `/api/routing` calls.
  */
 export async function fetchAllRouteGeometries(
   days: Array<{ day: number; stops: Array<{ lat: number; lng: number; isHome?: boolean }> }>,
@@ -118,47 +87,23 @@ export async function fetchAllRouteGeometries(
   const geometries = new Map<number, [number, number][]>();
   const sources = new Map<number, RouteSource>();
 
-  // Process each day
   for (const day of days) {
     // Build the full stop sequence: home → POIs → home
     const fullStops = [day.stops[0], ...day.stops.filter(s => !s.isHome), day.stops[0]];
     if (fullStops.length < 2) continue;
 
-    // Check cache for each leg
-    const dayCoords: [number, number][] = [];
-    let allCached = true;
-    const legCache: Array<[number, number][] | null> = [];
-
-    for (let i = 0; i < fullStops.length - 1; i++) {
-      const a = fullStops[i], b = fullStops[i + 1];
-      const cached = getCachedLeg(a.lat, a.lng, b.lat, b.lng);
-      legCache.push(cached);
-      if (!cached) allCached = false;
-    }
-
-    if (allCached) {
-      // All legs cached — stitch them together. CRITICAL: clone each leg
-      // before shifting because getCachedLeg returns the SAME array ref;
-      // mutating it with shift() corrupts the cache for subsequent calls.
-      for (const leg of legCache) {
-        if (leg && leg.length > 0) {
-          const clone = [...leg];
-          if (dayCoords.length > 0 && clone.length > 0) clone.shift(); // avoid duplicate junction
-          dayCoords.push(...clone);
-        }
-      }
-      // Source unknown for cached legs — conservative: mark as estimated
-      // so the map dashes them. Per spec, this is acceptable.
-      if (dayCoords.length > 0) {
-        geometries.set(day.day, dayCoords);
-        sources.set(day.day, "haversine");
-      }
+    // Cache-first: return the stored polyline + source if we have one.
+    const cached = await geometryCache.get(fullStops);
+    if (cached) {
+      geometries.set(day.day, cached.geometry);
+      sources.set(day.day, cached.source);
       continue;
     }
 
-    // Fetch full route from API — capture the source the server reports
+    // Cache miss → fetch the full route from /api/routing.
     let routeCoords: [number, number][] | null = null;
     let apiSource: RouteSource = "haversine";
+
     try {
       const res = await fetch("/api/routing", {
         method: "POST",
@@ -167,66 +112,21 @@ export async function fetchAllRouteGeometries(
         signal: AbortSignal.timeout(20000),
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json() as {
+          coordinates?: [number, number][];
+          source?: RouteSource;
+        };
         routeCoords = data.coordinates || null;
-        // Validate the source field — fall back to "haversine" if absent or unexpected
+        // Validate the source field — fall back to "haversine" if absent or unexpected.
         if (data.source === "geoapify" || data.source === "osrm" || data.source === "haversine") {
           apiSource = data.source;
         }
       }
     } catch {}
 
-    if (!routeCoords) {
-      // API failed — check if at least some legs are cached
-      let hasAny = false;
-      const fallback: [number, number][] = [];
-      for (let i = 0; i < fullStops.length - 1; i++) {
-        const a = fullStops[i], b = fullStops[i + 1];
-        const cached = getCachedLeg(a.lat, a.lng, b.lat, b.lng);
-        if (cached && cached.length > 0) {
-          const clone = [...cached];
-          if (fallback.length > 0 && clone.length > 0) clone.shift();
-          fallback.push(...clone);
-          hasAny = true;
-        }
-      }
-      if (hasAny) {
-        geometries.set(day.day, fallback);
-        sources.set(day.day, "haversine");
-      }
-      continue;
-    }
-
-    // Split route into legs and cache each
-    let coordIdx = 0;
-    for (let i = 0; i < fullStops.length - 1; i++) {
-      const a = fullStops[i], b = fullStops[i + 1];
-      const cacheKey = routeLegKey(a.lat, a.lng, b.lat, b.lng);
-
-      // If already cached, skip
-      if (getCachedLeg(a.lat, a.lng, b.lat, b.lng)) continue;
-
-      // Find where this leg starts/ends in the full route
-      const startIdx = i === 0 ? 0 : findClosestIdx(routeCoords, a.lng, a.lat);
-      const endIdx = i === fullStops.length - 2 ? routeCoords.length - 1 : findClosestIdx(routeCoords, b.lng, b.lat);
-      const legCoords = routeCoords.slice(Math.min(startIdx, endIdx), Math.max(startIdx, endIdx) + 1);
-      if (legCoords.length > 0) setCachedLeg(a.lat, a.lng, b.lat, b.lng, legCoords);
-    }
-
-    // Reconstruct full day route from cache (clone each leg before shift!)
-    for (let i = 0; i < fullStops.length - 1; i++) {
-      const a = fullStops[i], b = fullStops[i + 1];
-      const leg = getCachedLeg(a.lat, a.lng, b.lat, b.lng);
-      if (leg && leg.length > 0) {
-        const clone = [...leg];
-        if (dayCoords.length > 0 && clone.length > 0) clone.shift();
-        dayCoords.push(...clone);
-      }
-    }
-
-    if (dayCoords.length > 0) {
-      geometries.set(day.day, dayCoords);
-      // Trust the source the server reported — could be "geoapify" / "osrm" / "haversine"
+    if (routeCoords && routeCoords.length > 0) {
+      await geometryCache.set(fullStops, routeCoords, apiSource);
+      geometries.set(day.day, routeCoords);
       sources.set(day.day, apiSource);
     }
   }
