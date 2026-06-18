@@ -91,11 +91,12 @@ export function useLeafletMarkers(
           fillOpacity: 1,
         }).addTo(map);
         circle.bindPopup(`<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}<br/>📍 Sin ruta`);
+        markersRef.current.set(`pin-${i}`, circle as any);
         allPoints.push([loc.lng, loc.lat]);
       }
     }
 
-    // ── Route stop markers (numbered circles) usando circleMarker + tooltip ──
+    // ── Route stop markers (numbered circles) ──
     if (routes) {
       for (const day of routes) {
         const isHidden = hiddenDays?.has(day.day);
@@ -104,29 +105,25 @@ export function useLeafletMarkers(
           if (stop.isHome) continue;
           if (isHidden) continue;
           const id = `rs-${day.day}-${stop.sequence}`;
-          const circle = L.circleMarker([stop.lat, stop.lng], {
-            radius: 15,
-            color: "white",
-            weight: 3,
-            fillColor: color,
-            fillOpacity: 1,
+          const marker = L.marker([stop.lat, stop.lng], {
+            icon: L.divIcon({
+              html: `<div style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:${color};color:white;font-size:12px;font-weight:800;box-shadow:0 2px 4px rgba(0,0,0,0.3);border:2px solid white;">${stop.sequence}</div>`,
+              iconSize: [28, 28],
+              iconAnchor: [14, 14],
+              className: "route-stop-icon",
+            }),
           }).addTo(map);
-          circle.bindTooltip(String(stop.sequence), {
-            permanent: true,
-            direction: "center",
-            className: "route-stop-label",
-          });
-          circle.bindPopup(
+          marker.bindPopup(
             `<strong>${stop.name}</strong><br/>Día ${day.day} · #${stop.sequence}<br/>${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`
           );
-          (circle as any)._poiData = { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name };
-          circle.on("click", () => {
-            const d = (circle as any)._poiData as { lat: number; lng: number; day: number; name: string } | undefined;
+          (marker as any)._poiData = { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name };
+          marker.on("click", () => {
+            const d = (marker as any)._poiData as { lat: number; lng: number; day: number; name: string } | undefined;
             if (d && onPOIClickRef.current) {
               onPOIClickRef.current(d.lat, d.lng, d.day, d.name);
             }
           });
-          markersRef.current.set(id, circle as any);
+          markersRef.current.set(id, marker);
           allPoints.push([stop.lng, stop.lat]);
         }
       }
