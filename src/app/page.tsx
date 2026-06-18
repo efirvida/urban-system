@@ -313,8 +313,10 @@ export default function Home() {
       const editRoutes = preview ?? result.days;
       return {
         routes: editRoutes,
-        // In results mode, only show route markers — raw location pins are in edit mode
-        locations: undefined,
+        // In results mode, include all locations — useLeafletMarkers skips
+        // assigned ones (they already have route stop markers) and shows
+        // unassigned as red pins.
+        locations,
         home,
         hiddenDays,
         // During editing or preview, use straight lines for instant visual feedback
