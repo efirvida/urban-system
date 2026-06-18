@@ -28,12 +28,12 @@ Chain strategy: size:exception
 
 ## Phase 1: Foundation — Provider Infrastructure
 
-- [ ] 1.1 Create `src/utils/routing/types.ts` — export `RouteProvider`, `RouteLegResult`, `CachedLeg`, `Point` per design.md
-- [ ] 1.2 Create `src/utils/routing/cache.ts` — port `routeLegKey`/`getCachedLeg`/`setCachedLeg`; value `{distanceKm, durationSeconds, geometry, source, timestamp}`; LRU cap 5000
-- [ ] 1.3 Create `src/utils/routing/providers/osrm.ts` — `OSRMProvider` (priority 1) calling `router.project-osrm.org` with 5s timeout; `null` on error
-- [ ] 1.4 Create `src/utils/routing/providers/geoapify.ts` — `GeoapifyProvider` (priority 0); `POST /api/routing` with 2 stops; returns iff `source === "geoapify"`
-- [ ] 1.5 Create `src/utils/routing/providers/index.ts` — export `defaultProviders: RouteProvider[]` ordered `[Geoapify(0), OSRM(1)]`
-- [ ] 1.6 Create `src/utils/routing/service.ts` — `RoutingService` with `route(a,b)` chain-of-responsibility and `buildDistanceMatrix(points, onProgress)` returning `Record<"i,j", number>`
+- [x] 1.1 Create `src/utils/routing/types.ts` — export `RouteProvider`, `RouteLegResult`, `CachedLeg`, `Point` per design.md
+- [x] 1.2 Create `src/utils/routing/cache.ts` — port `routeLegKey`/`getCachedLeg`/`setCachedLeg`; value `{distanceKm, durationSeconds, geometry, source, timestamp}`; LRU cap 5000
+- [x] 1.3 Create `src/utils/routing/providers/osrm.ts` — `OSRMProvider` (priority 1) calling `router.project-osrm.org` with 5s timeout; `null` on error
+- [x] 1.4 Create `src/utils/routing/providers/geoapify.ts` — `GeoapifyProvider` (priority 0); `POST /api/routing` with 2 stops; returns iff `source === "geoapify"`
+- [x] 1.5 Create `src/utils/routing/providers/index.ts` — export `defaultProviders: RouteProvider[]` ordered `[Geoapify(0), OSRM(1)]`
+- [x] 1.6 Create `src/utils/routing/service.ts` — `RoutingService` with `route(a,b)` chain-of-responsibility and `buildDistanceMatrix(points, onProgress)` returning `Record<"i,j", number>`
 
 ## Phase 2: ClientRouting Rewrite
 
