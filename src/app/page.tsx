@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useMemo, useRef } from "react";
+import { useCallback, useState, useMemo, useRef, useEffect } from "react";
 import {
   Location,
   Config,
@@ -353,9 +353,11 @@ export default function Home() {
         hiddenDays,
         // During editing, use straight lines (Haversine) for instant visual feedback.
         // After accepting edits, OSRM geometry is refetched via refetchGeometries.
-        routingMode: editMode || previewDays ? "haversine" : routingMode,
-        routeGeometry: !editMode && !previewDays && routingMode === "osrm" ? routeGeometry ?? undefined : undefined,
-        routeSource: !editMode && !previewDays && routingMode === "osrm" ? routeSource ?? undefined : undefined,
+        // Durante preview (proposed moves) usar línea recta. En edición usar la
+        // última ruta real disponible — refetchGeometries la actualiza tras cada edición.
+        routingMode: previewDays ? "haversine" : routingMode,
+        routeGeometry: !previewDays && routingMode === "osrm" ? routeGeometry ?? undefined : undefined,
+        routeSource: !previewDays && routingMode === "osrm" ? routeSource ?? undefined : undefined,
       };
     }
 
@@ -772,6 +774,15 @@ export default function Home() {
       console.error("[FLOW] Post-Apply geometry fetch error:", err);
     });
   }, []);
+
+  // ── Refetch OSRM geometry after edits (debounced 800ms) ──
+  useEffect(() => {
+    if (!editMode || !editDaysPreview || editDaysPreview.length === 0) return;
+    const timer = setTimeout(() => {
+      refetchGeometries(editDaysPreview);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [editDaysPreview, editMode, refetchGeometries]);
 
   /** Apply handler — commits editor's working days to the result. */
   const handleApply = useCallback((newDays: DayRoute[]) => {
