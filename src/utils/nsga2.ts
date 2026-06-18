@@ -296,12 +296,9 @@ export async function runNSGA2(
     // Yield every 10 generations to avoid blocking the event loop
     if (gen % 10 === 0) {
       await new Promise(r => setTimeout(r, 0));
-      const bestObj = pop.reduce((a, b) => a.objectives[0] < b.objectives[0] ? a : b);
-      console.log(`${FLOW}   NSGA2 gen ${gen}: best dist=${bestObj.objectives[0].toFixed(1)}km, dur=${bestObj.objectives[1].toFixed(2)}h, pop=${pop.length}`);
     }
 
     const offspring: Individual[] = [];
-    const tOffStart = Date.now();
     let offCount = 0;
 
     while (offspring.length < POP) {
@@ -327,16 +324,8 @@ export async function runNSGA2(
       if (Math.random() < MR) lf1 = Math.max(0.4, Math.min(1.0, lf1 + (Math.random() - 0.5) * 0.2));
       if (Math.random() < MR) lf2 = Math.max(0.4, Math.min(1.0, lf2 + (Math.random() - 0.5) * 0.2));
 
-      console.log(`${FLOW}   NSGA2 gen ${gen} iter ${offCount+1}: BEFORE decode`);
       const r1 = decode(c1, lf1);
-      const tDec1 = Date.now();
-      console.log(`${FLOW}   NSGA2 gen ${gen} iter ${offCount+1}: c1 done (${r1.length} routes)`);
       const r2 = decode(c2, lf2);
-      const tDec2 = Date.now();
-      console.log(`${FLOW}   NSGA2 gen ${gen} iter ${offCount+1}: c2 done (${r2.length} routes)`);
-      if (tDec2 - tDec1 > 1000) {
-        console.log(`${FLOW}   NSGA2 gen ${gen} decode SLOW: ${tDec2 - tDec1}ms`);
-      }
 
       const obj1 = computeObjectives(r1);
       const obj2 = computeObjectives(r2);
@@ -345,24 +334,17 @@ export async function runNSGA2(
       if (offspring.length < POP) { offspring.push({ perm: c2, loadFactor: lf2, routes: r2, objectives: obj2, rank: 0, crowdingDist: 0 }); }
 
       offCount++;
-      console.log(`${FLOW}   NSGA2 gen ${gen} iter ${offCount}: DONE — ${offspring.length}/${POP} offspring`);
     }
 
-    console.log(`${FLOW}   NSGA2 gen ${gen}: offspring created (${Date.now() - tOffStart}ms)`);
     evals += offspring.length;
-    const tSort = Date.now();
     const combined = [...pop, ...offspring];
     fastNonDominatedSort(combined);
-    console.log(`${FLOW}   NSGA2 gen ${gen}: nonDominatedSort done (${Date.now() - tSort}ms, combined=${combined.length})`);
 
     const maxRank = Math.max(...combined.map(ind => ind.rank));
     const fronts: number[][] = Array.from({ length: maxRank + 1 }, () => []);
     for (let i = 0; i < combined.length; i++) fronts[combined[i].rank].push(i);
-    const tCrowd = Date.now();
     for (const f of fronts) { if (f.length > 0) crowdingDistance(combined, f); }
-    console.log(`${FLOW}   NSGA2 gen ${gen}: crowdingDistance done (${Date.now() - tCrowd}ms, fronts=${fronts.length})`);
 
-    const tSel = Date.now();
     const next: Individual[] = [];
     let r = 0;
     while (r < fronts.length && next.length + fronts[r].length <= POP) {
@@ -382,7 +364,6 @@ export async function runNSGA2(
       }
     }
     pop = next;
-    console.log(`${FLOW}   NSGA2 gen ${gen}: selection done (${Date.now() - tSel}ms, next.pop=${pop.length})`);
   }
 
   // ── Extract Pareto front ──

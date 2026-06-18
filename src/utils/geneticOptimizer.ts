@@ -190,20 +190,14 @@ export async function improveWithGA(
 
   // Sort by distance
   pop.sort((a, b) => a.dist - b.dist);
-  console.log(`${FLOW}     GA init pop: best=${pop[0].dist.toFixed(1)}km, worst=${pop[pop.length-1].dist.toFixed(1)}km`);
 
   let bestDist = pop[0].dist;
   let bestPerm = [...pop[0].perm];
-  let lastLogDist = bestDist;
 
   for (let gen = 0; gen < GENS; gen++) {
     // Yield cada 10 generaciones para no bloquear el UI
     if (gen % 10 === 0) {
       await new Promise(r => setTimeout(r, 0));
-      if (pop[0].dist < lastLogDist) {
-        console.log(`${FLOW}     GA gen ${gen}: best=${pop[0].dist.toFixed(1)}km (improved ${(lastLogDist - pop[0].dist).toFixed(1)}km)`);
-        lastLogDist = pop[0].dist;
-      }
     }
 
     const offspring: typeof pop = [];

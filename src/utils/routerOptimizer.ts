@@ -68,19 +68,13 @@ export async function optimizeRoutes(
   console.log(`${FLOW}   routerOptimizer: ${locations.length} locations${strictMatrix ? " (strict matrix)" : ""}`);
   // ── Step 1: Build a giant TSP tour ──
   // Nearest Neighbor + 2-opt improvement
-  const t1 = Date.now();
   const tour = await buildGiantTour(locations, home, config, precomputedMatrix, strictMatrix);
-  console.log(`${FLOW}   buildGiantTour: ${tour.length} stops in ${Date.now() - t1}ms`);
 
   // ── Step 2: Slice the tour into daily segments ──
-  const t2 = Date.now();
   let solution = sliceTourToSolution(tour, locations, home, config, precomputedMatrix, strictMatrix);
-  console.log(`${FLOW}   sliceTourToSolution: ${solution.length} days in ${Date.now() - t2}ms`);
 
   // ── Step 3: Local Search improvement (OR-Tools style) ──
-  const t3 = Date.now();
   solution = localSearch(solution, locations, home, config, precomputedMatrix, strictMatrix);
-  console.log(`${FLOW}   localSearch: ${solution.length} days in ${Date.now() - t3}ms`);
 
   // ── Convert deterministic result ──
   const detDays = solutionToDays(solution, locations, home, config, precomputedMatrix, strictMatrix);
