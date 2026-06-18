@@ -31,6 +31,7 @@ export function useLeafletMarkers(
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const onPOIClickRef = useRef(options.onPOIClick);
   const onDragHomeRef = useRef(options.onDragHome);
+  const dataKeyRef = useRef("");
 
   useEffect(() => {
     onPOIClickRef.current = options.onPOIClick;
@@ -50,6 +51,23 @@ export function useLeafletMarkers(
     const { data } = options;
     const { locations, routes, hiddenDays, home } = data;
     const allPoints: [number, number][] = [];
+
+    // Compute a stable key for the actual spatial data (not visibility state)
+    const spatialKey = JSON.stringify([
+      locations?.length ?? 0,
+      routes?.map(d => `${d.day}:${d.stops.length}`).join(","),
+      home?.lat, home?.lng,
+    ]);
+    const dataChanged = spatialKey !== dataKeyRef.current;
+
+    // Track data identity to only fitBounds when locations/routes/home actually change
+    const dataKey = JSON.stringify([
+      locations?.length, locations?.[0]?.lat,
+      routes?.map(d => `${d.day}:${d.stops.length}`).join(","),
+      home?.lat,
+    ]);
+    const prevKey = useRef("").current;
+    useRef(dataKey).current = dataKey;
 
     // ── Home marker (circleMarker — L.marker/L.divIcon no funciona) ──
     if (home && home.lat && home.lng) {
@@ -133,8 +151,9 @@ export function useLeafletMarkers(
       }
     }
 
-    // Fit bounds
-    if (allPoints.length > 0) {
+    // Fit bounds — solo si los datos espaciales realmente cambiaron
+    if (dataChanged && allPoints.length > 0) {
+      dataKeyRef.current = spatialKey;
       try {
         const bounds = L.latLngBounds(allPoints.map((p) => [p[1], p[0]] as [number, number]));
         map.fitBounds(bounds, { padding: [80, 80], maxZoom: 16 });
