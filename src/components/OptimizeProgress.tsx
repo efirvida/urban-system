@@ -133,12 +133,12 @@ export default function OptimizeProgress({
         <div className="bg-green-50 rounded-lg p-3 text-center">
           <div className="text-lg font-bold text-green-700">{p.realCount}</div>
           <div className="text-xs text-green-500">rutas reales</div>
-          <div className="text-xs text-green-400 mt-0.5">(OSRM)</div>
+          <div className="text-xs text-green-400 mt-0.5">Geoapify + OSRM</div>
         </div>
         <div className="bg-amber-50 rounded-lg p-3 text-center">
-          <div className="text-lg font-bold text-amber-700">{p.haversineCount}</div>
-          <div className="text-xs text-amber-500">estimadas</div>
-          <div className="text-xs text-amber-400 mt-0.5">(Haversine)</div>
+          <div className="text-lg font-bold text-amber-700">{p.unreachableCount}</div>
+          <div className="text-xs text-amber-500">sin ruta</div>
+          <div className="text-xs text-amber-400 mt-0.5">inalcanzable</div>
         </div>
         <div className="bg-purple-50 rounded-lg p-3 text-center">
           <div className="text-lg font-bold text-purple-700">{etaText}</div>
@@ -157,8 +157,8 @@ export default function OptimizeProgress({
 
       {/* Small print */}
       <p className="text-center text-xs text-gray-400 mt-4">
-        Consultando Open Source Routing Machine (OSRM) para distancias reales por ruta.
-        Los pares sin cobertura se estiman con distancia Haversine.
+        Calculando distancias reales por ruta (Geoapify → OSRM).
+        Los pares sin cobertura de ruta se marcan como inalcanzables.
       </p>
     </div>
   );

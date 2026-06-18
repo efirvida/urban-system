@@ -24,7 +24,7 @@ export interface MatrixProgress {
   percent: number;
   etaSeconds: number;
   realCount: number;
-  haversineCount: number;
+  unreachableCount: number;
 }
 
 export type ProgressCallback = (p: MatrixProgress) => void;
@@ -125,7 +125,7 @@ export class RoutingService {
         percent: totalPairs === 0 ? 100 : Math.round((done / totalPairs) * 100),
         etaSeconds: speed > 0 ? Math.round((totalPairs - done) / speed) : 999,
         realCount,
-        haversineCount: unreachableCount,
+        unreachableCount,
       });
     };
 
