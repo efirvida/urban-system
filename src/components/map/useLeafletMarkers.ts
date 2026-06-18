@@ -78,15 +78,19 @@ export function useLeafletMarkers(
       for (let i = 0; i < locations.length; i++) {
         const loc = locations[i];
         const isAssigned = assignedCoords.has(`${loc.lat.toFixed(5)},${loc.lng.toFixed(5)}`);
-        const fillColor = isAssigned ? "#3b82f6" : "#ef4444";
+        // Skip assigned locations — they already have a route stop marker
+        if (isAssigned) {
+          allPoints.push([loc.lng, loc.lat]);
+          continue;
+        }
         const circle = L.circleMarker([loc.lat, loc.lng], {
           radius: 8,
           color: "white",
           weight: 2,
-          fillColor,
+          fillColor: "#ef4444",
           fillOpacity: 1,
         }).addTo(map);
-        circle.bindPopup(`<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`);
+        circle.bindPopup(`<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}<br/>📍 Sin ruta`);
         allPoints.push([loc.lng, loc.lat]);
       }
     }

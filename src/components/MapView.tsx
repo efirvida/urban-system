@@ -76,21 +76,23 @@ export default function MapView({
     return () => cancelAnimationFrame(id);
   }, [invalidateSize]);
 
-  useLeafletMarkers(mapRef, {
-    data,
-    homeDraggable,
-    onPOIClick,
-    onDragHome,
-    selectedPOI,
-  });
-
   // Per-day glow + route polylines (hiddenDays, highlightDay, routeGeometry, routeSource)
+  // MUST come BEFORE markers so polylines render BEHIND the circleMarkers/tooltips.
   useLeafletPolylines(mapRef, {
     routes: data.routes,
     routeGeometry: data.routeGeometry,
     routeSource: data.routeSource,
     hiddenDays: data.hiddenDays,
     highlightDay,
+  });
+
+  // Route stop markers + home + location pins — rendered AFTER polylines so they appear ON TOP.
+  useLeafletMarkers(mapRef, {
+    data,
+    homeDraggable,
+    onPOIClick,
+    onDragHome,
+    selectedPOI,
   });
 
   // ValidatedRow markers (review phase) — small pin dots with selected/unselected
