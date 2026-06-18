@@ -1,5 +1,6 @@
 import { Location, Config, DayRoute, Stop, DistanceMatrix } from "@/types";
 import { improveWithGA } from "./geneticOptimizer";
+import { haversineDistance } from "./haversine";
 
 /**
  * Look up distance from the precomputed matrix.
@@ -613,7 +614,8 @@ export function reoptimizeDay(
         if (v !== undefined) return v;
       }
     }
-    return Infinity;
+    // Fallback: Haversine (siempre disponible, sin API calls)
+    return haversineDistance(a.lat, a.lng, b.lat, b.lng);
   };
 
   // ── Step 1: Nearest Neighbor from home ──

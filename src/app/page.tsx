@@ -178,6 +178,7 @@ export default function Home() {
   // Optimization progress
   const [optimizePhase, setOptimizePhase] = useState<"idle" | "matrix" | "algorithm" | "done" | "error">("idle");
   const [matrixProgress, setMatrixProgress] = useState<MatrixProgress | null>(null);
+  const [distanceMatrix, setDistanceMatrix] = useState<Record<string, number> | null>(null);
   const [routingMode, setRoutingMode] = useState<"osrm" | "haversine">("osrm");
   const [routeGeometry, setRouteGeometry] = useState<Map<number, [number, number][]> | null>(null);
   /** Per-day routing source — drives dashed styling on the map. */
@@ -731,6 +732,7 @@ export default function Home() {
       };
       geometryDays = bestDays;
       setHiddenDays(new Set(bestDays.slice(1).map((d: any) => d.day)));
+      setDistanceMatrix(distances);
       setResult(optResult);
       console.log(`${FLOW} Best: ${bestCnt}d · ${bestDist}km`);
 
@@ -1097,7 +1099,7 @@ export default function Home() {
                   result={result}
                   config={config}
                   locations={locations}
-                  matrix={undefined}
+                  matrix={distanceMatrix ?? undefined}
                   selectedPOI={selectedPOI}
                   onPOISelect={(name, lat, lng, day) => {
                     setSelectedPOI({ name, lat, lng, day });
