@@ -22,6 +22,7 @@ interface UseLeafletMarkersOptions {
   onPOIClick?: (lat: number, lng: number, day: number, name: string) => void;
   onDragHome?: (lat: number, lng: number) => void;
   selectedPOI?: { lat: number; lng: number; day: number; name: string } | null;
+  highlightDay?: number | null;
 }
 
 export function useLeafletMarkers(
@@ -115,17 +116,19 @@ export function useLeafletMarkers(
       for (const day of routes) {
         const isHidden = hiddenDays?.has(day.day);
         const color = getColor(day.day - 1);
+        // Si highlightDay está activo pero este día no es el seleccionado → dim
+        const isDimmedByHighlight = options.highlightDay !== null && options.highlightDay !== undefined && options.highlightDay !== day.day;
         for (const stop of day.stops) {
           if (stop.isHome) continue;
           const id = `rs-${day.day}-${stop.sequence}`;
-          if (isHidden) {
-            // Círculo pequeño sin número — muestra que el POI existe pero está en otro día
+          if (isHidden || isDimmedByHighlight) {
+            // Círculo pequeño sin número
             const circle = L.circleMarker([stop.lat, stop.lng], {
-              radius: 8,
+              radius: isHidden ? 8 : 6,
               color: "white",
               weight: 2,
               fillColor: color,
-              fillOpacity: 0.5,
+              fillOpacity: isHidden ? 0.5 : 0.2,
             }).addTo(map);
             (circle as any)._poiData = { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name };
             circle.on("click", () => {

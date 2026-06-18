@@ -93,6 +93,7 @@ export default function MapView({
     onPOIClick,
     onDragHome,
     selectedPOI,
+    highlightDay,
   });
 
   // ValidatedRow markers (review phase) — small pin dots with selected/unselected
