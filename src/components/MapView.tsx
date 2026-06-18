@@ -67,13 +67,20 @@ export default function MapView({
     placementMode,
   });
 
-  // Stabilize marker-data reference for the hook's effect dep. With page.tsx's
-  // useMemo on mapData, this is already stable — the ref adds defensive
-  // protection in case the parent stops memoizing.
+  // Invalidate size after first paint. Leaflet caches the container size at
+  // init; if the layout wasn't ready (e.g. CSS not applied), the map renders
+  // into a 0×0 box. requestAnimationFrame defers until after the browser
+  // has laid out the container.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => invalidateSize());
+    return () => cancelAnimationFrame(id);
+  }, [invalidateSize]);
+
+  // Home + location pins + route-stop markers (with click → onPOIClick, drag → onDragHome)
+  // Must come AFTER invalidateSize so the map has proper dimensions.
   const markerData = useRef(data);
   markerData.current = data;
 
-  // Home + location pins + route-stop markers (with click → onPOIClick, drag → onDragHome)
   useLeafletMarkers(mapRef, {
     data: markerData.current,
     homeDraggable,
@@ -157,15 +164,6 @@ export default function MapView({
       }
     }
   }, [mapRef, data.markers]);
-
-  // Invalidate size after first paint. Leaflet caches the container size at
-  // init; if the layout wasn't ready (e.g. CSS not applied), the map renders
-  // into a 0×0 box. requestAnimationFrame defers until after the browser
-  // has laid out the container.
-  useEffect(() => {
-    const id = requestAnimationFrame(() => invalidateSize());
-    return () => cancelAnimationFrame(id);
-  }, [invalidateSize]);
 
   return (
     <div className="absolute inset-0 z-0" style={{ width: "100%", height: "100%" }}>
