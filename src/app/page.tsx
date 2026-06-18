@@ -219,18 +219,19 @@ export default function Home() {
     return [...new Set(source.map((d) => d.day))].sort((a, b) => a - b);
   }, [editDaysPreview, result]);
 
-  /** Unassigned POIs during editing — locations not in any route stop. */
-  const unassignedDuringEdit = useMemo(() => {
-    if (!editMode || !editDaysPreview || !locations) return [];
+  /** Unassigned POIs — locations not in any route stop, both view and edit mode. */
+  const unassignedPOIs = useMemo(() => {
+    if (!locations) return [];
+    const sourceRoutes = editMode ? (editDaysPreview ?? []) : (result?.days ?? []);
     const assigned = new Set<string>();
-    for (const day of editDaysPreview) {
+    for (const day of sourceRoutes) {
       for (const s of day.stops) {
         if (s.isHome) continue;
         assigned.add(`${s.lat.toFixed(5)},${s.lng.toFixed(5)}`);
       }
     }
     return locations.filter((l) => !assigned.has(`${l.lat.toFixed(5)},${l.lng.toFixed(5)}`));
-  }, [editMode, editDaysPreview, locations]);
+  }, [editMode, editDaysPreview, result, locations]);
 
   /** Calculate preview routes when the user selects a target day or "Sin ruta". */
   const handlePreviewDay = useCallback(
@@ -1193,24 +1194,25 @@ export default function Home() {
         />
       )}
 
-      {/* ── Floating unassigned POIs panel (edit mode only) ── */}
+      {/* ── Floating unassigned POIs panel (view + edit mode) ── */}
       <FloatingUnassignedPanel
-        pois={unassignedDuringEdit}
+        pois={unassignedPOIs}
         onPOIClick={(lat, lng, name) => {
           // Find the day this POI belongs to (if any) and select it
-          if (editDaysPreview) {
-            for (const day of editDaysPreview) {
-              for (const s of day.stops) {
-                if (!s.isHome && Math.abs(s.lat - lat) < 0.00001 && Math.abs(s.lng - lng) < 0.00001) {
-                  setSelectedPOI({ name, lat, lng, day: day.day });
-                  setHighlightDay(day.day);
-                  return;
-                }
+          const sourceRoutes = editDaysPreview ?? result?.days ?? [];
+          for (const day of sourceRoutes) {
+            for (const s of day.stops) {
+              if (!s.isHome && Math.abs(s.lat - lat) < 0.00001 && Math.abs(s.lng - lng) < 0.00001) {
+                setSelectedPOI({ name, lat, lng, day: day.day });
+                setHighlightDay(day.day);
+                return;
               }
             }
           }
-          // POI not found in any day — it's truly unassigned
-          setSelectedPOI({ name, lat, lng, day: -1 });
+          // POI not found in any day — it's truly unassigned (edit mode only)
+          if (editMode) {
+            setSelectedPOI({ name, lat, lng, day: -1 });
+          }
         }}
       />
 
