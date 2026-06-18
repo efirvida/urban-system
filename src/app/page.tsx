@@ -321,11 +321,12 @@ export default function Home() {
         locations,
         home,
         hiddenDays,
-        // During editing or preview, use straight lines for instant visual feedback
-        routingMode: editMode || previewDays ? "haversine" : routingMode,
-        routeGeometry: !editMode && !previewDays && routingMode === "osrm" ? routeGeometry ?? undefined : undefined,
-        // Parallel sources map — same gating as routeGeometry
-        routeSource: !editMode && !previewDays && routingMode === "osrm" ? routeSource ?? undefined : undefined,
+        // During editing, use OSRM road geometry (already cached). 
+        // Preview mode (proposed POI moves) uses straight lines for instant feedback.
+        routingMode: previewDays ? "haversine" : routingMode,
+        routeGeometry: !previewDays && routingMode === "osrm" ? routeGeometry ?? undefined : undefined,
+        // Parallel sources map
+        routeSource: !previewDays && routingMode === "osrm" ? routeSource ?? undefined : undefined,
       };
     }
 
