@@ -59,13 +59,32 @@
   min-height: 400px;
 }
 
-.maplibregl-popup-content {
-  font-size: 13px;
-  padding: 10px !important;
-  border-radius: 8px !important;
+/* ─── Leaflet overrides ──────────────────────────────── */
+/* Keep all Leaflet panes below the sidebar (z-20) */
+.leaflet-pane {
+  z-index: 1 !important;
 }
-
-.maplibregl-popup-close-button {
-  font-size: 16px;
-  padding: 4px;
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 2 !important;
+}
+.leaflet-control-zoom {
+  border: 1px solid #e5e7eb !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+}
+.leaflet-control-zoom a {
+  background: white !important;
+  color: #374151 !important;
+  width: 34px !important;
+  height: 34px !important;
+  line-height: 34px !important;
+  font-size: 18px !important;
+}
+.leaflet-control-attribution {
+  font-size: 10px !important;
+  background: rgba(255,255,255,0.8) !important;
+  padding: 2px 8px !important;
+  border-radius: 4px !important;
 }

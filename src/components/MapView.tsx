@@ -168,7 +168,7 @@ export default function MapView({
   }, [invalidateSize]);
 
   return (
-    <div className="absolute inset-0" style={{ width: "100%", height: "100%" }}>
+    <div className="absolute inset-0 z-0" style={{ width: "100%", height: "100%" }}>
       {/* Routing mode badge (bottom-left of map) */}
       {data.routingMode && (
         <div className="absolute bottom-4 left-4 z-10 px-2.5 py-1 bg-white/90 backdrop-blur-sm rounded-full shadow text-xs text-gray-500 border flex items-center gap-1.5">
