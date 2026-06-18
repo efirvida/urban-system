@@ -66,7 +66,7 @@ export function useLeafletMarkers(
       allPoints.push([home.lng, home.lat]);
     }
 
-    // ── Location pins (colored dots) ──
+    // ── Location pins (colored dots) usando L.circleMarker (probado, funciona) ──
     if (locations) {
       const assignedCoords = new Set<string>();
       if (routes) {
@@ -80,17 +80,15 @@ export function useLeafletMarkers(
       for (let i = 0; i < locations.length; i++) {
         const loc = locations[i];
         const isAssigned = assignedCoords.has(`${loc.lat.toFixed(5)},${loc.lng.toFixed(5)}`);
-        const marker = L.marker([loc.lat, loc.lng], {
-          icon: createPinIcon(isAssigned),
-          interactive: false,
+        const fillColor = isAssigned ? "#3b82f6" : "#ef4444";
+        const circle = L.circleMarker([loc.lat, loc.lng], {
+          radius: 6,
+          color: "white",
+          weight: 2,
+          fillColor,
+          fillOpacity: 1,
         }).addTo(map);
-        const dayInfo = routes
-          ?.flatMap(d => d.stops.filter(s => !s.isHome && Math.abs(s.lat - loc.lat) < 0.00001 && Math.abs(s.lng - loc.lng) < 0.00001).map(s => `Día ${d.day}`))
-          .join(", ");
-        marker.bindPopup(
-          `<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}${dayInfo ? `<br/>${dayInfo}` : "<br/>📍 Sin ruta"}`
-        );
-        markersRef.current.set(`loc-${i}`, marker);
+        circle.bindPopup(`<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`);
         allPoints.push([loc.lng, loc.lat]);
       }
     }
