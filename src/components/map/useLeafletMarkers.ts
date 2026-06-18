@@ -119,7 +119,7 @@ export function useLeafletMarkers(
           if (isHidden) {
             // Círculo pequeño sin número — muestra que el POI existe pero está en otro día
             const circle = L.circleMarker([stop.lat, stop.lng], {
-              radius: 6,
+              radius: 8,
               color: "white",
               weight: 2,
               fillColor: color,
