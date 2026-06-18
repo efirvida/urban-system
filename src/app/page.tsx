@@ -272,29 +272,42 @@ export default function Home() {
       const stopsToLocs = (stops: Array<{ name: string; lat: number; lng: number; isHome?: boolean }>) =>
         stops.filter((s) => !s.isHome).map((s) => ({ name: s.name, lat: s.lat, lng: s.lng }));
 
-      const sourceDay = editDaysPreview.find((d) => d.day === selectedPOI.day);
-      if (!sourceDay) return;
-
       // targetDay === 0 means "Sin ruta" (remove from route)
       if (targetDay === 0) {
+        const sourceDay = editDaysPreview.find((d) => d.day === selectedPOI.day);
+        if (!sourceDay) return;
         const sourcePois = stopsToLocs(sourceDay.stops).filter((s) => s.name !== selectedPOI.name);
-        const newSource = reoptimizeDay(sourcePois, home, config, undefined, sourceDay.day);
+        const newSource = reoptimizeDay(sourcePois, home, config, undefined, sourceDay.day, undefined);
         const preview = editDaysPreview.map((d) => d.day === sourceDay.day ? newSource : d);
         setPreviewDays(preview);
         return;
       }
 
-      // Move to another existing day
+      // POI no asignado (day === -1) — agregar al día destino sin origen
+      if (selectedPOI.day === -1) {
+        const targetDayData = editDaysPreview.find((d) => d.day === targetDay);
+        if (!targetDayData) return;
+        const targetPois = stopsToLocs(targetDayData.stops).concat([
+          { name: selectedPOI.name, lat: selectedPOI.lat, lng: selectedPOI.lng },
+        ]);
+        const newTarget = reoptimizeDay(targetPois, home, config, undefined, targetDayData.day, undefined);
+        const preview = editDaysPreview.map((d) => d.day === targetDayData.day ? newTarget : d);
+        setPreviewDays(preview);
+        return;
+      }
+
+      // POI asignado — mover de un día a otro
+      const sourceDay = editDaysPreview.find((d) => d.day === selectedPOI.day);
       const targetDayData = editDaysPreview.find((d) => d.day === targetDay);
-      if (!targetDayData) return;
+      if (!sourceDay || !targetDayData) return;
 
       const sourcePois = stopsToLocs(sourceDay.stops).filter((s) => s.name !== selectedPOI.name);
       const targetPois = stopsToLocs(targetDayData.stops).concat([
         { name: selectedPOI.name, lat: selectedPOI.lat, lng: selectedPOI.lng },
       ]);
 
-      const newSource = reoptimizeDay(sourcePois, home, config, undefined, sourceDay.day);
-      const newTarget = reoptimizeDay(targetPois, home, config, undefined, targetDayData.day);
+      const newSource = reoptimizeDay(sourcePois, home, config, undefined, sourceDay.day, undefined);
+      const newTarget = reoptimizeDay(targetPois, home, config, undefined, targetDayData.day, undefined);
 
       const preview = editDaysPreview.map((d) => {
         if (d.day === sourceDay.day) return newSource;
