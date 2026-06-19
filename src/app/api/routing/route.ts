@@ -83,7 +83,17 @@ async function tryGeoapify(stops: RouteStop[], apiKey: string): Promise<RouteRes
     const feature = data.features[0];
     const props = feature.properties || {};
 
-    const coordinates: [number, number][] = feature.geometry?.coordinates?.map((c: number[]) => [c[0], c[1] as number]) || [];
+    const coordinates: [number, number][] = [];
+    // Geoapify returns geometry as MultiLineString (one LineString per leg).
+    // Flatten all legs into a single coordinate array.
+    const rawCoords = feature.geometry?.coordinates;
+    if (rawCoords) {
+      for (const line of rawCoords) {
+        for (const c of line) {
+          coordinates.push([c[0], c[1] as number]);
+        }
+      }
+    }
     // Geoapify returns distance as a plain number in meters (not {value, unit}).
     const totalDist = (typeof props.distance === "number" ? props.distance : 0) / 1000;
     const totalTime = typeof props.time === "number" ? props.time : 0;
