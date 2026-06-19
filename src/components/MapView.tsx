@@ -11,13 +11,18 @@ import type { RouteSource } from "@/utils/clientRouting";
 
 // ─── Types (preserved 1:1 for backwards compat) ───────────────
 
+/** Real-road sources — anything that isn't Haversine or undefined. */
+const REAL_ROAD_SOURCES = new Set([
+  "geoapify", "geoapify-matrix", "ors", "ors-matrix", "osrm",
+]);
+
 export interface MapViewData {
   markers?: ValidatedRow[];
   locations?: Location[];
   routes?: DayRoute[];
   home?: { lat: number; lng: number } | null;
   hiddenDays?: Set<number>;
-  routingMode?: "osrm" | "haversine";
+  routingMode?: RouteSource | "haversine";
   routeGeometry?: Map<number, [number, number][]>;
   routeSource?: Map<number, RouteSource>;
 }
@@ -129,7 +134,7 @@ export default function MapView({
     <div className="absolute inset-0 z-0" style={{ width: "100%", height: "100%" }}>
       {data.routingMode && (
         <div className="absolute bottom-4 left-4 z-10 px-2.5 py-1 bg-white/90 backdrop-blur-sm rounded-full shadow text-xs text-gray-500 border flex items-center gap-1.5">
-          {data.routingMode === "osrm" ? (
+          {REAL_ROAD_SOURCES.has(data.routingMode) ? (
             <>
               <Car className="w-3.5 h-3.5" />
               Ruta real

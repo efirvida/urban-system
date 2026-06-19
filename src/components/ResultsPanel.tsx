@@ -39,6 +39,8 @@ interface ResultsPanelProps {
   activeAlgorithm?: string | null;
   /** Called when the user picks a tab. */
   onAlgorithmChange?: (algorithm: string) => void;
+  /** Consensus-matrix change: `_meta.useConsensus` flag from the API. */
+  useConsensus?: boolean;
 }
 
 export default function ResultsPanel({
@@ -56,6 +58,7 @@ export default function ResultsPanel({
   winnerAlgorithm,
   activeAlgorithm,
   onAlgorithmChange,
+  useConsensus,
 }: ResultsPanelProps) {
   const [internalDay, setInternalDay] = useState<number | null>(1);
   const activeExpanded = controlledDay !== undefined ? controlledDay : internalDay;
@@ -106,6 +109,21 @@ export default function ResultsPanel({
                         <Trophy className="w-3.5 h-3.5 text-amber-500" />
                       )}
                       <span className="font-medium">{tab.label}</span>
+                      {tab.avgReliability !== undefined && (
+                        <span
+                          className={cn(
+                            "text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+                            tab.avgReliability >= 0.67
+                              ? "bg-green-100 text-green-700"
+                              : tab.avgReliability >= 0.34
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-red-100 text-red-700",
+                          )}
+                          title={`Fiabilidad media: ${(tab.avgReliability * 100).toFixed(0)}%`}
+                        >
+                          {(tab.avgReliability * 100).toFixed(0)}%
+                        </span>
+                      )}
                     </span>
                     <span className="text-xs font-mono text-gray-500">
                       {tab.totalDays}d · {formatDistance(tab.totalDistance)}
@@ -135,6 +153,11 @@ export default function ResultsPanel({
           </span>
           {routingLabel && (
             <span className="text-xs font-normal text-gray-400">{routingLabel}</span>
+          )}
+          {useConsensus && (
+            <span className="text-[10px] font-medium text-green-700 bg-green-50 px-1.5 py-0.5 rounded-full">
+              Consenso 3 proveedores
+            </span>
           )}
         </div>
         <div className="card-body grid grid-cols-3 gap-4 text-center">

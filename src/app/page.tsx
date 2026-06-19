@@ -172,11 +172,12 @@ export default function Home() {
   const [optimizePhase, setOptimizePhase] = useState<"idle" | "matrix" | "algorithm" | "done" | "error">("idle");
   const [matrixProgress, setMatrixProgress] = useState<MatrixProgress | null>(null);
   const [distanceMatrix, setDistanceMatrix] = useState<Record<string, number> | null>(null);
-  const [routingMode, setRoutingMode] = useState<"osrm" | "haversine">("osrm");
+  const [routingMode, setRoutingMode] = useState<RouteSource | "haversine">("osrm");
   const [routeGeometry, setRouteGeometry] = useState<Map<number, [number, number][]> | null>(null);
   /** Per-day routing source — drives dashed styling on the map. */
   const [routeSource, setRouteSource] = useState<Map<number, RouteSource> | null>(null);
   const [algorithm, setAlgorithm] = useState<"auto" | "nsga2">("nsga2");
+  const [useConsensus, setUseConsensus] = useState(false);
 
   // Route editing
   const [editMode, setEditMode] = useState(false);
@@ -351,15 +352,10 @@ export default function Home() {
   const handleToggleDay = useCallback((day: number) => {
     setHiddenDays((prev) => {
       const wasHidden = prev.has(day);
-      // Schedule highlightDay sync after state update
-      Promise.resolve().then(() => {
-        if (wasHidden) {
-          setHighlightDay(day);   // Was hidden → now visible → highlight
-        } else {
-          setHighlightDay(null);  // Was visible → now hidden → clear
-        }
-        setSelectedPOI(null);
-      });
+      // No cambiamos highlightDay al toggle — el resalte/atenuado de rutas
+      // solo debe ocurrir cuando se interactúa directamente en el mapa.
+      // Desde el sidebar, cada día es independiente.
+      setSelectedPOI(null);
       const next = new Set(prev);
       if (wasHidden) next.delete(day);
       else next.add(day);
@@ -475,56 +471,61 @@ export default function Home() {
     await new Promise(r => setTimeout(r, 100));
 
     try {
-      // ── Paso 1: Construir matriz base ──
-      // The matrix cache (`vrp_matrix_<hash>`) stores a full set of
-      // distances for a given location set. The routing cache
-      // (`routing/cache.ts`) stores individual legs and is the source
-      // of truth when the matrix cache misses or only has POI pairs.
-      const N = locations.length + 1; // home + POIs
-      const totalPairs = (N * (N - 1)) / 2;
-      const fullPairCount = (locations.length * (locations.length + 1)) / 2;
-
+      // ── Paso 1: Matriz de distancias ──
+      // When consensus is active the server builds the full matrix from
+      // Geoapify Matrix API + ORS Matrix API + OSRM, so we skip the
+      // client-side build entirely. Otherwise we use the legacy pipeline.
+      const useConsensusFeature = true;
       let distances: Record<string, number> = {};
-      const cached = loadCachedMatrix(locations, config.homeLat, config.homeLng);
-      const cachedHasFullMatrix = cached && Object.keys(cached.distances).length >= fullPairCount;
 
-      if (cachedHasFullMatrix) {
-        // Full matrix cache hit — skip the rebuild entirely.
-        distances = cached.distances;
-        console.log(`${FLOW} Cache HIT (full): ${Object.keys(distances).length}/${fullPairCount} pairs`);
+      if (!useConsensusFeature) {
+        const N = locations.length + 1;
+        const totalPairs = (N * (N - 1)) / 2;
+        const fullPairCount = (locations.length * (locations.length + 1)) / 2;
+
+        const cached = loadCachedMatrix(locations, config.homeLat, config.homeLng);
+        const cachedHasFullMatrix = cached && Object.keys(cached.distances).length >= fullPairCount;
+
+        if (cachedHasFullMatrix) {
+          distances = cached.distances;
+          console.log(`${FLOW} Cache HIT (full): ${Object.keys(distances).length}/${fullPairCount} pairs`);
+        } else {
+          const reason = cached ? "partial" : "miss";
+          console.log(`${FLOW} Cache ${reason} — building matrix via RoutingService (${totalPairs} pairs)`);
+          setOptimizePhase("matrix");
+          await new Promise(r => setTimeout(r, 50));
+          const tBuild = Date.now();
+          const { osrmMatrix } = await buildDistanceMatrices(
+            config.homeLat,
+            config.homeLng,
+            locations,
+            (p) => setMatrixProgress(p),
+          );
+          for (const [key, value] of osrmMatrix) {
+            distances[key] = value;
+          }
+          const realCount = Object.values(distances).filter((v) => Number.isFinite(v)).length;
+          const unreachableCount = totalPairs - realCount;
+          console.log(`${FLOW} Matrix built: ${realCount} real, ${unreachableCount} unreachable in ${Date.now() - tBuild}ms`);
+          saveCachedMatrix(locations, distances, config.homeLat, config.homeLng);
+        }
       } else {
-        // Partial or miss — delegate to RoutingService. The service
-        // checks the per-leg routing cache first, so the actual network
-        // work is limited to the legs that are not yet cached.
-        const reason = cached ? "partial" : "miss";
-        console.log(`${FLOW} Cache ${reason} — building matrix via RoutingService (${totalPairs} pairs)`);
+        console.log(`${FLOW} Consensus mode — building matrix on server (Geoapify + ORS + OSRM)`);
+        // Keep phase="matrix" during the API call — the server is building
+        // the consensus matrix. OptimizeProgress shows a spinner with
+        // "Calculando matriz para N ubicaciones con Geoapify + ORS + OSRM (consenso)..."
         setOptimizePhase("matrix");
         await new Promise(r => setTimeout(r, 50));
-        const tBuild = Date.now();
-        const { osrmMatrix } = await buildDistanceMatrices(
-          config.homeLat,
-          config.homeLng,
-          locations,
-          (p) => setMatrixProgress(p),
-        );
-        // Convert the Map<"i,j", number> the wrapper returns into a
-        // Record<"i,j", number> for the optimizer. Unreachable pairs
-        // (Infinity) are preserved so the optimizer can reject them.
-        for (const [key, value] of osrmMatrix) {
-          distances[key] = value;
-        }
-        const realCount = Object.values(distances).filter((v) => Number.isFinite(v)).length;
-        const unreachableCount = totalPairs - realCount;
-        console.log(`${FLOW} Matrix built: ${realCount} real, ${unreachableCount} unreachable in ${Date.now() - tBuild}ms`);
-        // Persist the full matrix to the localStorage cache so the
-        // next run with the same locations can skip the build entirely.
-        saveCachedMatrix(locations, distances, config.homeLat, config.homeLng);
       }
 
       // ── Paso 2: Enviar al server ──
-      setOptimizePhase("algorithm");
-      await new Promise(r => setTimeout(r, 100));
-      console.log(`${FLOW} ── Phase: ALGORITHM (${algorithm}) ──`);
+      // In consensus mode, phase is still "matrix" (the API builds it).
+      // In legacy mode, phase was already set above during buildDistanceMatrices.
+      if (!useConsensusFeature) {
+        setOptimizePhase("algorithm");
+        await new Promise(r => setTimeout(r, 100));
+      }
+      console.log(`${FLOW} ── Phase: ${useConsensusFeature ? "CONSENSUS MATRIX (server)" : "ALGORITHM"} (${algorithm}) ──`);
 
       const tAlgo = Date.now();
       const apiPayload: Record<string, unknown> = {
@@ -535,6 +536,10 @@ export default function Home() {
         // passes it through to the optimizer. Default `false` keeps the
         // legacy `Record<string, number>` path bit-identical to pre-PR-6.
         useStrictMatrix: config?.useStrictMatrix ?? false,
+        // Consensus-matrix: when true, the server builds a cross-validated
+        // matrix from Geoapify Matrix API + ORS Matrix API + OSRM, surfaces
+        // per-pair reliability, and the optimizers reject low-confidence legs.
+        useConsensus: useConsensusFeature,
       };
 
       console.log(`${FLOW} POST /api/optimize — ${locations.length} locs, ${Object.keys(distances).length} pairs`);
@@ -544,12 +549,78 @@ export default function Home() {
         body: JSON.stringify(apiPayload),
       });
 
-      if (!apiRes.ok) {
-        const errData = await apiRes.json().catch(() => ({ error: `HTTP ${apiRes.status}` }));
-        throw new Error(errData.error || `Error del servidor (${apiRes.status})`);
+      let apiData: Record<string, unknown> = {};
+
+      if (useConsensusFeature) {
+        // NDJSON stream — read progress events in real time, then the final result.
+        const contentType = apiRes.headers.get("content-type") || "";
+        if (contentType.includes("x-ndjson")) {
+          const reader = apiRes.body?.getReader();
+          if (!reader) throw new Error("No response body");
+
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          const processLine = (line: string) => {
+            if (!line.trim()) return;
+            try {
+              const event = JSON.parse(line);
+              if (event.type === "progress") {
+                setMatrixProgress({
+                  phase: "matrix",
+                  stage: event.detail || event.stage,
+                  current: event.current,
+                  total: event.total,
+                  percent: Math.round((event.current / event.total) * 100),
+                  etaSeconds: 0,
+                  geoapifyCount: event.geoapifyCount ?? 0,
+                  osrmCount: event.osrmCount ?? 0,
+                  unreachableCount: 0,
+                });
+              } else if (event.type === "result") {
+                apiData = event.data;
+              } else if (event.type === "error") {
+                throw new Error(event.error || "Server error during consensus");
+              }
+            } catch (e) {
+              if (e instanceof SyntaxError) return; // skip malformed lines
+              throw e;
+            }
+          };
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || ""; // keep partial line
+            for (const line of lines) processLine(line);
+          }
+          // Process remaining buffer
+          if (buffer.trim()) processLine(buffer);
+
+          if (!apiData) throw new Error("No result event in stream");
+        } else {
+          // Fallback: non-streaming response
+          if (!apiRes.ok) {
+            const errData = await apiRes.json().catch(() => ({ error: `HTTP ${apiRes.status}` }));
+            throw new Error(errData.error || `Error del servidor (${apiRes.status})`);
+          }
+          apiData = await apiRes.json();
+        }
+
+        // Consensus matrix built — transition to algorithm phase
+        setOptimizePhase("algorithm");
+        await new Promise(r => setTimeout(r, 50));
+      } else {
+        // Legacy mode: normal JSON response
+        if (!apiRes.ok) {
+          const errData = await apiRes.json().catch(() => ({ error: `HTTP ${apiRes.status}` }));
+          throw new Error(errData.error || `Error del servidor (${apiRes.status})`);
+        }
+        apiData = await apiRes.json();
       }
 
-      const apiData = await apiRes.json();
       console.log(`${FLOW} API response in ${Date.now() - tAlgo}ms`);
 
       // ── Parse combined result (registry ran on server) ──
@@ -594,6 +665,10 @@ export default function Home() {
 
       setOptimizerResults(allResults);
       setActiveAlgorithm(winner.algorithm);
+      const apiMeta = apiData._meta as
+        | { useConsensus?: boolean; [key: string]: unknown }
+        | undefined;
+      setUseConsensus(apiMeta?.useConsensus === true);
 
       optResult = {
         days: bestDays,
@@ -601,7 +676,7 @@ export default function Home() {
         totalDays: bestCnt,
         totalLocations: locations.length,
         unreachable: Array.isArray(apiData.unreachable) ? apiData.unreachable : [],
-        _meta: apiData._meta,
+        _meta: apiData._meta as OptimizeResponse["_meta"],
       };
       geometryDays = bestDays;
       setHiddenDays(new Set()); // Show all days by default
@@ -639,7 +714,15 @@ export default function Home() {
         console.log(`${FLOW} SKIP geometry fetch — geometryDays empty or undefined`);
       }
 
-      setRoutingMode("osrm");
+      // Pick the best available routing source for the map badge.
+      const bestSource: RouteSource | "haversine" = (() => {
+        if (!routeSource || routeSource.size === 0) return "osrm";
+        for (const s of routeSource.values()) {
+          if (s !== "haversine") return s;
+        }
+        return "haversine";
+      })();
+      setRoutingMode(bestSource);
       setOptimizePhase("done");
       setPhase("results");
       setSidebarOpen(true);
@@ -650,7 +733,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [locations, config, algorithm]);
+  }, [locations, config, algorithm]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePlaceHome = useCallback(
     (lat: number, lng: number) => {
@@ -792,7 +875,26 @@ export default function Home() {
             }
           : prev,
       );
+      // Show all days, clear any residual highlight/selection from
+      // the previous algorithm (map interactions should not persist
+      // across algorithm switches).
       setHiddenDays(new Set());
+      setHighlightDay(null);
+      setSelectedPOI(null);
+      setRouteGeometry(null);
+      setRouteSource(null);
+      const geometryDays = entry.days.map((d) => ({
+        day: d.day,
+        stops: d.stops,
+      }));
+      fetchAllRouteGeometries(geometryDays).then(
+        ({ geometries: geo, sources }) => {
+          if (geo.size > 0) {
+            setRouteGeometry(geo);
+            setRouteSource(sources);
+          }
+        },
+      );
     },
     [optimizerResults],
   );
@@ -954,6 +1056,7 @@ export default function Home() {
                 activeAlgorithm={activeAlgorithm}
                 winnerAlgorithm={winnerAlgorithm}
                 onAlgorithmChange={handleAlgorithmChange}
+                useConsensus={useConsensus}
               />
               )}
 

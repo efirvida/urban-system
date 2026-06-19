@@ -35,14 +35,18 @@ export type { RouteSource } from "./routing/types";
  * results can be cached and shared with the matrix builder.
  */
 export async function fetchRouteGeometry(
-  stops: Array<{ lat: number; lng: number }>,
+  stops: Array<{ lat: number; lng: number; provider?: string }>,
 ): Promise<[number, number][] | null> {
   if (stops.length < 2) return null;
+  const preferredProvider = stops.find(s => s.provider)?.provider;
   try {
     const res = await fetch("/api/routing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stops }),
+      body: JSON.stringify({
+        stops,
+        ...(preferredProvider ? { preferredSource: preferredProvider } : {}),
+      }),
       signal: AbortSignal.timeout(20000),
     });
     if (!res.ok) return null;
@@ -62,7 +66,7 @@ export async function fetchRouteGeometry(
  * stores the result in the cache, and returns.
  */
 export async function fetchAllRouteGeometries(
-  days: Array<{ day: number; stops: Array<{ lat: number; lng: number; isHome?: boolean }> }>,
+  days: Array<{ day: number; stops: Array<{ lat: number; lng: number; isHome?: boolean; provider?: string }> }>,
 ): Promise<{
   geometries: Map<number, [number, number][]>;
   sources: Map<number, RouteSource>;
@@ -82,7 +86,9 @@ export async function fetchAllRouteGeometries(
       continue;
     }
 
-    // Cache miss → fetch from API.
+    // Cache miss → fetch from API. Pass preferred provider from consensus.
+    const preferredProvider = day.stops.find(s => !s.isHome && s.provider)?.provider;
+
     let routeCoords: [number, number][] | null = null;
     let apiSource: RouteSource = "haversine";
 
@@ -90,7 +96,10 @@ export async function fetchAllRouteGeometries(
       const res = await fetch("/api/routing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stops: fullStops }),
+        body: JSON.stringify({
+          stops: fullStops,
+          ...(preferredProvider ? { preferredSource: preferredProvider } : {}),
+        }),
         signal: AbortSignal.timeout(20000),
       });
       if (res.ok) {
@@ -99,7 +108,7 @@ export async function fetchAllRouteGeometries(
           source?: RouteSource;
         };
         routeCoords = data.coordinates || null;
-        if (data.source === "geoapify" || data.source === "osrm" || data.source === "haversine") {
+        if (data.source === "geoapify" || data.source === "ors" || data.source === "osrm" || data.source === "haversine") {
           apiSource = data.source;
         }
       }

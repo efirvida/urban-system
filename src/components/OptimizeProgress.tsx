@@ -61,10 +61,13 @@ export default function OptimizeProgress({
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
         <h3 className="text-lg font-semibold text-gray-800 mb-2">
-          Preparando optimización...
+          Matriz de distancias
         </h3>
         <p className="text-sm text-gray-400">
-          Calculando matriz de distancias para {totalLocations} ubicaciones
+          Consultando Geoapify + ORS + OSRM para {totalLocations} ubicaciones...
+        </p>
+        <p className="text-xs text-gray-300 mt-1">
+          {(totalLocations * (totalLocations - 1)) / 2} pares · 3 proveedores en paralelo
         </p>
       </div>
     );
@@ -123,48 +126,14 @@ export default function OptimizeProgress({
         </div>
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-3 gap-2 max-w-sm mx-auto mb-6">
-        <div className="bg-blue-50 rounded-lg p-3 text-center">
+      {/* Stats — solo total */}
+      <div className="flex justify-center">
+        <div className="bg-blue-50 rounded-lg p-3 text-center min-w-[120px]">
           <div className="text-lg font-bold text-blue-700">{p.current}</div>
           <div className="text-xs text-blue-500">de {p.total}</div>
-          <div className="text-xs text-blue-400 mt-0.5">pares calculados</div>
-        </div>
-        <div className="bg-green-50 rounded-lg p-3 text-center">
-          <div className="text-lg font-bold text-green-700">{p.geoapifyCount}</div>
-          <div className="text-xs text-green-500">Geoapify</div>
-          <div className="text-xs text-green-400 mt-0.5">con ruta</div>
-        </div>
-        <div className="bg-blue-50 rounded-lg p-3 text-center">
-          <div className="text-lg font-bold text-blue-700">{p.osrmCount}</div>
-          <div className="text-xs text-blue-500">OSRM</div>
-          <div className="text-xs text-blue-400 mt-0.5">con ruta</div>
-        </div>
-        <div className="bg-amber-50 rounded-lg p-3 text-center">
-          <div className="text-lg font-bold text-amber-700">{p.unreachableCount}</div>
-          <div className="text-xs text-amber-500">sin ruta</div>
-          <div className="text-xs text-amber-400 mt-0.5">inalcanzable</div>
-        </div>
-        <div className="bg-purple-50 rounded-lg p-3 text-center">
-          <div className="text-lg font-bold text-purple-700">{etaText}</div>
-          <div className="text-xs text-purple-500">tiempo restante</div>
-          <div className="text-xs text-purple-400 mt-0.5">estimado</div>
+          <div className="text-xs text-blue-400 mt-0.5">pares</div>
         </div>
       </div>
-
-      {/* Progress bar */}
-      <div className="w-full bg-gray-200 rounded-full h-2.5 max-w-sm mx-auto">
-        <div
-          className="bg-blue-600 h-2.5 rounded-full transition-all duration-500 ease-out"
-          style={{ width: `${p.percent}%` }}
-        />
-      </div>
-
-      {/* Small print */}
-      <p className="text-center text-xs text-gray-400 mt-4">
-        Calculando distancias reales por ruta (Geoapify → OSRM).
-        Los pares sin cobertura de ruta se marcan como inalcanzables.
-      </p>
     </div>
   );
 }

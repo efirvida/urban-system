@@ -141,7 +141,10 @@ export function useLeafletRoutes(
           fillOpacity,
         }).addTo(group);
 
-        if (!isSmall) {
+        // Show tooltip (stop number) always, except when the day is
+        // actually hidden (not just dimmed). Dimmed days should still
+        // show stop labels — they're just less prominent visually.
+        if (!isHidden) {
           circle.bindTooltip(String(stop.sequence), {
             permanent: true,
             direction: "center",
@@ -218,16 +221,15 @@ export function useLeafletRoutes(
         if (isMatch) {
           (layer as L.CircleMarker).setStyle?.({ radius: 18, color: "white", weight: 4, fillOpacity: 1 });
         } else {
-          // Restore: check if this stop belongs to a hidden/dimmed day
+          // Restore: check if this stop belongs to a hidden day.
+          // Dimmed days keep normal marker size — only hidden shrinks.
           const parentDay = options.routes?.find(d => d.day === poiData.day);
           if (!parentDay) return;
           const isHidden = options.hiddenDays?.has(poiData.day);
-          const isDimmed = options.highlightDay !== null && options.highlightDay !== undefined && !isHidden && options.highlightDay !== poiData.day;
-          const isSmall = isHidden || isDimmed;
           (layer as L.CircleMarker).setStyle?.({
-            radius: isSmall ? (isHidden ? 8 : 6) : 14,
-            weight: isSmall ? 2 : 3,
-            fillOpacity: isSmall ? (isHidden ? 0.5 : 0.2) : 1,
+            radius: isHidden ? 8 : 14,
+            weight: isHidden ? 2 : 3,
+            fillOpacity: isHidden ? 0.5 : 1,
           });
         }
       });
