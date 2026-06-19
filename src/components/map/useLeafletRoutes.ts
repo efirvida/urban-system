@@ -63,17 +63,25 @@ export function useLeafletRoutes(
       const isHighlighted = options.highlightDay === day.day;
       const isDimmed = options.highlightDay !== null && options.highlightDay !== undefined && !isHighlighted;
 
-      // Build polyline coords from stops (always valid). routeGeometry is skipped
-      // here because it caused invisible routes for days 1 and 7 — the geometry
-      // cache may have stale coordinate formats from the MapLibre era.
+      // Build polyline coords — prefer real road geometry when available
       const coords: [number, number][] = [];
-      for (const s of day.stops) {
-        coords.push([s.lat, s.lng]);
+      const dayGeo = options.routeGeometry?.get(day.day);
+      if (dayGeo && dayGeo.length > 1) {
+        const mapped = dayGeo.map((c) => [c[1], c[0]] as [number, number]);
+        if (mapped.every((c) => isFinite(c[0]) && isFinite(c[1]))) {
+          coords.push(...mapped);
+        }
+      }
+      // Fallback: use stops (guaranteed valid)
+      if (coords.length < 2) {
+        for (const s of day.stops) {
+          coords.push([s.lat, s.lng]);
+        }
       }
 
       const hasCoords = coords.length >= 2;
 
-      // Dash style for estimated routes
+      // Dash style: real roads (OSRM/Geoapify) → solid, else dashed
       const daySource = options.routeSource?.get(day.day) ?? "haversine";
       const isEstimated = daySource === "haversine" || daySource === undefined;
       const dash = isEstimated ? ([2, 3] as number[]) : undefined;
