@@ -30,3 +30,27 @@ export const REAL_VS_ESTIMATED_KM = 0.1;
  * clientRouting.ts:259.
  */
 export const TINY_DISTANCE_KM = 0.05;
+
+/**
+ * Consensus matrix: maximum relative spread between two providers'
+ * distances that still counts as "agreement". 10% of the chosen
+ * distance — pragmatic for urban/regional routes; tighter values
+ * cause spurious disagreement on the lower end of the distribution.
+ *
+ * See: openspec/changes/consensus-matrix/specs/consensus-matrix/spec.md
+ */
+export const CONSENSUS_TOLERANCE = 0.10;
+
+/**
+ * Consensus matrix: minimum reliability (fraction of providers that
+ * agree within `CONSENSUS_TOLERANCE`) for a pair to be considered
+ * reachable. 0.34 ≈ 1/3 — at least 2 of 3 providers must agree. In
+ * degraded 2-provider mode (no `ORS_API_KEY`) the floor is naturally
+ * relaxed to 1/2 = 0.5.
+ *
+ * Pairs below this floor resolve to `Infinity` and the optimizer
+ * rejects them, per `strict-matrix-contract`.
+ *
+ * See: openspec/changes/consensus-matrix/specs/routing-reliability/spec.md
+ */
+export const RELIABILITY_FLOOR = 0.34;

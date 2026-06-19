@@ -1,5 +1,10 @@
 // ─── Locations ───────────────────────────────────────────────
 
+import type { RoutingSourceExtended } from "@/utils/routing/types";
+
+// Re-export so consumers can `import { RoutingSourceExtended } from "@/types"`.
+export type { RoutingSourceExtended };
+
 /** A single location to visit */
 export interface Location {
   name: string;
@@ -242,6 +247,59 @@ export interface NSGAResponse {
     uniqueDays: number[];
   };
 }
+
+// ─── Consensus Matrix (consensus-matrix change) ─────────────
+
+/**
+ * One provider's vote on a single pair in a `ConsensusMatrix`.
+ *
+ * `distance` is the km value the provider returned, or `null` when
+ * the provider reported the pair as unreachable. A `null` vote MUST
+ * NOT be coerced to `0` — per `strict-matrix-contract`, silence
+ * propagates as "no opinion" so the consensus can score agreement
+ * without a false positive.
+ *
+ * `provider` matches the `BatchRouteProvider.name` (or
+ * `RouteProvider.name` for the per-pair tie-break). The
+ * `RoutingSourceExtended` union is wider than the actual set of
+ * vote providers; `"unreachable"` is a valid `ConsensusEntry.source`
+ * but never appears here.
+ */
+export interface ProviderVote {
+  provider: RoutingSourceExtended;
+  distance: number | null;
+}
+
+/**
+ * Cross-validated per-pair distance produced by `ConsensusBuilder`.
+ *
+ * - `distance` is in km (`Infinity` when the pair resolved below
+ *   `RELIABILITY_FLOOR` — per `strict-matrix-contract`, the
+ *   optimizer MUST treat this as unreachable and reject the
+ *   candidate).
+ * - `reliability` is the fraction of providers whose distance fell
+ *   within `CONSENSUS_TOLERANCE` of the median. Range `[0, 1]`.
+ *   A reliability below `RELIABILITY_FLOOR` (0.34) forces
+ *   `distance = Infinity`.
+ * - `votes` is the per-provider round-trip: survives intact through
+ *   `OptimizeParams` so the UI can surface "how confident was this
+ *   leg" per pair.
+ * - `source` is the winning provider's name, or `"unreachable"`
+ *   when no provider contributed a reliable value.
+ */
+export interface ConsensusEntry {
+  distance: number;
+  reliability: number;
+  votes: ProviderVote[];
+  source: RoutingSourceExtended;
+}
+
+/**
+ * Per-pair cross-validated distance matrix. Keys are `"i,j"` with
+ * `i < j`, same convention as the legacy `Record<string, number>`
+ * matrix. Additive — legacy matrices keep working unchanged.
+ */
+export type ConsensusMatrix = Record<string, ConsensusEntry>;
 
 // ─── Route Editing ──────────────────────────────────────────
 

@@ -72,3 +72,45 @@ export interface RouteProvider {
   readonly priority: number;
   route(a: Point, b: Point): Promise<RouteLegResult | null>;
 }
+
+/**
+ * Routing source — per-pair, identifies which provider (or fallback)
+ * contributed the final distance in a `ConsensusEntry`. The `"unreachable"`
+ * member is reserved for entries that the consensus deemed below the
+ * reliability floor; it never appears as a `ProviderVote.provider`.
+ */
+export type RoutingSourceExtended =
+  | "geoapify-matrix"
+  | "ors-matrix"
+  | "osrm"
+  | "unreachable";
+
+/**
+ * Batch routing strategy — distinct from `RouteProvider` because batch
+ * APIs (`/v1/routematrix`, `/v2/matrix/driving-car`) accept every point
+ * in a single call and return the whole NxN matrix. `route(a, b)` is
+ * meaningless here. `ConsensusBuilder` runs every `BatchRouteProvider`
+ * in parallel and cross-references the result; the per-pair `OSRM`
+ * provider is reserved as a tie-break for pairs the batches couldn't
+ * resolve.
+ *
+ * Contract: `buildMatrix()` MUST NOT throw. On any failure (network,
+ * parse, no road found) it returns an empty `Map` so the consensus
+ * builder can still count that provider as a "null" vote.
+ */
+export interface BatchRouteProvider {
+  /** Stable identifier — also used as the `ProviderVote.provider`. */
+  readonly name: string;
+  /** Lower = tried first. Negative values place a provider above batch=0. */
+  readonly priority: number;
+  /**
+   * Build a full NxN distance matrix for the given point set. Keys are
+   * `"i,j"` with `i < j`; values are distance in km or `null` for
+   * unreachable pairs. The diagonal (`i,i`) is not required — only
+   * off-diagonal pairs.
+   */
+  buildMatrix(points: Point[]): Promise<Map<string, number | null>>;
+}
+
+/** Convenience alias for the per-pair batch result. */
+export type MatrixEntryMap = Map<string, number | null>;
