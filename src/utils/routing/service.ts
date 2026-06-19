@@ -6,14 +6,24 @@
  *  2. Chain providers in priority order, returning the first success.
  *  3. Build a full `Record<"i,j", number>` distance matrix with bounded
  *     concurrency, reporting progress along the way.
+ *  4. Optionally build a cross-validated `ConsensusMatrix` from
+ *     `BatchRouteProvider`s + the per-pair provider, via
+ *     `ConsensusBuilder`.
  *
  * On exhaustion (all providers return `null` for a leg) the pair is
  * marked `Infinity` so downstream consumers (the optimizer) reject the
  * candidate instead of substituting a 0 or a Haversine estimate.
  */
 
+import type { ConsensusMatrix } from "@/types";
+import { ConsensusBuilder } from "./consensusBuilder";
 import { getCachedLeg, setCachedLeg } from "./cache";
-import type { Point, RouteLegResult, RouteProvider } from "./types";
+import type {
+  BatchRouteProvider,
+  Point,
+  RouteLegResult,
+  RouteProvider,
+} from "./types";
 
 /** Progress shape consumed by the loading UI in `ResultsPanel`. */
 export interface MatrixProgress {
@@ -165,5 +175,41 @@ export class RoutingService {
     report();
 
     return matrix;
+  }
+
+  /**
+   * Build a cross-validated `ConsensusMatrix` from a pool of batch
+   * providers + a per-pair fallback. The result carries per-pair
+   * reliability so downstream consumers (the optimizer) can reject
+   * low-confidence legs.
+   *
+   * `batchProviders` are run in parallel; the per-pair provider is
+   * used as a tie-break for pairs the batches could not resolve.
+   * Each per-pair call goes through `cache.ts` so re-runs on the
+   * same point set are essentially free.
+   *
+   * The per-pair provider defaults to the lowest-priority member of
+   * this service's chain (typically OSRM, since Geoapify is the
+   * highest-priority tier). Callers that need a specific per-pair
+   * provider can pass it explicitly.
+   *
+   * The sequential `route()` / `buildDistanceMatrix()` paths are
+   * NOT used here — this is an additive opt-in that exists
+   * alongside them. See
+   * `openspec/changes/consensus-matrix/specs/consensus-matrix/spec.md`.
+   */
+  async buildConsensusMatrix(
+    points: Point[],
+    batchProviders: BatchRouteProvider[],
+    perPairProvider?: RouteProvider,
+  ): Promise<ConsensusMatrix> {
+    const fallback =
+      perPairProvider ??
+      // Lowest-priority member of the chain is the OSRM-style
+      // free fallback; pick the last element after the priority
+      // sort we already do in the constructor.
+      this.providers[this.providers.length - 1]!;
+    const builder = new ConsensusBuilder(batchProviders, fallback);
+    return builder.build(points);
   }
 }
