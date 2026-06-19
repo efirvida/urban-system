@@ -55,7 +55,7 @@ export interface CachedLeg {
  * possible sources; previously duplicated as a local type in
  * `clientRouting.ts`.
  */
-export type RouteSource = "geoapify" | "osrm" | "haversine";
+export type RouteSource = "geoapify" | "geoapify-matrix" | "ors" | "ors-matrix" | "osrm" | "haversine";
 
 /**
  * Pluggable routing strategy.

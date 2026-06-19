@@ -17,6 +17,7 @@
 
 import type { ConsensusMatrix } from "@/types";
 import { ConsensusBuilder } from "./consensusBuilder";
+import type { OnConsensusProgress } from "./consensusBuilder";
 import { getCachedLeg, setCachedLeg } from "./cache";
 import type {
   BatchRouteProvider,
@@ -202,6 +203,7 @@ export class RoutingService {
     points: Point[],
     batchProviders: BatchRouteProvider[],
     perPairProvider?: RouteProvider,
+    onProgress?: OnConsensusProgress,
   ): Promise<ConsensusMatrix> {
     const fallback =
       perPairProvider ??
@@ -209,7 +211,7 @@ export class RoutingService {
       // free fallback; pick the last element after the priority
       // sort we already do in the constructor.
       this.providers[this.providers.length - 1]!;
-    const builder = new ConsensusBuilder(batchProviders, fallback);
+    const builder = new ConsensusBuilder(batchProviders, fallback, onProgress);
     return builder.build(points);
   }
 }

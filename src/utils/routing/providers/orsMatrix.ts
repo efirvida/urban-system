@@ -2,16 +2,15 @@
  * OrsMatrixProvider — server-side batch matrix adapter for OpenRouteService.
  *
  * Posts the whole point set to ORS' `POST /v2/matrix/driving-car` endpoint.
- * ORS free tier limits requests to 5,000 elements per call (rows × cols),
- * which we treat as a hard cap and split larger sets into overlapping
- * chunks. ORS' response is the full NxN matrix in the order requested
- * (no source/destination remapping needed) — we keep the upper triangle
- * only, matching the legacy `"i,j"` convention.
+ * Unlike Geoapify, ORS does not charge per query element, so we send ALL
+ * points in a single request. ORS free tier supports up to 5,000 elements
+ * (rows × columns), which is ≈ 70 × 70 — sufficient for realistic VRP
+ * workloads. For sets beyond that, the provider falls back gracefully by
+ * returning an empty map (no ORS vote for those pairs).
  *
  * `ORS_API_KEY` is OPTIONAL — when missing the provider is a no-op
  * (returns an empty map) so the consensus degrades to the 2-provider
- * (Geoapify + OSRM) configuration. This matches the spec scenario
- * "ORS key missing falls back to two providers".
+ * (Geoapify + OSRM) configuration.
  *
  * See: https://openrouteservice.org/dev/#/api-docs/v2/matrix/{profile}/post
  */
@@ -20,9 +19,17 @@ import type { BatchRouteProvider, Point } from "../types";
 
 const ORS_MATRIX_URL =
   "https://api.openrouteservice.org/v2/matrix/driving-car";
-/** ORS free tier — keep well under the 5,000 element cap per request. */
-const MAX_BATCH_SIZE = 15;
+/** ORS free tier: 5,000 elements max → sqrt ≈ 70 points in a full N×N call. */
+const MAX_POINTS_PER_CALL = 70;
 const REQUEST_TIMEOUT_MS = 30000;
+const CACHE_TTL_MS = 300_000; // 5 minutes
+
+interface CacheEntry {
+  result: Map<string, number | null>;
+  timestamp: number;
+}
+
+const matrixCache = new Map<string, CacheEntry>();
 
 interface OrsMatrixResponse {
   distances?: (number | null)[][];
@@ -35,29 +42,70 @@ export class OrsMatrixProvider implements BatchRouteProvider {
   readonly priority = 0.5;
 
   async buildMatrix(points: Point[]): Promise<Map<string, number | null>> {
-    const result = new Map<string, number | null>();
     const apiKey = process.env.ORS_API_KEY;
-    if (!apiKey) return result;
-    if (points.length < 2) return result;
+    if (!apiKey) return new Map();
+    if (points.length < 2) return new Map();
 
-    if (points.length <= MAX_BATCH_SIZE) {
-      const chunk = await this.fetchChunk(points, apiKey);
-      this.mergeChunk(result, chunk);
-      return result;
+    // ORS returns the full N×N upper triangle in one call — no chunking
+    // needed for realistic VRP sets. Beyond 70 points the request would
+    // exceed the free-tier element cap; return empty and let OSRM cover
+    // those pairs.
+    if (points.length > MAX_POINTS_PER_CALL) return new Map();
+
+    // In-memory cache hit → skip HTTP entirely.
+    const cacheKey = this.cacheKey(points);
+    const cached = matrixCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return new Map(cached.result);
     }
 
-    for (let start = 0; start < points.length - 1; start += MAX_BATCH_SIZE - 1) {
-      const end = Math.min(start + MAX_BATCH_SIZE, points.length);
-      const window = points.slice(start, end);
-      const chunk = await this.fetchChunk(window, apiKey);
-      this.mergeChunk(result, chunk, start, end);
-      if (end === points.length) break;
+    const result = new Map<string, number | null>();
+    const data = await this.fetchMatrix(points, apiKey);
+    if (data && Array.isArray(data.distances)) {
+      const matrix = data.distances;
+      for (let i = 0; i < matrix.length; i++) {
+        const row = matrix[i];
+        if (!Array.isArray(row)) continue;
+        for (let j = i + 1; j < row.length; j++) {
+          const raw = row[j];
+          const key = `${i},${j}`;
+          if (typeof raw !== "number" || !Number.isFinite(raw)) {
+            result.set(key, null);
+          } else {
+            result.set(key, raw / 1000);
+          }
+        }
+      }
     }
 
+    this.setCache(cacheKey, result);
     return result;
   }
 
-  private async fetchChunk(
+  /** Deterministic cache key: sorted coordinate pairs hashed via djb2. */
+  private cacheKey(points: Point[]): string {
+    const str = points
+      .map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`)
+      .sort()
+      .join("|");
+    let hash = 5381;
+    for (let i = 0; i < str.length; i++) hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+    return `ors_${Math.abs(hash).toString(36)}`;
+  }
+
+  private setCache(key: string, result: Map<string, number | null>): void {
+    if (matrixCache.size >= 20) {
+      let oldest = Number.POSITIVE_INFINITY;
+      let oldestKey = "";
+      for (const [k, v] of matrixCache) {
+        if (v.timestamp < oldest) { oldest = v.timestamp; oldestKey = k; }
+      }
+      if (oldestKey) matrixCache.delete(oldestKey);
+    }
+    matrixCache.set(key, { result: new Map(result), timestamp: Date.now() });
+  }
+
+  private async fetchMatrix(
     points: Point[],
     apiKey: string,
   ): Promise<OrsMatrixResponse | null> {
@@ -76,45 +124,9 @@ export class OrsMatrixProvider implements BatchRouteProvider {
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       if (!res.ok) return null;
-      const data = (await res.json()) as OrsMatrixResponse;
-      if (!data || !Array.isArray(data.distances)) return null;
-      return data;
+      return (await res.json()) as OrsMatrixResponse;
     } catch {
       return null;
-    }
-  }
-
-  /**
-   * Merge one chunk's matrix into the result map. Distances come back
-   * in meters — convert to km. The window starts at `windowStart`
-   * in the global index space; pairs with both endpoints inside the
-   * window are kept. Pairs that fall outside the window are dropped
-   * (they'll be picked up by an overlapping chunk).
-   */
-  private mergeChunk(
-    target: Map<string, number | null>,
-    chunk: OrsMatrixResponse | null,
-    windowStart = 0,
-    windowEnd = Number.POSITIVE_INFINITY,
-  ): void {
-    if (!chunk || !Array.isArray(chunk.distances)) return;
-    const matrix = chunk.distances;
-    for (let r = 0; r < matrix.length; r++) {
-      const row = matrix[r];
-      if (!Array.isArray(row)) continue;
-      const i = windowStart + r;
-      if (i >= windowEnd) break;
-      for (let c = 0; c < row.length; c++) {
-        const j = windowStart + c;
-        if (j <= i) continue;
-        if (j >= windowEnd) continue;
-        const raw = row[c];
-        if (typeof raw !== "number" || !Number.isFinite(raw)) {
-          target.set(`${i},${j}`, null);
-        } else {
-          target.set(`${i},${j}`, raw / 1000);
-        }
-      }
     }
   }
 }

@@ -112,6 +112,11 @@ export interface Stop {
   cumulativeDistance: number; // km from home start
   cumulativeTime: number; // hours from departure
   isHome: boolean;
+  /** Consensus-matrix: the provider that won the consensus for the
+   *  leg FROM the previous stop TO this one. Used by route geometry
+   *  reconstruction to prefer the same provider. Optional — absent
+   *  in legacy (non-consensus) paths. */
+  provider?: string;
 }
 
 /** One day's complete route: home → stops → home */
@@ -188,6 +193,12 @@ export interface OptimizeResponse {
      * response shape with the requested mode.
      */
     useStrictMatrix?: boolean;
+    /** Consensus-matrix change: when true, the server built a cross-validated matrix. */
+    useConsensus?: boolean;
+    /** Consensus-matrix change: elapsed ms for the consensus build phase. */
+    consensusElapsedMs?: number;
+    /** Consensus-matrix change: number of entries in the consensus matrix. */
+    consensusEntries?: number;
   };
 }
 
