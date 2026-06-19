@@ -69,7 +69,12 @@ export function useLeafletRoutes(
       const dayGeo = options.routeGeometry?.get(day.day);
       if (dayGeo && dayGeo.length > 1) {
         const mapped = dayGeo.map((c) => [c[1], c[0]] as [number, number]);
-        if (mapped.every((c) => isFinite(c[0]) && isFinite(c[1])) && mapped.length > 1) {
+        const allFinite = mapped.every((c) => isFinite(c[0]) && isFinite(c[1]));
+        if (!allFinite) {
+          const badCount = mapped.filter((c) => !isFinite(c[0]) || !isFinite(c[1])).length;
+          console.warn(`[Route] Day ${day.day}: ${badCount}/${mapped.length} coords have NaN`);
+        }
+        if (allFinite && mapped.length > 1) {
           coords.push(...mapped);
           usedRoadGeo = true;
         }
