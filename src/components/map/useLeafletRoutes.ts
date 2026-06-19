@@ -63,33 +63,19 @@ export function useLeafletRoutes(
       const isHighlighted = options.highlightDay === day.day;
       const isDimmed = options.highlightDay !== null && options.highlightDay !== undefined && !isHighlighted;
 
-      // Build polyline coords
+      // Build polyline coords from stops (always valid). routeGeometry is skipped
+      // here because it caused invisible routes for days 1 and 7 — the geometry
+      // cache may have stale coordinate formats from the MapLibre era.
       const coords: [number, number][] = [];
-      const dayGeo = options.routeGeometry?.get(day.day);
-      let usedRealGeo = dayGeo !== undefined && dayGeo.length > 1;
-
-      if (usedRealGeo && dayGeo) {
-        const mapped = dayGeo.map((c) => [c[1], c[0]] as [number, number]);
-        // Validate coords — skip if any NaN
-        const valid = mapped.every((c) => isFinite(c[0]) && isFinite(c[1]));
-        if (valid) {
-          coords.push(...mapped);
-        } else {
-          usedRealGeo = false; // fallback to stops
-        }
-      }
-
-      if (!usedRealGeo) {
-        for (const s of day.stops) {
-          coords.push([s.lat, s.lng]);
-        }
+      for (const s of day.stops) {
+        coords.push([s.lat, s.lng]);
       }
 
       const hasCoords = coords.length >= 2;
 
       // Dash style for estimated routes
-      const daySource = usedRealGeo ? options.routeSource?.get(day.day) : "haversine";
-      const isEstimated = !usedRealGeo || daySource === "haversine" || daySource === undefined;
+      const daySource = options.routeSource?.get(day.day) ?? "haversine";
+      const isEstimated = daySource === "haversine" || daySource === undefined;
       const dash = isEstimated ? ([2, 3] as number[]) : undefined;
       const glowDash = isEstimated ? ([1, 4] as number[]) : undefined;
 
