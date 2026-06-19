@@ -67,14 +67,14 @@ export function useLeafletRoutes(
       const coords: [number, number][] = [];
       let usedRoadGeo = false;
       const dayGeo = options.routeGeometry?.get(day.day);
-      if (dayGeo && dayGeo.length > 1) {
+      if (dayGeo && dayGeo.length > 10) {  // >=10 real road points, not just waypoints
         const mapped = dayGeo.map((c) => [c[1], c[0]] as [number, number]);
         const allFinite = mapped.every((c) => isFinite(c[0]) && isFinite(c[1]));
         if (!allFinite) {
           const badCount = mapped.filter((c) => !isFinite(c[0]) || !isFinite(c[1])).length;
           console.warn(`[Route] Day ${day.day}: ${badCount}/${mapped.length} coords have NaN`);
         }
-        if (allFinite && mapped.length > 1) {
+        if (allFinite) {
           coords.push(...mapped);
           usedRoadGeo = true;
         }
