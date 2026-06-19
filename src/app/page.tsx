@@ -5,9 +5,8 @@ import {
   Location,
   Config,
   DayRoute,
-  ParetoSolution,
+  OptimizerResult,
   OptimizeResponse,
-  NSGAResponse,
   RawFileData,
   ValidatedRow,
   ColumnMapping,
@@ -198,12 +197,15 @@ export default function Home() {
   const [previewTargetDay, setPreviewTargetDay] = useState<number | null>(null);
   /** Preview routes — shown on the map while user decides in the action bar. */
   const [previewDays, setPreviewDays] = useState<DayRoute[] | null>(null);
-  const [nsgaResult, setNsgaResult] = useState<{
-    balanced: ParetoSolution;
-    minDistance: ParetoSolution;
-  } | null>(null);
-  const [autoResult, setAutoResult] = useState<{ days: number; distance: number; maxHours: number; dayRoutes: DayRoute[] } | null>(null);
-  const [selectedResult, setSelectedResult] = useState<"best" | "auto" | "balanced" | "minDistance">("best");
+  /**
+   * Per-algorithm results from `/api/optimize`, in registration order
+   * (CW, NSGA-II, Geoapify). A slot is `null` when the optimizer was
+   * unavailable (e.g. missing `GEOAPIFY_API_KEY`) or failed. Drives the
+   * algorithm tab bar in `ResultsPanel`.
+   */
+  const [optimizerResults, setOptimizerResults] = useState<(OptimizerResult | null)[] | null>(null);
+  /** Algorithm id of the currently displayed result. */
+  const [activeAlgorithm, setActiveAlgorithm] = useState<string | null>(null);
 
   const editorRef = useRef<RouteEditorHandle | null>(null);
 
@@ -542,7 +544,7 @@ export default function Home() {
       const apiData = await apiRes.json();
       console.log(`${FLOW} API response in ${Date.now() - tAlgo}ms`);
 
-      // ── Parse combined result (both algorithms ran on server) ──
+      // ── Parse combined result (registry ran on server) ──
       let optResult: OptimizeResponse;
       let geometryDays: Array<{ day: number; stops: Array<{ lat: number; lng: number; isHome?: boolean }> }> | undefined;
 
@@ -550,31 +552,41 @@ export default function Home() {
       const bestDist = Number(apiData.totalDistance);
       const bestCnt = Number(apiData.totalDays);
 
-      // Store auto result (dayRoutes come from the full response)
-      if (apiData._autoDistance) {
-        const autoDays = apiData.days as unknown as DayRoute[];
-        const autoMaxH = Math.max(...autoDays.map((d: any) => d.totalTime || 0), 0);
-        setAutoResult({
-          days: Number(apiData._autoDays),
-          distance: Number(apiData._autoDistance),
-          maxHours: Math.round(autoMaxH * 100) / 100,
-          dayRoutes: autoDays,
-        });
-        console.log(`${FLOW} Auto: ${apiData._autoDays}d · ${apiData._autoDistance}km · ${autoMaxH.toFixed(2)}h max`);
+      // Pull per-algorithm results (registration order) + pick the
+      // winner for the default tab. Best = lowest totalDistance, then
+      // fewer days, then earlier registration. Mirrors the server.
+      const allResults = (apiData.results ?? []) as (OptimizerResult | null)[];
+      let winner: OptimizerResult | null = null;
+      for (const r of allResults) {
+        if (r === null) continue;
+        if (
+          winner === null ||
+          r.totalDistance < winner.totalDistance - 1 ||
+          (Math.abs(r.totalDistance - winner.totalDistance) <= 1 &&
+            r.totalDays < winner.totalDays)
+        ) {
+          winner = r;
+        }
+      }
+      if (!winner) {
+        throw new Error(
+          "Ningún optimizador pudo resolver el problema. Probá reducir las ubicaciones o revisar las conexiones de ruta.",
+        );
+      }
+      const okCount = allResults.filter((r) => r !== null).length;
+      console.log(
+        `${FLOW} Registry: ${okCount}/${allResults.length} ok, winner=${winner.algorithm} (${winner.totalDays}d · ${winner.totalDistance}km)`,
+      );
+      for (const r of allResults) {
+        if (r === null) continue;
+        console.log(
+          `${FLOW}   - ${r.algorithm}: ${r.totalDays}d · ${r.totalDistance}km · ${r.label}`,
+        );
       }
 
-      // Store NSGA2 results (if available)
-      const nsga2raw = apiData._nsga2 as Record<string, unknown> | undefined;
-      if (nsga2raw) {
-        const nsgaBal = nsga2raw.balanced as ParetoSolution;
-        const nsgaMin = nsga2raw.minDistance as ParetoSolution;
-        console.log(`${FLOW} NSGA2 balanced: ${nsgaBal.days}d · ${nsgaBal.totalDistance}km`);
-        console.log(`${FLOW} NSGA2 minDistance: ${nsgaMin.days}d · ${nsgaMin.totalDistance}km`);
-        setNsgaResult({ balanced: nsgaBal, minDistance: nsgaMin });
-      }
+      setOptimizerResults(allResults);
+      setActiveAlgorithm(winner.algorithm);
 
-      // Default to best result
-      setSelectedResult("best");
       optResult = {
         days: bestDays,
         totalDistance: bestDist,
@@ -742,7 +754,58 @@ export default function Home() {
     setEditorDirty(false);
     setSelectedPOI(null);
     setHighlightDay(null);
+    setOptimizerResults(null);
+    setActiveAlgorithm(null);
   }, []);
+
+  /**
+   * Switch the displayed algorithm. The ResultsPanel tabs drive this;
+   * we update `result.days/totalDistance/totalDays` so the rest of the
+   * app (map, route editor, geometry fetch) re-renders against the
+   * new days without the child components needing to know about
+   * multi-algorithm state.
+   */
+  const handleAlgorithmChange = useCallback(
+    (algorithm: string) => {
+      if (!optimizerResults) return;
+      const entry = optimizerResults.find((r) => r?.algorithm === algorithm);
+      if (!entry) return;
+      setActiveAlgorithm(algorithm);
+      setResult((prev) =>
+        prev
+          ? {
+              ...prev,
+              days: entry.days,
+              totalDistance: entry.totalDistance,
+              totalDays: entry.totalDays,
+            }
+          : prev,
+      );
+      setHiddenDays(new Set(entry.days.slice(1).map((d) => d.day)));
+    },
+    [optimizerResults],
+  );
+
+  /**
+   * Algorithm id of the best (lowest totalDistance) entry — used by
+   * the ResultsPanel to render the 🏆 badge.
+   */
+  const winnerAlgorithm = useMemo(() => {
+    if (!optimizerResults) return undefined;
+    let best: OptimizerResult | null = null;
+    for (const r of optimizerResults) {
+      if (r === null) continue;
+      if (
+        best === null ||
+        r.totalDistance < best.totalDistance - 1 ||
+        (Math.abs(r.totalDistance - best.totalDistance) <= 1 &&
+          r.totalDays < best.totalDays)
+      ) {
+        best = r;
+      }
+    }
+    return best?.algorithm;
+  }, [optimizerResults]);
 
   // ── Steps bar — shown inside the sidebar header ──
   const stepsNode = (
@@ -859,47 +922,6 @@ export default function Home() {
           <>
             {stepsNode}
             <div className="mt-3 space-y-3">
-              {/* Solution selector — solo cuando no estamos editando */}
-              {!editMode && (() => {
-                // Build sorted solutions list — one per algorithm variant
-                interface SolItem { id: string; days: number; dist: number; hours: number; routes: DayRoute[]; }
-                const maxH = (routes: DayRoute[]) => Math.round(Math.max(...routes.map(r => r.totalTime || 0), 0) * 100) / 100;
-                const sols: SolItem[] = [];
-                if (autoResult) sols.push({ id: "auto", days: autoResult.days, dist: autoResult.distance, hours: autoResult.maxHours, routes: autoResult.dayRoutes });
-                if (nsgaResult?.minDistance) {
-                  const m = nsgaResult.minDistance;
-                  sols.push({ id: "nsga-m", days: m.days, dist: m.totalDistance, hours: m.maxDayHours, routes: m.dayRoutes });
-                }
-                if (nsgaResult?.balanced) {
-                  const b = nsgaResult.balanced;
-                  sols.push({ id: "nsga-b", days: b.days, dist: b.totalDistance, hours: b.maxDayHours, routes: b.dayRoutes });
-                }
-                // Sort by dist ↑ then days ↑
-                sols.sort((a, b) => a.dist - b.dist || a.days - b.days);
-
-                // Auto-select first if needed
-                const safeSelected = sols.find(s => s.id === selectedResult) ? selectedResult : sols[0]?.id ?? "auto";
-                if (safeSelected !== selectedResult) setSelectedResult(safeSelected as any);
-
-                return (
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3">
-                    <div className="text-xs font-semibold text-blue-700 mb-2">🏆 Soluciones</div>
-                    <div className="flex flex-col gap-1">
-                      {sols.map((sol, idx) => (
-                        <button key={sol.id} onClick={() => {
-                          setResult({ days: sol.routes, totalDistance: sol.dist, totalDays: sol.days, totalLocations: locations.length });
-                          setHiddenDays(new Set(sol.routes.slice(1).map((d: any) => d.day)));
-                          setSelectedResult(sol.id as any);
-                        }}
-                          className={cn("flex items-center justify-between w-full text-left px-3 py-2 rounded-md text-sm transition-all", safeSelected === sol.id ? "bg-white text-blue-800 shadow-sm border border-blue-300 font-medium" : "text-gray-600 hover:bg-white/70")}>
-                          <span className="font-medium">#{idx + 1}</span>
-                          <span className="text-xs font-mono text-blue-500">{sol.days}d · {sol.dist.toFixed(0)}km{sol.hours > 0 ? ` · ${sol.hours.toFixed(1)}h/día` : ''}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
               {!editMode && (
                 <ResultsPanel
                 days={result.days}
@@ -917,6 +939,10 @@ export default function Home() {
                 routingLabel="🚗 Rutas optimizadas"
                 expandedDay={sidebarExpandedDay}
                 onExpandedDayChange={setSidebarExpandedDay}
+                results={optimizerResults ?? undefined}
+                activeAlgorithm={activeAlgorithm}
+                winnerAlgorithm={winnerAlgorithm}
+                onAlgorithmChange={handleAlgorithmChange}
               />
               )}
 

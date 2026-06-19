@@ -2,15 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   Location,
   Config,
-  ParetoSolution,
+  OptimizerResult,
   ApiError,
   UnreachablePoi,
   DistanceMatrix,
   MatrixEntry,
 } from "@/types";
-import { optimizeRoutes } from "@/utils/routerOptimizer";
-import { runNSGA2 } from "@/utils/nsga2";
 import { filterUnreachable } from "@/utils/unreachableFilter";
+import { OptimizerRegistry } from "@/utils/optimizer/registry";
+import { defaultOptimizers } from "@/utils/optimizer/optimizers";
 
 export async function POST(request: NextRequest) {
   console.log("[API] /api/optimize called");
@@ -20,7 +20,6 @@ export async function POST(request: NextRequest) {
     const {
       locations,
       config,
-      algorithm,
       distanceMatrix: frontendMatrix,
       useStrictMatrix: useStrictMatrixTopLevel,
     } = body as {
@@ -36,13 +35,23 @@ export async function POST(request: NextRequest) {
         ? useStrictMatrixTopLevel
         : Boolean(config?.useStrictMatrix);
 
-    console.log("[API] Body:", { locations: locations?.length, algorithm, hasMatrix: !!frontendMatrix, useStrictMatrix });
+    console.log("[API] Body:", {
+      locations: locations?.length,
+      hasMatrix: !!frontendMatrix,
+      useStrictMatrix,
+    });
 
     if (!locations?.length) {
-      return NextResponse.json({ error: "Se requiere al menos una ubicación." } satisfies ApiError, { status: 400 });
+      return NextResponse.json(
+        { error: "Se requiere al menos una ubicación." } satisfies ApiError,
+        { status: 400 },
+      );
     }
     if (typeof config.homeLat !== "number" || typeof config.homeLng !== "number") {
-      return NextResponse.json({ error: "Coordenadas de casa inválidas." } satisfies ApiError, { status: 400 });
+      return NextResponse.json(
+        { error: "Coordenadas de casa inválidas." } satisfies ApiError,
+        { status: 400 },
+      );
     }
 
     const normConfig: Config = {
@@ -67,7 +76,8 @@ export async function POST(request: NextRequest) {
     let strictMatrix: DistanceMatrix | undefined;
     if (useStrictMatrix) {
       strictMatrix = {};
-      let realCount = 0, unreachCount = 0;
+      let realCount = 0,
+        unreachCount = 0;
       for (const key of Object.keys(matrix)) {
         const d = matrix[key];
         const source: MatrixEntry["source"] =
@@ -80,78 +90,71 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Step 2.5: Pre-filter unreachable POIs ──
-    const { reachable, unreachable } = useStrictMatrix && strictMatrix
-      ? filterUnreachable(locations, home, strictMatrix)
-      : filterUnreachable(locations, home, matrix);
+    const { reachable, unreachable } =
+      useStrictMatrix && strictMatrix
+        ? filterUnreachable(locations, home, strictMatrix)
+        : filterUnreachable(locations, home, matrix);
     if (unreachable.length > 0) {
-      console.log(`[API] Pre-filter: ${unreachable.length}/${locations.length} POIs unreachable: ${unreachable.map(p => p.name).join(", ")}`);
+      console.log(
+        `[API] Pre-filter: ${unreachable.length}/${locations.length} POIs unreachable: ${unreachable.map((p) => p.name).join(", ")}`,
+      );
     }
     const unreachableForResponse: UnreachablePoi[] = unreachable;
 
-    // ── Step 3: Run BOTH algorithms and pick the best ──
+    // ── Step 3: Run all registered optimizers in parallel ──
     const tOpt = Date.now();
     const optimizedLocations = reachable;
 
-    const autoResult = await optimizeRoutes(
-      optimizedLocations,
-      normConfig,
+    const registry = new OptimizerRegistry(defaultOptimizers);
+    const allResults = await registry.runAll({
+      locations: optimizedLocations,
+      home,
+      config: normConfig,
       matrix,
-      useStrictMatrix ? strictMatrix : undefined
+      strictMatrix: useStrictMatrix ? strictMatrix : undefined,
+    });
+
+    // Best = lowest totalDistance, tiebreak by fewer days, then
+    // registration order (array index).
+    let best: OptimizerResult | null = null;
+    let bestIdx = -1;
+    for (let i = 0; i < allResults.length; i++) {
+      const r = allResults[i];
+      if (r === null) continue;
+      if (
+        best === null ||
+        r.totalDistance < best.totalDistance - 1 ||
+        (Math.abs(r.totalDistance - best.totalDistance) <= 1 &&
+          r.totalDays < best.totalDays)
+      ) {
+        best = r;
+        bestIdx = i;
+      }
+    }
+    const winnerLabel = best ? best.label : "none";
+    const successfulCount = allResults.filter((r) => r !== null).length;
+    console.log(
+      `[API] Optimizers: ${successfulCount}/${allResults.length} ok, winner=${winnerLabel} (${best?.totalDays ?? "?"}d, ${best?.totalDistance ?? "?"}km) in ${Date.now() - tOpt}ms`,
     );
-    const autoDistance = Math.round(autoResult.totalDistance * 100) / 100;
-    const autoDays = autoResult.days.length;
-    console.log(`[API] Auto: ${autoDays}d, ${autoDistance}km in ${Date.now() - tOpt}ms`);
 
-    // NSGA2
-    let nsgaData: Record<string, unknown> | null = null;
-    try {
-      const nsgaPromise = runNSGA2(
-        optimizedLocations,
-        home,
-        normConfig,
-        matrix,
-        useStrictMatrix ? strictMatrix : undefined
+    // ── Back-compat: if every optimizer failed, return 500 so the UI
+    //    shows an error instead of empty data. ──
+    if (best === null) {
+      return NextResponse.json(
+        {
+          error:
+            "Ningún optimizador pudo resolver el problema. Probá reducir el número de ubicaciones o revisar las conexiones de ruta.",
+        } satisfies ApiError,
+        { status: 500 },
       );
-      const timeoutPromise = new Promise<null>(r => setTimeout(() => r(null), 30000));
-      const nsgaResult = await Promise.race([nsgaPromise, timeoutPromise]);
-      if (nsgaResult) {
-        nsgaData = {
-          balanced: nsgaResult.balanced,
-          minDistance: nsgaResult.minDistance,
-          paretoFront: nsgaResult.paretoFront,
-          totalEvaluations: nsgaResult.totalEvaluations,
-        };
-        console.log(`[API] NSGA2: balanced=${nsgaResult.balanced.days}d/${nsgaResult.balanced.totalDistance}km minDist=${nsgaResult.minDistance.days}d/${nsgaResult.minDistance.totalDistance}km in ${Date.now() - tOpt}ms`);
-      }
-    } catch (err) {
-      console.warn(`[API] NSGA2 failed, using auto only:`, err instanceof Error ? err.message : err);
     }
 
-    // Pick the best
-    let bestDays = autoResult.days;
-    let bestDistance = autoDistance;
-    let bestDaysCount = autoDays;
-    let winner = "Auto";
-
-    if (nsgaData) {
-      const n = nsgaData.minDistance as ParetoSolution;
-      const nsgaBetter = n.totalDistance < bestDistance - 1;
-      const nsgaSame = Math.abs(n.totalDistance - bestDistance) <= 1 && n.days < bestDaysCount;
-      if (nsgaBetter || nsgaSame) {
-        bestDays = n.dayRoutes;
-        bestDistance = n.totalDistance;
-        bestDaysCount = n.days;
-        winner = "NSGA2";
-      }
-    }
-
-    console.log(`[API] → ${winner} wins: ${bestDaysCount}d, ${bestDistance}km`);
-
-    const basePayload: Record<string, unknown> = {
-      days: bestDays,
-      totalDistance: bestDistance,
-      totalDays: bestDaysCount,
+    return NextResponse.json({
+      days: best.days,
+      totalDistance: best.totalDistance,
+      totalDays: best.totalDays,
       totalLocations: locations.length,
+      results: allResults,
       unreachable: unreachableForResponse,
       ...(useStrictMatrix && strictMatrix ? { strictMatrix } : {}),
       _meta: {
@@ -160,20 +163,16 @@ export async function POST(request: NextRequest) {
         totalPairs,
         unreachableCount: unreachableForResponse.length,
         ...(useStrictMatrix ? { useStrictMatrix: true } : {}),
+        winnerAlgorithm: best.algorithm,
+        winnerLabel: best.label,
       },
-    };
-
-    if (nsgaData) {
-      basePayload._nsga2 = nsgaData;
-      basePayload._autoDistance = autoDistance;
-      basePayload._autoDays = autoDays;
-    }
-
-    return NextResponse.json(basePayload);
-
+    });
   } catch (error) {
     console.error("Optimization error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json({ error: "Error interno del servidor.", details: message } satisfies ApiError, { status: 500 });
+    return NextResponse.json(
+      { error: "Error interno del servidor.", details: message } satisfies ApiError,
+      { status: 500 },
+    );
   }
 }
