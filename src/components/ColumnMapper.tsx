@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
+import { Tag, MapPin, Search, Ruler, Check, X, type LucideIcon } from "lucide-react";
 import { RawFileData, ColumnMapping } from "@/types";
 import {
   autoDetectMapping,
@@ -8,6 +9,7 @@ import {
   detectHeaderRow,
   reheader,
 } from "@/utils/parser";
+import { cn } from "@/lib/utils";
 
 interface ColumnMapperProps {
   data: RawFileData;
@@ -24,10 +26,10 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   lngColumn: "Longitud",
 };
 
-const FIELD_ICONS: Record<FieldKey, string> = {
-  nameColumn: "🏷️",
-  latColumn: "📍",
-  lngColumn: "📍",
+const FIELD_ICONS: Record<FieldKey, LucideIcon> = {
+  nameColumn: Tag,
+  latColumn: MapPin,
+  lngColumn: MapPin,
 };
 
 export default function ColumnMapper({
@@ -122,7 +124,7 @@ export default function ColumnMapper({
       {headerCheck.isHeader && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
           <div className="flex items-start gap-2">
-            <span>🔍</span>
+            <Search className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" aria-hidden="true" />
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium text-amber-800">
                 Nombres detectados en la primera fila
@@ -139,8 +141,9 @@ export default function ColumnMapper({
                 </span>
               </label>
               {useFirstRowAsHeaders && (
-                <p className="text-xs text-green-600 mt-1 truncate">
-                  ✓ {headerCheck.suggestedNames.filter((n) => n).join(", ")}
+                <p className="text-xs text-green-600 mt-1 truncate inline-flex items-center gap-1">
+                  <Check className="w-3 h-3" />
+                  {headerCheck.suggestedNames.filter((n) => n).join(", ")}
                 </p>
               )}
             </div>
@@ -149,35 +152,42 @@ export default function ColumnMapper({
       )}
 
       {/* DMS format banner */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-xs text-blue-700">
-        <span className="font-medium">📐</span> Decimal (<code>-15.744</code>) y
-        DMS (<code>15°02&apos;51.6&apos;&apos;S</code>)
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-xs text-blue-700 inline-flex items-center gap-1.5">
+        <Ruler className="w-3.5 h-3.5" aria-hidden="true" />
+        <span>Decimal (<code>-15.744</code>) y DMS (<code>15°02&apos;51.6&apos;&apos;S</code>)</span>
       </div>
 
       {/* Column selectors */}
       <div className="space-y-2">
-        {(Object.keys(FIELD_LABELS) as FieldKey[]).map((field) => (
-          <div key={field}>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              {FIELD_ICONS[field]} {FIELD_LABELS[field]}
-            </label>
-            <select
-              value={mapping[field]}
-              onChange={(e) => setField(field, e.target.value)}
-              className="input-field text-sm"
-            >
-              <option value="">— Seleccionar —</option>
-              {effectiveData.columns.map((col) => (
-                <option key={col} value={col}>
-                  {col} {col === suggested?.[field] ? "✓" : ""}
-                </option>
-              ))}
-            </select>
-            {!touched && suggested?.[field] && (
-              <p className="text-xs text-green-600 mt-0.5">✓ Detectado</p>
-            )}
-          </div>
-        ))}
+        {(Object.keys(FIELD_LABELS) as FieldKey[]).map((field) => {
+          const FieldIcon = FIELD_ICONS[field];
+          return (
+            <div key={field}>
+              <label className="text-xs font-medium text-gray-600 mb-1 flex items-center gap-1.5">
+                <FieldIcon className="w-3.5 h-3.5" />
+                {FIELD_LABELS[field]}
+              </label>
+              <select
+                value={mapping[field]}
+                onChange={(e) => setField(field, e.target.value)}
+                className="input-field text-sm"
+              >
+                <option value="">— Seleccionar —</option>
+                {effectiveData.columns.map((col) => (
+                  <option key={col} value={col}>
+                    {col} {col === suggested?.[field] ? " (detectada)" : ""}
+                  </option>
+                ))}
+              </select>
+              {!touched && suggested?.[field] && (
+                <p className="text-xs text-green-600 mt-0.5 inline-flex items-center gap-1">
+                  <Check className="w-3 h-3" />
+                  Detectado
+                </p>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Preview */}
@@ -227,17 +237,18 @@ export default function ColumnMapper({
                   <td className="py-1.5">
                     {row.isValid ? (
                       <span
-                        className="text-green-600 text-xs"
+                        className="text-green-600 inline-flex"
                         title={`${row.lat}, ${row.lng}`}
                       >
-                        ✓
+                        <Check className="w-3.5 h-3.5" aria-label="Fila válida" />
                       </span>
                     ) : (
                       <span
-                        className="text-red-500 text-xs cursor-help"
+                        className="text-red-500 cursor-help inline-flex items-center gap-1"
                         title={row.validationError}
                       >
-                        ✗ {row.validationError}
+                        <X className="w-3.5 h-3.5" />
+                        {row.validationError}
                       </span>
                     )}
                   </td>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { Check, X, Search } from "lucide-react";
 import { ValidatedRow, Location } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -149,19 +150,10 @@ export default function DataEditor({
       {/* ── Search + filters ── */}
       <div className="space-y-2">
         <div className="relative">
-          <svg
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
-          </svg>
+          <Search
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+            aria-hidden="true"
+          />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -198,23 +190,26 @@ export default function DataEditor({
         <div className="flex items-center gap-2 text-xs text-gray-400">
           <button
             onClick={() => bulkSelect((r) => r.isValid)}
-            className="hover:text-blue-600 transition-colors"
+            className="hover:text-blue-600 transition-colors inline-flex items-center gap-1"
           >
-            ✓ Solo válidas
+            <Check className="w-3 h-3" />
+            Solo válidas
           </button>
           <span>·</span>
           <button
             onClick={() => bulkSelect(() => true)}
-            className="hover:text-blue-600 transition-colors"
+            className="hover:text-blue-600 transition-colors inline-flex items-center gap-1"
           >
-            ✓ Todas
+            <Check className="w-3 h-3" />
+            Todas
           </button>
           <span>·</span>
           <button
             onClick={() => bulkSelect(() => false)}
-            className="hover:text-red-500 transition-colors"
+            className="hover:text-red-500 transition-colors inline-flex items-center gap-1"
           >
-            ✗ Ninguna
+            <X className="w-3 h-3" />
+            Ninguna
           </button>
         </div>
       </div>
@@ -252,7 +247,7 @@ export default function DataEditor({
                 key={row.id}
                 className={cn(
                   "border-b last:border-0 transition-colors hover:bg-gray-50",
-                  !row.selected && "opacity-40"
+                  !row.selected && "bg-gray-50/50"
                 )}
               >
                 <td className="p-1.5 pl-2">
@@ -260,6 +255,7 @@ export default function DataEditor({
                     type="checkbox"
                     checked={row.selected}
                     onChange={() => handleToggleRow(row.id)}
+                    aria-label={`Seleccionar ${row.name || "fila"}`}
                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
                 </td>
@@ -300,13 +296,15 @@ export default function DataEditor({
                 <td className="p-1.5 pr-2">
                   {row.validationError ? (
                     <span
-                      className="text-red-500 cursor-help text-xs"
+                      className="text-red-500 cursor-help"
                       title={row.validationError}
                     >
-                      ✗
+                      <X className="w-3.5 h-3.5" aria-label={row.validationError} />
                     </span>
                   ) : (
-                    <span className="text-green-500 text-xs">✓</span>
+                    <span className="text-green-500">
+                      <Check className="w-3.5 h-3.5" aria-label="Fila válida" />
+                    </span>
                   )}
                 </td>
               </tr>

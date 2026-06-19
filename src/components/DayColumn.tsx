@@ -144,15 +144,15 @@ export default function DayColumn({
                 e.stopPropagation();
                 onToggleVisibility();
               }}
+              aria-label={hidden ? `Mostrar ruta día ${day.day} en mapa` : `Ocultar ruta día ${day.day} en mapa`}
               className={cn(
                 "w-6 h-6 flex items-center justify-center rounded transition-colors",
                 hidden
                   ? "text-gray-300 hover:text-gray-500"
                   : "text-gray-500 hover:text-blue-600"
               )}
-              title={hidden ? "Mostrar ruta en mapa" : "Ocultar ruta en mapa"}
             >
-              {hidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              {hidden ? <EyeOff className="w-3.5 h-3.5" aria-hidden="true" /> : <Eye className="w-3.5 h-3.5" aria-hidden="true" />}
             </button>
           )}
           <span>{formatDistance(day.totalDistance)}</span>

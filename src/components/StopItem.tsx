@@ -77,7 +77,7 @@ export default function StopItem({
         {...listeners}
         {...attributes}
       >
-        <GripVertical className="w-3.5 h-3.5" />
+        <GripVertical className="w-3.5 h-3.5" aria-hidden="true" />
       </button>
 
       {/* Sequence badge */}
@@ -116,7 +116,7 @@ export default function StopItem({
           aria-label="Quitar parada"
           className="text-gray-300 hover:text-red-500 transition-colors"
         >
-          <X className="w-3.5 h-3.5" />
+          <X className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
       )}
     </div>

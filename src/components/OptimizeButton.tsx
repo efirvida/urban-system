@@ -1,5 +1,6 @@
 "use client";
 
+import { Rocket } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface OptimizeButtonProps {
@@ -29,7 +30,8 @@ export default function OptimizeButton({
         </span>
       ) : (
         <span className="flex items-center justify-center gap-2">
-          🚀 Optimizar Rutas
+          <Rocket className="w-4 h-4" aria-hidden="true" />
+          Optimizar Rutas
         </span>
       )}
     </button>

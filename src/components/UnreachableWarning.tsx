@@ -2,6 +2,7 @@
 
 import { TriangleAlert, RotateCw, MapPin } from "lucide-react";
 import { UnreachablePoi } from "@/types";
+import { cn } from "@/lib/utils";
 
 interface UnreachableWarningProps {
   unreachable: UnreachablePoi[];
@@ -72,7 +73,7 @@ export default function UnreachableWarning({
           className="w-full text-sm py-2 rounded-md font-medium transition-colors inline-flex items-center justify-center gap-2 bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-amber-500"
         >
           <RotateCw
-            className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
+            className={cn("w-3.5 h-3.5", loading && "animate-spin")}
           />
           {loading ? "Reintentando..." : "Reintentar con todos"}
         </button>

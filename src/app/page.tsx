@@ -2,6 +2,18 @@
 
 import { useCallback, useState, useMemo, useRef, useEffect } from "react";
 import {
+  FolderOpen,
+  ClipboardList,
+  Pencil,
+  Settings,
+  CheckCheck,
+  Truck,
+  Car,
+  Eye,
+  PlusCircle,
+  X,
+} from "lucide-react";
+import {
   Location,
   Config,
   DayRoute,
@@ -10,6 +22,8 @@ import {
   RawFileData,
   ValidatedRow,
   ColumnMapping,
+  isDayRouteArray,
+  isOptimizeMeta,
 } from "@/types";
 import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
@@ -116,6 +130,7 @@ import ResultsPanel from "@/components/ResultsPanel";
 import OptimizeButton from "@/components/OptimizeButton";
 import OptimizeProgress from "@/components/OptimizeProgress";
 import UnreachableWarning from "@/components/UnreachableWarning";
+import WizardSteps from "@/components/WizardSteps";
 import dynamic from "next/dynamic";
 import type { MapViewData } from "@/components/MapView";
 // MapView imports Leaflet at module level, which crashes during Next.js
@@ -132,11 +147,11 @@ import FloatingUnassignedPanel from "@/components/FloatingUnassignedPanel";
 // ─── Phase definition ───────────────────────────────────────
 
 const PHASES = [
-  { key: "upload", label: "Cargar", short: "📂" },
-  { key: "mapping", label: "Columnas", short: "📋" },
-  { key: "review", label: "Revisar", short: "✏️" },
-  { key: "config", label: "Configurar", short: "⚙️" },
-  { key: "results", label: "Resultados", short: "✅" },
+  { key: "upload", label: "Cargar", Icon: FolderOpen },
+  { key: "mapping", label: "Columnas", Icon: ClipboardList },
+  { key: "review", label: "Revisar", Icon: Pencil },
+  { key: "config", label: "Configurar", Icon: Settings },
+  { key: "results", label: "Resultados", Icon: CheckCheck },
 ] as const;
 
 type PhaseKey = (typeof PHASES)[number]["key"];
@@ -405,7 +420,7 @@ export default function Home() {
 
   /** Fetch OSRM geometry for visible days (lazy, cached) */
   const fetchGeometryForVisible = useCallback(
-    (_days: any[], _hidden: Set<number>) => {
+    (_days: DayRoute[], _hidden: Set<number>) => {
       // Geometry fetching removed to simplify — real routes shown via Google Maps link
     },
     []
@@ -475,10 +490,12 @@ export default function Home() {
       // When consensus is active the server builds the full matrix from
       // Geoapify Matrix API + ORS Matrix API + OSRM, so we skip the
       // client-side build entirely. Otherwise we use the legacy pipeline.
-      const useConsensusFeature = true;
+      // Toggle with NEXT_PUBLIC_USE_CONSENSUS=false in `.env.local` to fall
+      // back to the legacy client-side matrix path.
+      const USE_CONSENSUS_MATRIX = process.env.NEXT_PUBLIC_USE_CONSENSUS !== "false";
       let distances: Record<string, number> = {};
 
-      if (!useConsensusFeature) {
+      if (!USE_CONSENSUS_MATRIX) {
         const N = locations.length + 1;
         const totalPairs = (N * (N - 1)) / 2;
         const fullPairCount = (locations.length * (locations.length + 1)) / 2;
@@ -521,11 +538,11 @@ export default function Home() {
       // ── Paso 2: Enviar al server ──
       // In consensus mode, phase is still "matrix" (the API builds it).
       // In legacy mode, phase was already set above during buildDistanceMatrices.
-      if (!useConsensusFeature) {
+      if (!USE_CONSENSUS_MATRIX) {
         setOptimizePhase("algorithm");
         await new Promise(r => setTimeout(r, 100));
       }
-      console.log(`${FLOW} ── Phase: ${useConsensusFeature ? "CONSENSUS MATRIX (server)" : "ALGORITHM"} (${algorithm}) ──`);
+      console.log(`${FLOW} ── Phase: ${USE_CONSENSUS_MATRIX ? "CONSENSUS MATRIX (server)" : "ALGORITHM"} (${algorithm}) ──`);
 
       const tAlgo = Date.now();
       const apiPayload: Record<string, unknown> = {
@@ -539,7 +556,7 @@ export default function Home() {
         // Consensus-matrix: when true, the server builds a cross-validated
         // matrix from Geoapify Matrix API + ORS Matrix API + OSRM, surfaces
         // per-pair reliability, and the optimizers reject low-confidence legs.
-        useConsensus: useConsensusFeature,
+        useConsensus: USE_CONSENSUS_MATRIX,
       };
 
       console.log(`${FLOW} POST /api/optimize — ${locations.length} locs, ${Object.keys(distances).length} pairs`);
@@ -551,7 +568,7 @@ export default function Home() {
 
       let apiData: Record<string, unknown> = {};
 
-      if (useConsensusFeature) {
+      if (USE_CONSENSUS_MATRIX) {
         // NDJSON stream — read progress events in real time, then the final result.
         const contentType = apiRes.headers.get("content-type") || "";
         if (contentType.includes("x-ndjson")) {
@@ -627,7 +644,7 @@ export default function Home() {
       let optResult: OptimizeResponse;
       let geometryDays: Array<{ day: number; stops: Array<{ lat: number; lng: number; isHome?: boolean }> }> | undefined;
 
-      const bestDays = apiData.days as unknown as DayRoute[];
+      const bestDays: DayRoute[] = isDayRouteArray(apiData.days) ? apiData.days : [];
       const bestDist = Number(apiData.totalDistance);
       const bestCnt = Number(apiData.totalDays);
 
@@ -665,9 +682,9 @@ export default function Home() {
 
       setOptimizerResults(allResults);
       setActiveAlgorithm(winner.algorithm);
-      const apiMeta = apiData._meta as
-        | { useConsensus?: boolean; [key: string]: unknown }
-        | undefined;
+      // `_meta` is the API's optional telemetry block — guard it instead
+      // of casting so we can read `useConsensus` without `as unknown as`.
+      const apiMeta = isOptimizeMeta(apiData._meta) ? apiData._meta : undefined;
       setUseConsensus(apiMeta?.useConsensus === true);
 
       optResult = {
@@ -676,7 +693,7 @@ export default function Home() {
         totalDays: bestCnt,
         totalLocations: locations.length,
         unreachable: Array.isArray(apiData.unreachable) ? apiData.unreachable : [],
-        _meta: apiData._meta as OptimizeResponse["_meta"],
+        _meta: apiMeta,
       };
       geometryDays = bestDays;
       setHiddenDays(new Set()); // Show all days by default
@@ -697,7 +714,7 @@ export default function Home() {
       }
 
       // Fetch route geometries (async, background)
-      console.log(`${FLOW} geometryDays:`, geometryDays?.length ?? 0, 'days, result days:', result?.days?.length ?? 0);
+      console.log(`${FLOW} geometryDays:`, geometryDays?.length ?? 0, "days");
       if (geometryDays && geometryDays.length > 0) {
         console.log(`${FLOW} Fetching route geometries for ${geometryDays.length} days...`);
         fetchAllRouteGeometries(geometryDays).then(({ geometries: geo, sources }) => {
@@ -707,7 +724,7 @@ export default function Home() {
             setRouteGeometry(geo);
             setRouteSource(sources);
           }
-        }).catch((err: any) => {
+        }).catch((err: unknown) => {
           console.error(`${FLOW} Route geometry error:`, err);
         });
       } else {
@@ -733,7 +750,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [locations, config, algorithm]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [locations, config, algorithm, routeSource]);
 
   const handlePlaceHome = useCallback(
     (lat: number, lng: number) => {
@@ -767,6 +784,13 @@ export default function Home() {
     });
   }, []);
 
+  // ── Auto-dismiss error toast (6s) with cleanup on unmount/error change ──
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => setError(null), 6000);
+    return () => clearTimeout(timer);
+  }, [error]);
+
   // ── Refetch OSRM geometry after edits (debounced 800ms) ──
   useEffect(() => {
     if (!editMode || !editDaysPreview || editDaysPreview.length === 0) return;
@@ -774,7 +798,7 @@ export default function Home() {
       refetchGeometries(editDaysPreview);
     }, 800);
     return () => clearTimeout(timer);
-  }, [editDaysPreview, editMode]);
+  }, [editDaysPreview, editMode, refetchGeometries]);
 
   /** Apply handler — commits editor's working days to the result. */
   const handleApply = useCallback((newDays: DayRoute[]) => {
@@ -901,7 +925,7 @@ export default function Home() {
 
   /**
    * Algorithm id of the best (lowest totalDistance) entry — used by
-   * the ResultsPanel to render the 🏆 badge.
+   * the ResultsPanel to render the trophy badge.
    */
   const winnerAlgorithm = useMemo(() => {
     if (!optimizerResults) return undefined;
@@ -922,27 +946,11 @@ export default function Home() {
 
   // ── Steps bar — shown inside the sidebar header ──
   const stepsNode = (
-    <div className="flex items-center gap-1.5 flex-wrap">
-      {PHASES.map((p, i) => {
-        const isActive = i === currentIdx;
-        const isPast = i < currentIdx;
-        return (
-          <span
-            key={p.key}
-            className={cn(
-              "text-xs px-2 py-0.5 rounded-full transition-colors",
-              isActive
-                ? "bg-blue-600 text-white font-medium"
-                : isPast
-                ? "bg-green-100 text-green-700"
-                : "bg-gray-100 text-gray-400"
-            )}
-          >
-            {p.short} {p.label}
-          </span>
-        );
-      })}
-    </div>
+    <WizardSteps
+      phases={PHASES}
+      currentIdx={currentIdx}
+      onStepClick={(i) => setPhase(PHASES[i].key)}
+    />
   );
 
   // ── Sidebar content per phase ──
@@ -1004,7 +1012,7 @@ export default function Home() {
                     onTogglePlaceHome={handleTogglePlaceHome}
                   />
                   <div className="text-center text-xs text-gray-400 bg-gray-50 rounded-lg p-2 border border-gray-200">
-                    🧬 Se ejecutan ambos algoritmos — se muestra el mejor resultado
+                    Se ejecutan ambos algoritmos — se muestra el mejor resultado
                   </div>
                   <OptimizeButton
                     onClick={handleOptimize}
@@ -1049,7 +1057,7 @@ export default function Home() {
                     return new Set(allDays.filter((d) => d !== day));
                   })
                 }
-                routingLabel="🚗 Rutas optimizadas"
+                routingLabel="Rutas optimizadas"
                 expandedDay={sidebarExpandedDay}
                 onExpandedDayChange={setSidebarExpandedDay}
                 results={optimizerResults ?? undefined}
@@ -1119,9 +1127,10 @@ export default function Home() {
 
               <button
                 onClick={() => setHiddenDays(new Set())}
-                className="w-full text-xs text-center text-gray-400 hover:text-blue-600 transition-colors py-1"
+                className="w-full text-xs text-center text-gray-400 hover:text-blue-600 transition-colors py-1 inline-flex items-center justify-center gap-1.5"
               >
-                👁 Ver todas las rutas en el mapa
+                <Eye className="w-3.5 h-3.5" />
+                Ver todas las rutas en el mapa
               </button>
 
               <div className="flex flex-col gap-2">
@@ -1133,9 +1142,10 @@ export default function Home() {
                 </button>
                 <button
                   onClick={handleReset}
-                  className="btn-secondary w-full text-sm"
+                  className="btn-secondary w-full text-sm inline-flex items-center justify-center gap-1.5"
                 >
-                  🆕 Nueva optimización
+                  <PlusCircle className="w-4 h-4" />
+                  Nueva optimización
                 </button>
               </div>
             </div>
@@ -1211,13 +1221,19 @@ export default function Home() {
 
       {/* ── Error toast ── */}
       {error && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-red-50 border border-red-200 rounded-lg shadow-lg text-sm text-red-700 max-w-md">
-          <span className="font-medium">Error:</span> {error}
+        <div
+          role="alert"
+          aria-live="polite"
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-red-50 border border-red-200 rounded-lg shadow-lg text-sm text-red-700 max-w-md flex items-center gap-2 animate-slide-down"
+        >
+          <span className="font-medium">Error:</span>
+          <span className="flex-1">{error}</span>
           <button
             onClick={() => setError(null)}
-            className="ml-3 text-red-400 hover:text-red-600"
+            aria-label="Cerrar error"
+            className="text-red-400 hover:text-red-600 inline-flex items-center"
           >
-            ✕
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       )}
@@ -1226,7 +1242,8 @@ export default function Home() {
       <Sidebar
         open={sidebarOpen}
         onToggle={() => setSidebarOpen((o) => !o)}
-        title={`🚚 ${sidebarTitle}`}
+        title={sidebarTitle}
+        sidebarIcon={<Truck className="w-4 h-4 text-blue-600" />}
         subtitle={sidebarSubtitle}
       >
         {/* New optimization button at top when not in upload */}

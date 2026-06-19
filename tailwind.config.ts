@@ -22,6 +22,16 @@ const config: Config = {
           900: "#1e3a8a",
         },
       },
+      borderRadius: {
+        "ui-sm": "var(--ui-radius-sm)",
+        "ui-md": "var(--ui-radius-md)",
+        "ui-lg": "var(--ui-radius-lg)",
+      },
+      boxShadow: {
+        "ui-sm": "var(--ui-shadow-sm)",
+        "ui-md": "var(--ui-shadow-md)",
+        "ui-lg": "var(--ui-shadow-lg)",
+      },
     },
   },
   plugins: [],

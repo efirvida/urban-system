@@ -2,7 +2,7 @@
 
 import { useRef, useEffect } from "react";
 import L from "leaflet";
-import { Car } from "lucide-react";
+import { Car, Home, Ruler } from "lucide-react";
 import { useLeafletMap } from "./map/useLeafletMap";
 import { useLeafletMarkers } from "./map/useLeafletMarkers";
 import { useLeafletRoutes } from "./map/useLeafletRoutes";
@@ -140,14 +140,18 @@ export default function MapView({
               Ruta real
             </>
           ) : (
-            <span>📏 Línea recta</span>
+            <>
+              <Ruler className="w-3.5 h-3.5" aria-hidden="true" />
+              Línea recta
+            </>
           )}
         </div>
       )}
 
       {placementMode === "home" && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-4 py-2 bg-blue-600 text-white rounded-full shadow-lg text-sm font-medium whitespace-nowrap">
-          🏠 Haz clic en el mapa para colocar la casa
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-4 py-2 bg-blue-600 text-white rounded-full shadow-lg text-sm font-medium whitespace-nowrap inline-flex items-center gap-1.5">
+          <Home className="w-4 h-4" aria-hidden="true" />
+          Haz clic en el mapa para colocar la casa
         </div>
       )}
 

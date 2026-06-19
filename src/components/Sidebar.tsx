@@ -7,6 +7,8 @@ interface SidebarProps {
   open: boolean;
   onToggle: () => void;
   title: string;
+  /** Optional icon shown before the title in the header. */
+  sidebarIcon?: ReactNode;
   subtitle?: string;
   children: ReactNode;
 }
@@ -15,6 +17,7 @@ export default function Sidebar({
   open,
   onToggle,
   title,
+  sidebarIcon,
   subtitle,
   children,
 }: SidebarProps) {
@@ -23,6 +26,7 @@ export default function Sidebar({
       {/* Toggle button — always visible */}
       <button
         onClick={onToggle}
+        aria-label={open ? "Cerrar panel" : "Abrir panel"}
         className={cn(
           "fixed top-4 z-30 w-10 h-10 flex items-center justify-center rounded-full shadow-md transition-colors",
           "bg-white hover:bg-gray-100 border border-gray-200 text-gray-600"
@@ -31,7 +35,6 @@ export default function Sidebar({
           left: open ? "calc(min(420px, 90vw) + 16px)" : "16px",
           transition: "left 0.3s ease",
         }}
-        title={open ? "Cerrar panel" : "Abrir panel"}
       >
         <svg
           width="20"
@@ -42,6 +45,7 @@ export default function Sidebar({
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
+          aria-hidden="true"
         >
           {open ? (
             // X icon
@@ -69,7 +73,8 @@ export default function Sidebar({
       >
         {/* Header inside sidebar */}
         <div className="shrink-0 px-5 pt-14 pb-3 border-b border-gray-200">
-          <h2 className="text-lg font-bold text-gray-900 leading-tight">
+          <h2 className="text-lg font-bold text-gray-900 leading-tight flex items-center gap-2">
+            {sidebarIcon}
             {title}
           </h2>
           {subtitle && (

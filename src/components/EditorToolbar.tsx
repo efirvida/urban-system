@@ -51,15 +51,15 @@ export default function EditorToolbar({
           type="button"
           onClick={onApply}
           disabled={!hasChanges}
+          aria-label="Aplicar cambios al resultado"
           className={cn(
             "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
             hasChanges
               ? "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
               : "bg-gray-200 text-gray-400 cursor-not-allowed"
           )}
-          title="Aplicar cambios al resultado"
         >
-          <Save className="w-3.5 h-3.5" />
+          <Save className="w-3.5 h-3.5" aria-hidden="true" />
           Aplicar
         </button>
 
@@ -67,15 +67,15 @@ export default function EditorToolbar({
           type="button"
           onClick={onDiscard}
           disabled={!hasChanges}
+          aria-label="Descartar cambios y volver al estado inicial"
           className={cn(
             "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors border",
             hasChanges
               ? "bg-white text-amber-700 border-amber-300 hover:bg-amber-50"
               : "bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed"
           )}
-          title="Descartar cambios y volver al estado inicial"
         >
-          <XCircle className="w-3.5 h-3.5" />
+          <XCircle className="w-3.5 h-3.5" aria-hidden="true" />
           Descartar
         </button>
 
@@ -83,15 +83,15 @@ export default function EditorToolbar({
           type="button"
           onClick={onUndo}
           disabled={!canUndo}
+          aria-label="Deshacer última acción"
           className={cn(
             "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
             canUndo
               ? "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
               : "bg-gray-50 text-gray-300 border border-gray-100 cursor-not-allowed"
           )}
-          title="Deshacer última acción"
         >
-          <Undo2 className="w-3.5 h-3.5" />
+          <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
           Deshacer
         </button>
 
@@ -99,15 +99,15 @@ export default function EditorToolbar({
           type="button"
           onClick={onRedo}
           disabled={!canRedo}
+          aria-label="Rehacer acción deshecha"
           className={cn(
             "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
             canRedo
               ? "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
               : "bg-gray-50 text-gray-300 border border-gray-100 cursor-not-allowed"
           )}
-          title="Rehacer acción deshecha"
         >
-          <Redo2 className="w-3.5 h-3.5" />
+          <Redo2 className="w-3.5 h-3.5" aria-hidden="true" />
           Rehacer
         </button>
       </div>

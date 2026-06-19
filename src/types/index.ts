@@ -5,6 +5,49 @@ import type { RoutingSourceExtended } from "@/utils/routing/types";
 // Re-export so consumers can `import { RoutingSourceExtended } from "@/types"`.
 export type { RoutingSourceExtended };
 
+// ─── Type guards ─────────────────────────────────────────────
+
+/**
+ * Type guard for an unknown value that the optimizer API returned.
+ *
+ * The /api/optimize route streams JSON; consumers that did not author the
+ * shape (e.g. the SPA parsing `apiData.days` straight from `fetch`) need
+ * a runtime check before they can treat the value as a `DayRoute[]`.
+ *
+ * The shape mirrors `DayRoute` — if the API ever adds required fields
+ * (e.g. a `dayId: string`), extend this guard.
+ */
+export function isDayRouteArray(value: unknown): value is DayRoute[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    typeof value[0] === "object" &&
+    value[0] !== null &&
+    "day" in value[0] &&
+    "stops" in value[0]
+  );
+}
+
+/**
+ * Type guard for `_meta` blocks attached to optimizer responses.
+ *
+ * The /api/optimize handler echoes timing/provider metadata in `_meta`
+ * for telemetry. The shape is small and well-defined, so we use a guard
+ * instead of an `any` cast in the consumer.
+ */
+export function isOptimizeMeta(
+  value: unknown,
+): value is NonNullable<OptimizeResponse["_meta"]> {
+  if (typeof value !== "object" || value === null) return false;
+  const m = value as Record<string, unknown>;
+  return (
+    typeof m.elapsedMs === "number" &&
+    typeof m.osrmPairs === "number" &&
+    typeof m.totalPairs === "number" &&
+    typeof m.routingMode === "string"
+  );
+}
+
 /** A single location to visit */
 export interface Location {
   name: string;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, useRef } from "react";
+import { FileSpreadsheet } from "lucide-react";
 import { RawFileData } from "@/types";
 import { extractRawData, autoDetectMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
@@ -112,7 +113,7 @@ export default function FileUpload({ onFileLoaded }: FileUploadProps) {
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="text-4xl text-gray-300">📄</div>
+            <FileSpreadsheet className="w-10 h-10 text-gray-300 mx-auto" aria-hidden="true" />
             <p className="text-base font-medium text-gray-700">
               Arrastra tu archivo .ods aquí
             </p>

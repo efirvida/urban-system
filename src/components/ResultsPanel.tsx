@@ -33,7 +33,7 @@ interface ResultsPanelProps {
    * bar is rendered (single-algorithm legacy mode).
    */
   results?: (OptimizerResult | null)[];
-  /** Algorithm id of the best (lowest totalDistance) entry — gets the 🏆 badge. */
+  /** Algorithm id of the best (lowest totalDistance) entry — gets the trophy badge. */
   winnerAlgorithm?: string;
   /** Currently displayed algorithm id. */
   activeAlgorithm?: string | null;
@@ -215,22 +215,22 @@ export default function ResultsPanel({
                     e.stopPropagation();
                     onToggleDay(day.day);
                   }}
+                  aria-label={
+                    hiddenDays?.has(day.day)
+                      ? `Mostrar día ${day.day} en mapa`
+                      : `Ocultar día ${day.day} en mapa`
+                  }
                   className={cn(
                     "w-7 h-7 flex items-center justify-center rounded-full border transition-colors text-xs",
                     hiddenDays?.has(day.day)
                       ? "border-gray-200 text-gray-300 hover:text-gray-500 hover:border-gray-300"
                       : "border-blue-200 text-blue-500 bg-blue-50 hover:bg-blue-100"
                   )}
-                  title={
-                    hiddenDays?.has(day.day)
-                      ? "Mostrar en mapa"
-                      : "Ocultar en mapa"
-                  }
                 >
                   {hiddenDays?.has(day.day) ? (
-                    <EyeOff className="w-3.5 h-3.5" />
+                    <EyeOff className="w-3.5 h-3.5" aria-hidden="true" />
                   ) : (
-                    <Eye className="w-3.5 h-3.5" />
+                    <Eye className="w-3.5 h-3.5" aria-hidden="true" />
                   )}
                 </button>
               )}
@@ -273,9 +273,10 @@ export default function ResultsPanel({
                   {day.stops.map((stop) => (
                     <div
                       key={stop.sequence}
-                      className={`flex items-center gap-3 px-4 py-2.5 text-sm ${
-                        stop.isHome ? "bg-blue-50/50" : ""
-                      }`}
+                      className={cn(
+                        "flex items-center gap-3 px-4 py-2.5 text-sm",
+                        stop.isHome && "bg-blue-50/50"
+                      )}
                     >
                       {/* Sequence badge */}
                       <span
