@@ -81,11 +81,8 @@ export function useLeafletRoutes(
         }
       }
 
-      const hasCoords = coords.length >= 2;
-
-      // Dash style: real roads (coords from routeGeometry with osrm/geoapify source) → solid.
-      // Stops fallback or unknown source → dashed (estimated).
       const daySource = options.routeSource?.get(day.day);
+      console.log(`[Route] Day ${day.day}: usedRoadGeo=${usedRoadGeo}, source=${daySource ?? "none"}, coords=${coords.length}, isEstimated=${!usedRoadGeo || daySource === "haversine" || daySource === undefined}`);
       const isEstimated = !usedRoadGeo || daySource === "haversine" || daySource === undefined;
       const dash = isEstimated ? ([2, 3] as number[]) : undefined;
       const glowDash = isEstimated ? ([1, 4] as number[]) : undefined;
@@ -99,7 +96,7 @@ export function useLeafletRoutes(
       group.clearLayers();
 
       // ── Polylines ──
-      if (hasCoords) {
+      if (coords.length >= 2) {
         // Glow
         const glow = L.polyline(coords, {
           color: "#000000",
