@@ -349,11 +349,19 @@ export default function Home() {
 
   /** Toggle a day's visibility on the map. */
   const handleToggleDay = useCallback((day: number) => {
-    setHighlightDay(null);
-    setSelectedPOI(null);
     setHiddenDays((prev) => {
+      const wasHidden = prev.has(day);
+      // Schedule highlightDay sync after state update
+      Promise.resolve().then(() => {
+        if (wasHidden) {
+          setHighlightDay(day);   // Was hidden → now visible → highlight
+        } else {
+          setHighlightDay(null);  // Was visible → now hidden → clear
+        }
+        setSelectedPOI(null);
+      });
       const next = new Set(prev);
-      if (next.has(day)) next.delete(day);
+      if (wasHidden) next.delete(day);
       else next.add(day);
       return next;
     });
