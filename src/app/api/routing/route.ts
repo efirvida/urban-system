@@ -124,7 +124,11 @@ export async function POST(request: NextRequest) {
     // Priority 1: Geoapify
     if (geoapifyKey) {
       const result = await tryGeoapify(stops, geoapifyKey);
-      if (result) return NextResponse.json(result);
+      // Geoapify sometimes returns only waypoint coordinates (5-8 points)
+      // instead of full road geometry. Require at least 10 coords to use it.
+      if (result && result.coordinates.length >= 10) {
+        return NextResponse.json(result);
+      }
     }
 
     // Priority 2: OSRM
