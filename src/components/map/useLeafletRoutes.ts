@@ -162,6 +162,25 @@ export function useLeafletRoutes(
         group.addTo(map);
       }
     }
+
+    // Fit map to all route coordinates
+    const allCoords: [number, number][] = [];
+    for (const day of options.routes) {
+      const dayGeo = options.routeGeometry?.get(day.day);
+      if (dayGeo && dayGeo.length > 1) {
+        allCoords.push(...dayGeo.map((c) => [c[1], c[0]] as [number, number]));
+      } else {
+        for (const s of day.stops) {
+          if (!s.isHome) allCoords.push([s.lat, s.lng]);
+        }
+      }
+    }
+    if (allCoords.length > 0) {
+      try {
+        const bounds = L.latLngBounds(allCoords);
+        map.fitBounds(bounds, { padding: [80, 80], maxZoom: 16 });
+      } catch {}
+    }
   }, [mapRef, options]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Selected POI highlight — walk ALL layers in all groups looking for _poiData match
