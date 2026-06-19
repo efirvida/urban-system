@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Eye,
   EyeOff,
@@ -8,8 +8,9 @@ import {
   Map as MapIcon,
   ChevronDown,
   BarChart3,
+  Trophy,
 } from "lucide-react";
-import { DayRoute } from "@/types";
+import { DayRoute, OptimizerResult } from "@/types";
 import { formatDistance, formatDuration, getRouteColor, cn } from "@/lib/utils";
 
 interface ResultsPanelProps {
@@ -25,6 +26,19 @@ interface ResultsPanelProps {
   expandedDay?: number | null;
   /** Called when the user clicks a day header to expand/collapse. */
   onExpandedDayChange?: (day: number | null) => void;
+  /**
+   * Per-algorithm results from the registry. Each slot is either an
+   * `OptimizerResult` or `null` (failed/unavailable). Order is the
+   * registration order from the server. Optional — when absent, no tab
+   * bar is rendered (single-algorithm legacy mode).
+   */
+  results?: (OptimizerResult | null)[];
+  /** Algorithm id of the best (lowest totalDistance) entry — gets the 🏆 badge. */
+  winnerAlgorithm?: string;
+  /** Currently displayed algorithm id. */
+  activeAlgorithm?: string | null;
+  /** Called when the user picks a tab. */
+  onAlgorithmChange?: (algorithm: string) => void;
 }
 
 export default function ResultsPanel({
@@ -38,6 +52,10 @@ export default function ResultsPanel({
   routingLabel,
   expandedDay: controlledDay,
   onExpandedDayChange,
+  results,
+  winnerAlgorithm,
+  activeAlgorithm,
+  onAlgorithmChange,
 }: ResultsPanelProps) {
   const [internalDay, setInternalDay] = useState<number | null>(1);
   const activeExpanded = controlledDay !== undefined ? controlledDay : internalDay;
@@ -49,8 +67,65 @@ export default function ResultsPanel({
     el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [activeExpanded]);
 
+  /** Non-null entries in registration order — what we render as tabs. */
+  const tabs = useMemo<(OptimizerResult & { index: number })[]>(() => {
+    if (!results) return [];
+    return results
+      .map((r, index) => (r ? { ...r, index } : null))
+      .filter((r): r is OptimizerResult & { index: number } => r !== null);
+  }, [results]);
+
   return (
     <div className="space-y-4">
+      {/* Algorithm tabs — only when the server returned multiple results. */}
+      {tabs.length > 0 && (
+        <div className="card-base overflow-hidden">
+          <div className="card-header flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-blue-600" />
+            <span>Algoritmo</span>
+          </div>
+          <div className="card-body p-2">
+            <div className="flex flex-col gap-1">
+              {tabs.map((tab) => {
+                const isActive = tab.algorithm === activeAlgorithm;
+                const isWinner = tab.algorithm === winnerAlgorithm;
+                return (
+                  <button
+                    key={tab.algorithm}
+                    onClick={() => onAlgorithmChange?.(tab.algorithm)}
+                    className={cn(
+                      "flex items-center justify-between w-full text-left px-3 py-2 rounded-md text-sm transition-all",
+                      isActive
+                        ? "bg-blue-50 text-blue-800 shadow-sm border border-blue-300 font-medium"
+                        : "text-gray-600 hover:bg-gray-50 border border-transparent",
+                    )}
+                    title={`${tab.label} — ${tab.totalDays}d · ${formatDistance(tab.totalDistance)}`}
+                  >
+                    <span className="flex items-center gap-2">
+                      {isWinner && (
+                        <Trophy className="w-3.5 h-3.5 text-amber-500" />
+                      )}
+                      <span className="font-medium">{tab.label}</span>
+                    </span>
+                    <span className="text-xs font-mono text-gray-500">
+                      {tab.totalDays}d · {formatDistance(tab.totalDistance)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {tabs.length < (results?.length ?? 0) && (
+              <div className="text-xs text-gray-400 mt-2 px-3">
+                {results!.length - tabs.length} algoritmo
+                {results!.length - tabs.length === 1 ? "" : "s"} no
+                {tabs.length === 1 ? "" : "n"} disponible
+                {tabs.length === 1 ? "" : "s"} (sin API key o falló).
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Global summary */}
       <div className="card-base">
         <div className="card-header flex items-center justify-between">

@@ -145,6 +145,17 @@ export interface OptimizeResponse {
   totalDays: number;
   totalLocations: number;
   /**
+   * One entry per registered optimizer, in registration order. A slot
+   * is `null` when the optimizer was unavailable (missing API key),
+   * failed (threw), or returned no result. The legacy `days` /
+   * `totalDistance` / `totalDays` fields above always equal the BEST
+   * non-null entry of this array — so a client that ignores `results`
+   * sees no behavior change vs the pre-Strategy baseline.
+   *
+   * Additive — existing clients keep working.
+   */
+  results?: (OptimizerResult | null)[];
+  /**
    * POIs the optimizer was asked to route but could not (no real road
    * to home). Always present when the API ran the pre-filter; empty
    * array means every POI was reachable. Additive — existing clients
@@ -173,6 +184,23 @@ export interface OptimizeResponse {
      */
     useStrictMatrix?: boolean;
   };
+}
+
+/**
+ * One algorithm's best solution, surfaced to the UI alongside the
+ * legacy winner block. Mirrors the contract of
+ * `src/utils/optimizer/types.ts` — kept in `types/index.ts` so the
+ * frontend can import it from one place.
+ */
+export interface OptimizerResult {
+  /** Stable id: "cw", "nsga2", "geoapify". */
+  algorithm: string;
+  /** Display label: "Clarke & Wright", "NSGA-II", "Geoapify Route Planner". */
+  label: string;
+  days: DayRoute[];
+  totalDistance: number;
+  totalDays: number;
+  totalTime: number;
 }
 
 /** Error response */
