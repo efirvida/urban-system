@@ -72,14 +72,21 @@ function decode(perm: number[], locs: Location[], home: Location, cfg: Config, p
     }
     if (day.length === 0 && i < perm.length) { day.push(perm[i]); i++; }
     if (day.length > 0) {
-      // NN reorder within day
+      // NN reorder within day — restart from home when stuck
       const unvisited = new Set(day);
       const ordered: number[] = [];
       let cur = -1;
+      let stuck = 0;
       while (unvisited.size > 0) {
         let n = -1, md = Infinity;
         for (const idx of unvisited) { const d = pd(cur, idx, locs, home, pre, strict); if (d < md) { md = d; n = idx; } }
-        if (n === -1) break;
+        if (n === -1) {
+          stuck++;
+          if (stuck > day.length + 1) break; // safety
+          cur = -1; // restart from home
+          continue;
+        }
+        stuck = 0;
         ordered.push(n); cur = n; unvisited.delete(n);
       }
       routes.push(ordered);

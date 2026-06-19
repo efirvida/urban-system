@@ -135,6 +135,7 @@ async function buildGiantTour(
   let currentLng = home.lng;
 
   let prevLocIdx = -1; // home
+  let stuckCount = 0;
   while (visited.size < n) {
     let nearest = -1;
     let nearestDist = Infinity;
@@ -148,8 +149,27 @@ async function buildGiantTour(
       }
     }
 
-    if (nearest === -1) break;
+    if (nearest === -1) {
+      stuckCount++;
+      if (stuckCount > n) {
+        // Safety: if stuck in a loop (all remaining POIs unreachable
+        // even from home), force-include the first unvisited POI so
+        // the tour doesn't abort prematurely.
+        const firstUnvisited = Array.from({ length: n }, (_, i) => i).find(i => !visited.has(i));
+        if (firstUnvisited === undefined) break;
+        console.warn(`[Tour] Forcing POI ${firstUnvisited} into tour (stuck after ${stuckCount} attempts)`);
+        tour.push(firstUnvisited);
+        visited.add(firstUnvisited);
+        prevLocIdx = firstUnvisited;
+        stuckCount = 0;
+        continue;
+      }
+      // No reachable neighbor from current POI — restart from home.
+      prevLocIdx = -1;
+      continue;
+    }
 
+    stuckCount = 0;
     tour.push(nearest);
     visited.add(nearest);
     prevLocIdx = nearest;
@@ -327,13 +347,20 @@ function nearestNeighborWithinDay(
   const unvisited = new Set(indices);
   const ordered: number[] = [];
   let current = -1;
+  let stuck = 0;
   while (unvisited.size > 0) {
     let nearest = -1; let minD = Infinity;
     for (const idx of unvisited) {
       const d = pd(current, idx, precomputed, strictMatrix);
       if (d < minD) { minD = d; nearest = idx; }
     }
-    if (nearest === -1) break;
+    if (nearest === -1) {
+      stuck++;
+      if (stuck > indices.length + 1) break; // safety
+      current = -1; // restart from home
+      continue;
+    }
+    stuck = 0;
     ordered.push(nearest);
     current = nearest;
     unvisited.delete(nearest);

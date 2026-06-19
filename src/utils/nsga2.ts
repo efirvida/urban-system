@@ -135,10 +135,16 @@ export async function runNSGA2(
         const uv = new Set(day);
         const ord: number[] = [];
         let cur = -1;
+        let stuck = 0;
         while (uv.size > 0) {
           let nn = -1, md = Infinity;
           for (const idx of uv) { const d = pd(cur, idx); if (d < md) { md = d; nn = idx; } }
-          if (nn === -1) break;
+          if (nn === -1) {
+            stuck++;
+            if (stuck > uv.size + 1) break;
+            cur = -1; continue;
+          }
+          stuck = 0;
           ord.push(nn); cur = nn; uv.delete(nn);
         }
         routes.push(ord);
