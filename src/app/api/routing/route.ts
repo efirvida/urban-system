@@ -28,7 +28,7 @@ interface RouteResponse {
   distance: number;
   time: number;
   legs: RouteLeg[];
-  source: "geoapify" | "osrm" | "haversine";
+  source: "geoapify" | "ors" | "osrm" | "haversine";
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -118,18 +118,97 @@ async function tryGeoapify(stops: RouteStop[], apiKey: string): Promise<RouteRes
   }
 }
 
+async function tryORS(stops: RouteStop[], apiKey: string): Promise<RouteResponse | null> {
+  if (stops.length < 2) return null;
+  const coords = stops.map((s) => [s.lng, s.lat] as [number, number]);
+
+  try {
+    // ORS directions GeoJSON endpoint: /geojson suffix returns FeatureCollection
+    const res = await fetch(
+      "https://api.openrouteservice.org/v2/directions/driving-car/geojson",
+      {
+        method: "POST",
+        headers: {
+          Authorization: apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          coordinates: coords,
+          instructions: false,
+          geometry_simplify: true,
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    if (!data.features?.length) return null;
+    const feature = data.features[0];
+    const props = feature.properties || {};
+    const rawCoords = feature.geometry?.coordinates;
+    if (!Array.isArray(rawCoords) || rawCoords.length < 2) return null;
+
+    const coordinates: [number, number][] = rawCoords.map(
+      (c: number[]) => [c[0], c[1]] as [number, number],
+    );
+
+    const summary = props.summary || {};
+    const totalDist = (summary.distance ?? 0) / 1000; // meters → km
+    const totalTime = summary.duration ?? 0; // seconds
+
+    const numLegs = stops.length - 1;
+    const legDist = numLegs > 0 ? totalDist / numLegs : totalDist;
+    const legTime = numLegs > 0 ? totalTime / numLegs : totalTime;
+    const legs: RouteLeg[] = [];
+    for (let i = 1; i <= numLegs; i++) {
+      legs.push({
+        from: i - 1,
+        to: i,
+        distance: Math.round(legDist * 100) / 100,
+        time: Math.round(legTime),
+      });
+    }
+
+    return {
+      coordinates,
+      distance: Math.round(totalDist * 100) / 100,
+      time: Math.round(totalTime),
+      legs,
+      source: "ors",
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ─── POST handler ────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { stops } = body as { stops?: RouteStop[] };
+    const { stops, preferredSource } = body as {
+      stops?: RouteStop[];
+      /** Optional per-leg preferred provider (from consensus). */
+      preferredSource?: string;
+    };
 
     if (!stops || stops.length < 2) {
       return NextResponse.json({ error: "Se requieren al menos 2 paradas." }, { status: 400 });
     }
 
+    // When a preferred provider is given (from consensus), try it first.
+    // This ensures map geometry uses the same provider that won the consensus.
+    if (preferredSource === "ors" || preferredSource === "ors-matrix") {
+      const orsKey = process.env.ORS_API_KEY;
+      if (orsKey) {
+        const result = await tryORS(stops, orsKey);
+        if (result) return NextResponse.json(result);
+      }
+    }
+
     const geoapifyKey = process.env.GEOAPIFY_API_KEY;
+    const orsKey = process.env.ORS_API_KEY;
 
     // Priority 1: Geoapify
     if (geoapifyKey) {
@@ -141,11 +220,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Priority 2: OSRM
+    // Priority 2: ORS (optional — only when key is set)
+    if (orsKey) {
+      const result = await tryORS(stops, orsKey);
+      if (result && result.coordinates.length >= 2) {
+        return NextResponse.json(result);
+      }
+    }
+
+    // Priority 3: OSRM
     const osrmResult = await tryOSRM(stops);
     if (osrmResult) return NextResponse.json(osrmResult);
 
-    // Priority 3: No real route found
+    // Priority 4: No real route found
     return NextResponse.json({
       coordinates: [],
       distance: 0,
