@@ -65,15 +65,17 @@ export function useLeafletRoutes(
 
       // Build polyline coords — prefer real road geometry when available
       const coords: [number, number][] = [];
+      let usedRoadGeo = false;
       const dayGeo = options.routeGeometry?.get(day.day);
       if (dayGeo && dayGeo.length > 1) {
         const mapped = dayGeo.map((c) => [c[1], c[0]] as [number, number]);
-        if (mapped.every((c) => isFinite(c[0]) && isFinite(c[1]))) {
+        if (mapped.every((c) => isFinite(c[0]) && isFinite(c[1])) && mapped.length > 1) {
           coords.push(...mapped);
+          usedRoadGeo = true;
         }
       }
       // Fallback: use stops (guaranteed valid)
-      if (coords.length < 2) {
+      if (!usedRoadGeo) {
         for (const s of day.stops) {
           coords.push([s.lat, s.lng]);
         }
@@ -81,9 +83,10 @@ export function useLeafletRoutes(
 
       const hasCoords = coords.length >= 2;
 
-      // Dash style: real roads (OSRM/Geoapify) → solid, else dashed
-      const daySource = options.routeSource?.get(day.day) ?? "haversine";
-      const isEstimated = daySource === "haversine" || daySource === undefined;
+      // Dash style: real roads (coords from routeGeometry with osrm/geoapify source) → solid.
+      // Stops fallback or unknown source → dashed (estimated).
+      const daySource = options.routeSource?.get(day.day);
+      const isEstimated = !usedRoadGeo || daySource === "haversine" || daySource === undefined;
       const dash = isEstimated ? ([2, 3] as number[]) : undefined;
       const glowDash = isEstimated ? ([1, 4] as number[]) : undefined;
 
