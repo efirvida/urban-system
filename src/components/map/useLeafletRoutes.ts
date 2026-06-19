@@ -57,6 +57,7 @@ export function useLeafletRoutes(
     }
 
     for (const day of options.routes) {
+      try {
       const color = getColor(day.day - 1);
       const isHidden = options.hiddenDays?.has(day.day);
       const isHighlighted = options.highlightDay === day.day;
@@ -161,6 +162,9 @@ export function useLeafletRoutes(
       // that users rely on to see where POIs are located.
       if (!map.hasLayer(group)) {
         group.addTo(map);
+      }
+      } catch (e) {
+        console.warn(`[Routes] Day ${day.day} skipped:`, e);
       }
     }
 
