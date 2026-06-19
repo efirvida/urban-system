@@ -154,10 +154,11 @@ export function useLeafletRoutes(
         });
       }
 
-      // If hidden, remove group from map
-      if (isHidden) {
-        map.removeLayer(group);
-      } else if (!map.hasLayer(group)) {
+      // Keep group on map always — hidden days already have invisible
+      // polylines (opacity 0) and small dimmed stop markers (radius 8, opacity 0.5).
+      // Previously we removed the group entirely, but that also hid the stop markers
+      // that users rely on to see where POIs are located.
+      if (!map.hasLayer(group)) {
         group.addTo(map);
       }
     }

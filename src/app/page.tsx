@@ -596,7 +596,7 @@ export default function Home() {
         _meta: apiData._meta,
       };
       geometryDays = bestDays;
-      setHiddenDays(new Set(bestDays.slice(1).map((d: any) => d.day)));
+      setHiddenDays(new Set()); // Show all days by default
       setDistanceMatrix(distances);
       setResult(optResult);
       console.log(`${FLOW} Best: ${bestCnt}d · ${bestDist}km`);
@@ -695,8 +695,8 @@ export default function Home() {
       totalDistance: Math.round(newTotalDistance * 100) / 100,
       totalDays: newDays.length,
     });
-    // Recompute hidden days based on the new set
-    setHiddenDays(new Set(newDays.slice(1).map((d) => d.day)));
+    // Show all days by default
+    setHiddenDays(new Set());
     // Refetch real-road geometry for the new days (background)
     setRoutingMode("osrm");
     refetchGeometries(newDays);
@@ -781,7 +781,7 @@ export default function Home() {
             }
           : prev,
       );
-      setHiddenDays(new Set(entry.days.slice(1).map((d) => d.day)));
+      setHiddenDays(new Set());
     },
     [optimizerResults],
   );
@@ -1047,7 +1047,8 @@ export default function Home() {
           setSelectedPOI({ name, lat, lng, day });
           setHighlightDay(day);
           setSidebarExpandedDay(day);
-          // Open the clicked POI's day — use editable days when in edit mode
+          // Aislar el día clickeado — los días ocultos mantienen sus marcadores
+          // visibles (chicos, opacos) pero las rutas se atenúan.
           setHiddenDays((prev) => {
             const sourceDays = editMode && editDaysPreview
               ? editDaysPreview

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import L from "leaflet";
-import { createHomeIcon, createRouteStopIcon, createPinIcon } from "./leafletIcons";
 
 export interface MarkerData {
   routes?: Array<{
@@ -19,10 +18,8 @@ export interface MarkerData {
 interface UseLeafletMarkersOptions {
   data: MarkerData;
   homeDraggable?: boolean;
-  onPOIClick?: (lat: number, lng: number, day: number, name: string) => void;
   onDragHome?: (lat: number, lng: number) => void;
   selectedPOI?: { lat: number; lng: number; day: number; name: string } | null;
-  highlightDay?: number | null;
 }
 
 export function useLeafletMarkers(
@@ -30,14 +27,12 @@ export function useLeafletMarkers(
   options: UseLeafletMarkersOptions
 ) {
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
-  const onPOIClickRef = useRef(options.onPOIClick);
   const onDragHomeRef = useRef(options.onDragHome);
   const dataKeyRef = useRef("");
 
   useEffect(() => {
-    onPOIClickRef.current = options.onPOIClick;
     onDragHomeRef.current = options.onDragHome;
-  }, [options.onPOIClick, options.onDragHome]);
+  }, [options.onDragHome]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -108,68 +103,6 @@ export function useLeafletMarkers(
       }
     }
 
-    // ── Route stop markers ──
-    // Todos los stops se muestran siempre como círculos de color.
-    // Si el día está visible: círculo grande (14) + número + click handler.
-    // Si el día está oculto: círculo chico (8) sin número, solo para referencia.
-    if (routes) {
-      for (const day of routes) {
-        const isHidden = hiddenDays?.has(day.day);
-        const color = getColor(day.day - 1);
-        // Si highlightDay está activo pero este día no es el seleccionado → dim
-        const isDimmedByHighlight = options.highlightDay !== null && options.highlightDay !== undefined && options.highlightDay !== day.day;
-        for (const stop of day.stops) {
-          if (stop.isHome) continue;
-          const id = `rs-${day.day}-${stop.sequence}`;
-          if (isHidden || isDimmedByHighlight) {
-            // Círculo pequeño sin número
-            const circle = L.circleMarker([stop.lat, stop.lng], {
-              radius: isHidden ? 8 : 6,
-              color: "white",
-              weight: 2,
-              fillColor: color,
-              fillOpacity: isHidden ? 0.5 : 0.2,
-            }).addTo(map);
-            (circle as any)._poiData = { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name };
-            circle.on("click", () => {
-              const d = (circle as any)._poiData as { lat: number; lng: number; day: number; name: string } | undefined;
-              if (d && onPOIClickRef.current) {
-                onPOIClickRef.current(d.lat, d.lng, d.day, d.name);
-              }
-            });
-            markersRef.current.set(id, circle as any);
-            allPoints.push([stop.lng, stop.lat]);
-          } else {
-            // Círculo grande con número
-            const circle = L.circleMarker([stop.lat, stop.lng], {
-              radius: 14,
-              color: "white",
-              weight: 3,
-              fillColor: color,
-              fillOpacity: 1,
-            }).addTo(map);
-            circle.bindTooltip(String(stop.sequence), {
-              permanent: true,
-              direction: "center",
-              className: "route-stop-label",
-            });
-            circle.bindPopup(
-              `<strong>${stop.name}</strong><br/>Día ${day.day} · #${stop.sequence}<br/>${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`
-            );
-            (circle as any)._poiData = { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name };
-            circle.on("click", () => {
-              const d = (circle as any)._poiData as { lat: number; lng: number; day: number; name: string } | undefined;
-              if (d && onPOIClickRef.current) {
-                onPOIClickRef.current(d.lat, d.lng, d.day, d.name);
-              }
-            });
-            markersRef.current.set(id, circle as any);
-            allPoints.push([stop.lng, stop.lat]);
-          }
-        }
-      }
-    }
-
     // Fit bounds — solo si los datos espaciales realmente cambiaron
     if (dataChanged && allPoints.length > 0) {
       dataKeyRef.current = spatialKey;
@@ -180,8 +113,8 @@ export function useLeafletMarkers(
     }
   }, [mapRef, options]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Selected POI highlight — cambia el radio del círculo sin usar CSS transform
-  // (scale en SVG mueve el elemento porque el transform-origin no es el centro)
+  // Selected POI highlight — solo para pins de ubicaciones no asignadas
+  // (los route stop markers se manejan en useLeafletRoutes)
   useEffect(() => {
     const sel = options.selectedPOI;
     for (const [, marker] of markersRef.current) {
@@ -193,20 +126,9 @@ export function useLeafletMarkers(
         Math.abs(poiData.lng - sel.lng) < 0.000001;
       if (isMatch) {
         (marker as any).setStyle?.({ radius: 18, color: "white", weight: 4, fillOpacity: 1 });
-      } else if ((marker as any)._poiData) {
-        // Restore to default size — the markers effect already set the right
-        // size for hidden/visible, but the highlight effect's previous run may
-        // have overridden it to 18. Ensure we revert if so.
-        const d = (marker as any)._poiData as { day: number };
-        const isRouteStop = d && d.day > 0;
-        if (isRouteStop) {
-          const borderRadius = options.data.hiddenDays?.has(d.day) ? 8 : 14;
-          (marker as any).setStyle?.({ radius: borderRadius, color: "white", weight: 3, fillOpacity: 1 });
-        } else {
-          (marker as any).setStyle?.({ radius: 8, color: "white", weight: 2, fillOpacity: 1 });
-        }
+      } else {
+        (marker as any).setStyle?.({ radius: 8, color: "white", weight: 2, fillOpacity: 1 });
       }
-      // Clean up any lingering CSS transform/boxShadow from the old scale approach
       const el = marker.getElement();
       if (el) {
         (el as HTMLElement).style.transform = "";
@@ -216,13 +138,4 @@ export function useLeafletMarkers(
   }, [options.selectedPOI, options.data]);
 
   return { markersRef };
-}
-
-const ROUTE_COLORS = [
-  "#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899",
-  "#06b6d4", "#f97316", "#14b8a6", "#6366f1", "#84cc16", "#d946ef",
-];
-
-function getColor(index: number): string {
-  return ROUTE_COLORS[index % ROUTE_COLORS.length];
 }
