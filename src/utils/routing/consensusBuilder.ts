@@ -2,19 +2,15 @@
  * ConsensusBuilder — cross-validated distance matrix from a pool of
  * batch + per-pair routing providers.
  *
- * The builder runs every `BatchRouteProvider` in parallel (typically
- * GeoapifyMatrix and OrsMatrix), then for each pair cross-references
- * the responses:
+ * The builder runs every `BatchRouteProvider` in parallel (GeoapifyMatrix
+ * and OrsMatrix), then runs the per-pair provider (OSRM) for EVERY pair.
+ * All three votes are cross-referenced so each entry carries a reliability
+ * score based on provider agreement.
  *
- *   1. Collect one `ProviderVote` per batch provider (`null` when the
- *      provider reported the pair as unreachable).
- *   2. If ALL batch providers returned `null` for a pair, fall back
- *      to the per-pair `RouteProvider` (OSRM) and add its vote —
- *      this is the design's "all batch null → try per-pair" rule.
- *      It keeps the call count manageable (OSRM is only hit for
- *      pairs the batches could not resolve) while still allowing
- *      the consensus to surface a single-provider value when one
- *      is available.
+ *   1. Batch providers run in parallel → collect one `ProviderVote` per
+ *      batch provider per pair (`null` when unreachable).
+ *   2. OSRM runs for EVERY pair (bounded concurrency). Every pair gets at
+ *      least 2 votes (batch) and up to 3 when OSRM also resolves it.
  *   3. Compute reliability as `agreed / totalAttempted`, where
  *      `agreed` = finite votes within `CONSENSUS_TOLERANCE` of
  *      the median and `totalAttempted` = number of votes in the
@@ -52,95 +48,160 @@ import type {
 
 const PER_PAIR_CONCURRENCY = 5;
 
+/**
+ * Progress event emitted during consensus matrix building.
+ * Optional count fields let the UI show per-provider breakdowns.
+ */
+export interface ConsensusProgress {
+  stage: string;
+  current: number;
+  total: number;
+  detail: string;
+  /** Pairs resolved by Geoapify Matrix API (finite). */
+  geoapifyCount?: number;
+  /** Pairs resolved by ORS Matrix API (finite). */
+  orsCount?: number;
+  /** Pairs resolved by OSRM per-pair (finite). */
+  osrmCount?: number;
+}
+
+export type OnConsensusProgress = (p: ConsensusProgress) => void;
+
 export class ConsensusBuilder {
   constructor(
     private readonly batchProviders: BatchRouteProvider[],
     private readonly perPairProvider: RouteProvider,
+    private readonly onProgress?: OnConsensusProgress,
   ) {}
 
   /**
    * Build a `ConsensusMatrix` for the given point set. Points are
    * indexed in the order they appear (0..n-1); the returned keys
    * follow the legacy `"i,j"` convention with `i < j`.
+   *
+   * Every available provider runs for EVERY pair — Geoapify Matrix,
+   * ORS Matrix (batch), and OSRM (per-pair). The three votes are
+   * cross-referenced so each entry carries a reliability score based
+   * on provider agreement.
    */
   async build(points: Point[]): Promise<ConsensusMatrix> {
     const matrix: ConsensusMatrix = {};
     const n = points.length;
     if (n < 2) return matrix;
 
-    // 1. Fire every batch provider in parallel. A provider that
-    //    throws is treated identically to one that returned an
-    //    empty map (no votes) — the spec scenario "One provider
-    //    throws" requires this.
+    const totalPairs = (n * (n - 1)) / 2;
+
+    // Track per-provider finite counts for progress reporting
+    let geoapifyFinite = 0;
+    let orsFinite = 0;
+    let osrmFinite = 0;
+
+    const emit = (
+      stage: string,
+      current: number,
+      total: number,
+      detail: string,
+      extra?: { geoapifyCount?: number; orsCount?: number; osrmCount?: number },
+    ) =>
+      this.onProgress?.({ stage, current, total, detail, ...extra });
+
+    emit("providers", 0, totalPairs, "Iniciando proveedores batch...");
+
+    // 1. Fire every batch provider in parallel.
     const batchResults = await Promise.all(
       this.batchProviders.map((p) => this.safeBuild(p, points)),
     );
 
-    // 2. Walk the upper triangle. For each pair, decide whether
-    //    to call the per-pair provider (fallback path).
-    const work: Array<{
-      i: number;
-      j: number;
-      a: Point;
-      b: Point;
-      batchVotes: ProviderVote[];
-      needsPerPair: boolean;
-    }> = [];
+    for (let idx = 0; idx < this.batchProviders.length; idx++) {
+      const p = this.batchProviders[idx]!;
+      const r = batchResults[idx];
+      const finiteCount = r ? [...r.values()].filter((v) => v !== null).length : 0;
+      if (p.name === "geoapify-matrix") geoapifyFinite = finiteCount;
+      if (p.name === "ors-matrix") orsFinite = finiteCount;
+      emit(
+        "providers",
+        idx + 1,
+        this.batchProviders.length,
+        `${p.name}: ${finiteCount} pares resueltos`,
+        { geoapifyCount: geoapifyFinite, orsCount: orsFinite },
+      );
+    }
+
+    // 2. Determine which batch providers are "active" (returned a
+    //    non-empty Map). A provider that returned an empty Map was
+    //    unavailable (missing API key, all requests failed) and
+    //    should not count toward the reliability denominator.
+    const activeIndices = this.batchProviders
+      .map((_, idx) => idx)
+      .filter((idx) => batchResults[idx] && batchResults[idx]!.size > 0);
+
+    // 3. Collect batch votes per pair, then run OSRM for ALL pairs.
+    const allPairs: Array<{ i: number; j: number; a: Point; b: Point }> = [];
+    const batchVotesByKey = new Map<string, ProviderVote[]>();
 
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         const key = `${i},${j}`;
-        const batchVotes: ProviderVote[] = this.batchProviders.map(
-          (provider, idx) => {
-            const map = batchResults[idx];
-            const dist = map?.get(key);
-            return {
-              provider: provider.name as RoutingSourceExtended,
-              distance: typeof dist === "number" ? dist : null,
-            };
-          },
-        );
-
-        const needsPerPair = batchVotes.every((v) => v.distance === null);
-        work.push({
-          i,
-          j,
-          a: points[i]!,
-          b: points[j]!,
-          batchVotes,
-          needsPerPair,
+        const batchVotes: ProviderVote[] = activeIndices.map((idx) => {
+          const map = batchResults[idx]!;
+          const dist = map.get(key);
+          return {
+            provider: this.batchProviders[idx]!.name as RoutingSourceExtended,
+            distance: typeof dist === "number" ? dist : null,
+          };
         });
+        batchVotesByKey.set(key, batchVotes);
+        allPairs.push({ i, j, a: points[i]!, b: points[j]! });
       }
     }
 
-    // 3. Run the per-pair provider with bounded concurrency for the
-    //    pairs that need it. Pairs the batches resolved do not pay
-    //    this cost.
+    // 4. Run OSRM (per-pair) for EVERY pair with bounded concurrency.
     const perPairVotes = new Map<string, ProviderVote | null>();
-    const pending = work.filter((w) => w.needsPerPair);
-    if (pending.length > 0) {
-      let cursor = 0;
+    if (allPairs.length > 0) {
+      let osrmDone = 0;
+      const numWorkers = Math.min(PER_PAIR_CONCURRENCY, allPairs.length);
       const workers = Array.from(
-        { length: Math.min(PER_PAIR_CONCURRENCY, pending.length) },
-        () => this.perPairWorker(pending, cursor, perPairVotes),
+        { length: numWorkers },
+        (_, i) =>
+          this.perPairWorker(allPairs, i, numWorkers, perPairVotes, (n, result) => {
+            osrmDone += n;
+            osrmFinite += result ? 1 : 0;
+            emit("osrm", osrmDone, allPairs.length, `OSRM: ${osrmDone}/${allPairs.length} pares`, {
+              osrmCount: osrmFinite,
+              geoapifyCount: geoapifyFinite,
+              orsCount: orsFinite,
+            });
+          }),
       );
       await Promise.all(workers);
     }
 
-    // 4. Cross-reference and emit the final entries.
-    for (const w of work) {
-      const votes: ProviderVote[] = w.needsPerPair
-        ? [
-            ...w.batchVotes,
-            perPairVotes.get(`${w.i},${w.j}`) ?? {
-              provider: this.perPairProvider.name as RoutingSourceExtended,
-              distance: null,
-            },
-          ]
-        : w.batchVotes;
-      matrix[`${w.i},${w.j}`] = this.crossReference(votes);
+    emit("crossref", 0, allPairs.length, "Cruzando referencias...", {
+      geoapifyCount: geoapifyFinite,
+      orsCount: orsFinite,
+      osrmCount: osrmFinite,
+    });
+
+    // 5. Assemble votes (batch + OSRM) and cross-reference.
+    for (let pi = 0; pi < allPairs.length; pi++) {
+      const { i, j } = allPairs[pi]!;
+      const key = `${i},${j}`;
+      const batchVotes = batchVotesByKey.get(key) ?? [];
+      const osrmVote = perPairVotes.get(key) ?? {
+        provider: this.perPairProvider.name as RoutingSourceExtended,
+        distance: null,
+      };
+      matrix[key] = this.crossReference([...batchVotes, osrmVote]);
+      if (pi % 100 === 0 || pi === allPairs.length - 1) {
+        emit("crossref", pi + 1, allPairs.length, `Referencias cruzadas: ${pi + 1}/${allPairs.length}`);
+      }
     }
 
+    emit("complete", totalPairs, totalPairs, "Matriz de consenso completa", {
+      geoapifyCount: geoapifyFinite,
+      orsCount: orsFinite,
+      osrmCount: osrmFinite,
+    });
     return matrix;
   }
 
@@ -161,9 +222,11 @@ export class ConsensusBuilder {
   }
 
   /**
-   * Worker that drains the `pending` list starting at `cursor`,
-   * calling the per-pair provider for each entry. Each call is
-   * independent — failures land as `null` votes.
+   * Worker that drains a disjoint stride of the `pending` list.
+   * Worker `i` processes indices `i`, `i + numWorkers`, `i + 2n`, ...
+   * so all pairs are resolved exactly once across all workers.
+   * Calls `onResolved(n, finite)` after each OSRM call so the builder can
+   * report aggregate progress and track finite pair counts.
    */
   private async perPairWorker(
     pending: Array<{
@@ -172,20 +235,22 @@ export class ConsensusBuilder {
       a: Point;
       b: Point;
     }>,
-    startCursor: number,
+    workerIndex: number,
+    numWorkers: number,
     out: Map<string, ProviderVote | null>,
+    onResolved?: (n: number, finite: boolean) => void,
   ): Promise<void> {
-    let cursor = startCursor;
+    let cursor = workerIndex;
     while (cursor < pending.length) {
       const job = pending[cursor]!;
       const result = await this.perPairProvider.route(job.a, job.b);
+      const finite = result !== null && Number.isFinite(result.distanceKm);
       out.set(`${job.i},${job.j}`, {
         provider: this.perPairProvider.name as RoutingSourceExtended,
-        distance: result && Number.isFinite(result.distanceKm)
-          ? result.distanceKm
-          : null,
+        distance: finite ? result!.distanceKm : null,
       });
-      cursor += PER_PAIR_CONCURRENCY;
+      cursor += numWorkers;
+      onResolved?.(1, finite);
     }
   }
 
@@ -220,7 +285,11 @@ export class ConsensusBuilder {
       (v) => Math.abs(v.distance - median) <= tolerance,
     );
 
-    const totalAttempted = votes.length;
+    // Reliability = fraction of providers WITH DATA that agree within tolerance.
+    // Null/unreachable votes mean "no data for this pair", not "disagreement".
+    // If at least one provider has data, only count those; if none have data,
+    // count all votes (reliability = 0).
+    const totalAttempted = finite.length > 0 ? finite.length : votes.length;
     const reliability = agreed.length / totalAttempted;
 
     if (reliability < RELIABILITY_FLOOR) {
