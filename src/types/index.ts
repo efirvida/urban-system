@@ -206,6 +206,13 @@ export interface OptimizerResult {
   totalDistance: number;
   totalDays: number;
   totalTime: number;
+  /**
+   * Consensus-matrix change: mean reliability of the legs this
+   * optimizer used in its final solution, in `[0, 1]`. `undefined`
+   * when the optimizer did not consume a `consensusMatrix`
+   * (legacy path). See `routing-reliability` spec.
+   */
+  avgReliability?: number;
 }
 
 /** Error response */

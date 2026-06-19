@@ -9,7 +9,13 @@
  * to the UI inside `OptimizeResponse.results`.
  */
 
-import type { DayRoute, Location, Config, DistanceMatrix } from "@/types";
+import type {
+  ConsensusMatrix,
+  DayRoute,
+  Location,
+  Config,
+  DistanceMatrix,
+} from "@/types";
 
 /** Inputs every optimizer receives. */
 export interface OptimizeParams {
@@ -24,6 +30,16 @@ export interface OptimizeParams {
    * contract.
    */
   strictMatrix?: DistanceMatrix;
+  /**
+   * Consensus matrix (per-pair cross-validated entry with reliability).
+   * Additive — when absent, the optimizer behaves bit-identically to
+   * the pre-change baseline. When present, optimizers read each pair's
+   * `reliability` and reject any leg whose reliability falls below
+   * `RELIABILITY_FLOOR` (per `routing-reliability` spec). The
+   * `avgReliability` field on `OptimizerResult` aggregates the
+   * per-leg reliability of the final solution.
+   */
+  consensusMatrix?: ConsensusMatrix;
 }
 
 /** A single algorithm's best solution, surfaced to the UI. */
@@ -36,6 +52,14 @@ export interface OptimizerResult {
   totalDistance: number;
   totalDays: number;
   totalTime: number;
+  /**
+   * Consensus-matrix change: mean reliability of the legs the
+   * optimizer actually used in its final solution, in `[0, 1]`.
+   * `undefined` when the optimizer did not consume a
+   * `consensusMatrix` (legacy path) — surfacing `0` here would
+   * be misleading. See `routing-reliability` spec.
+   */
+  avgReliability?: number;
 }
 
 /** Strategy interface — one implementation per algorithm. */
