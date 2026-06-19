@@ -733,9 +733,12 @@ export default function Home() {
       }
       setEditMode(false);
       setEditorDirty(false);
+      setSelectedPOI(null);
+      setHighlightDay(null);
     } else {
       // Enter edit mode — clear any previous selection
       setSelectedPOI(null);
+      setHighlightDay(null);
       setEditMode(true);
     }
   }, [editMode, editorDirty]);
@@ -1091,7 +1094,7 @@ export default function Home() {
           }
           // POI not found in any day — highlight it on the map as unassigned
           setSelectedPOI({ name, lat, lng, day: -1 });
-          setHighlightDay(-1);
+          // No cambiamos highlightDay para no atenuar todas las rutas
         }}
       />
 
