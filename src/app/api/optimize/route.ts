@@ -7,10 +7,13 @@ import {
   UnreachablePoi,
   DistanceMatrix,
   MatrixEntry,
+  ConsensusMatrix,
 } from "@/types";
 import { filterUnreachable } from "@/utils/unreachableFilter";
 import { OptimizerRegistry } from "@/utils/optimizer/registry";
 import { defaultOptimizers } from "@/utils/optimizer/optimizers";
+import { RoutingService } from "@/utils/routing/service";
+import { defaultProviders, batchProviders } from "@/utils/routing/providers";
 
 export async function POST(request: NextRequest) {
   console.log("[API] /api/optimize called");
@@ -22,12 +25,21 @@ export async function POST(request: NextRequest) {
       config,
       distanceMatrix: frontendMatrix,
       useStrictMatrix: useStrictMatrixTopLevel,
+      useConsensus: useConsensusTopLevel,
     } = body as {
       locations: Location[];
       config: Config;
       algorithm?: string;
       distanceMatrix?: Record<string, number>;
       useStrictMatrix?: boolean;
+      /**
+       * consensus-matrix change: when true, the API builds a
+       * `ConsensusMatrix` server-side via `RoutingService.buildConsensusMatrix`
+       * and threads it into `OptimizeParams` so the optimizers can
+       * apply the reliability pre-filter. Default `false` — legacy
+       * path is bit-identical to the pre-change baseline.
+       */
+      useConsensus?: boolean;
     };
 
     const useStrictMatrix: boolean =
@@ -35,10 +47,14 @@ export async function POST(request: NextRequest) {
         ? useStrictMatrixTopLevel
         : Boolean(config?.useStrictMatrix);
 
+    const useConsensus: boolean =
+      typeof useConsensusTopLevel === "boolean" ? useConsensusTopLevel : false;
+
     console.log("[API] Body:", {
       locations: locations?.length,
       hasMatrix: !!frontendMatrix,
       useStrictMatrix,
+      useConsensus,
     });
 
     if (!locations?.length) {
@@ -101,6 +117,39 @@ export async function POST(request: NextRequest) {
     }
     const unreachableForResponse: UnreachablePoi[] = unreachable;
 
+    // ── Step 2.7: Build consensus matrix (opt-in) ──
+    // Point set convention: 0 = home, 1..n = reachable POIs in array
+    // order. The `buildConsensusMatrix` keys match `matGet` in
+    // `routerOptimizer.ts` and the per-leg cache in `routing/cache.ts`.
+    let consensusMatrix: ConsensusMatrix | undefined;
+    let consensusElapsedMs = 0;
+    if (useConsensus) {
+      const tConsensus = Date.now();
+      try {
+        const consensusPoints: Array<{ lat: number; lng: number }> = [
+          { lat: home.lat, lng: home.lng },
+          ...reachable.map((p) => ({ lat: p.lat, lng: p.lng })),
+        ];
+        const routingService = new RoutingService(defaultProviders);
+        consensusMatrix = await routingService.buildConsensusMatrix(
+          consensusPoints,
+          batchProviders,
+        );
+        consensusElapsedMs = Date.now() - tConsensus;
+        const finite = Object.values(consensusMatrix).filter((e) =>
+          Number.isFinite(e.distance),
+        ).length;
+        const unreach = Object.values(consensusMatrix).length - finite;
+        console.log(
+          `[API] Consensus: ${finite} finite, ${unreach} unreachable in ${consensusElapsedMs}ms`,
+        );
+      } catch (err) {
+        console.warn("[API] Consensus build failed, continuing without it:", err);
+        consensusMatrix = undefined;
+        consensusElapsedMs = Date.now() - tConsensus;
+      }
+    }
+
     // ── Step 3: Run all registered optimizers in parallel ──
     const tOpt = Date.now();
     const optimizedLocations = reachable;
@@ -112,6 +161,7 @@ export async function POST(request: NextRequest) {
       config: normConfig,
       matrix,
       strictMatrix: useStrictMatrix ? strictMatrix : undefined,
+      consensusMatrix,
     });
 
     // Best = lowest totalDistance, tiebreak by fewer days, then
@@ -163,6 +213,15 @@ export async function POST(request: NextRequest) {
         totalPairs,
         unreachableCount: unreachableForResponse.length,
         ...(useStrictMatrix ? { useStrictMatrix: true } : {}),
+        ...(useConsensus
+          ? {
+              useConsensus: true,
+              consensusElapsedMs,
+              consensusEntries: consensusMatrix
+                ? Object.keys(consensusMatrix).length
+                : 0,
+            }
+          : {}),
         winnerAlgorithm: best.algorithm,
         winnerLabel: best.label,
       },
