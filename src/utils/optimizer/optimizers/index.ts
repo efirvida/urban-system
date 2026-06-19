@@ -24,5 +24,7 @@ export { GeoapifyOptimizer } from "./geoapify";
 export const defaultOptimizers: Optimizer[] = [
   new CwOptimizer(),
   new Nsga2Optimizer(),
-  new GeoapifyOptimizer(),
+  // Geoapify Route Planner — desactivado: calidad de rutas inferior a los solvers locales.
+  // Para reactivar, descomentar la línea siguiente:
+  // new GeoapifyOptimizer(),
 ];
