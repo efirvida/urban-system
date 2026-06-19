@@ -66,11 +66,20 @@ export function useLeafletRoutes(
       // Build polyline coords
       const coords: [number, number][] = [];
       const dayGeo = options.routeGeometry?.get(day.day);
-      const usedRealGeo = dayGeo !== undefined && dayGeo.length > 1;
+      let usedRealGeo = dayGeo !== undefined && dayGeo.length > 1;
 
-      if (usedRealGeo) {
-        coords.push(...dayGeo.map((c) => [c[1], c[0]] as [number, number]));
-      } else {
+      if (usedRealGeo && dayGeo) {
+        const mapped = dayGeo.map((c) => [c[1], c[0]] as [number, number]);
+        // Validate coords — skip if any NaN
+        const valid = mapped.every((c) => isFinite(c[0]) && isFinite(c[1]));
+        if (valid) {
+          coords.push(...mapped);
+        } else {
+          usedRealGeo = false; // fallback to stops
+        }
+      }
+
+      if (!usedRealGeo) {
         for (const s of day.stops) {
           coords.push([s.lat, s.lng]);
         }
