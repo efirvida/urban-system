@@ -33,6 +33,7 @@ export function useLeafletRoutes(
   const groupsRef = useRef<Map<number, L.LayerGroup>>(new Map());
   const onPOIClickRef = useRef(options.onPOIClick);
   const poiDataRef = useRef(new Map<string, { lat: number; lng: number; day: number; name: string }>());
+  const dataKeyRef = useRef("");
 
   useEffect(() => {
     onPOIClickRef.current = options.onPOIClick;
@@ -163,23 +164,28 @@ export function useLeafletRoutes(
       }
     }
 
-    // Fit map to all route coordinates
-    const allCoords: [number, number][] = [];
-    for (const day of options.routes) {
-      const dayGeo = options.routeGeometry?.get(day.day);
-      if (dayGeo && dayGeo.length > 1) {
-        allCoords.push(...dayGeo.map((c) => [c[1], c[0]] as [number, number]));
-      } else {
-        for (const s of day.stops) {
-          if (!s.isHome) allCoords.push([s.lat, s.lng]);
+    // Fit map to all route coordinates — solo si los datos espaciales cambiaron
+    const spatialKey = JSON.stringify(options.routes.map(d => `${d.day}:${d.stops.length}`).join(","));
+    const dataChanged = spatialKey !== dataKeyRef.current;
+    if (dataChanged) {
+      dataKeyRef.current = spatialKey;
+      const allCoords: [number, number][] = [];
+      for (const day of options.routes) {
+        const dayGeo = options.routeGeometry?.get(day.day);
+        if (dayGeo && dayGeo.length > 1) {
+          allCoords.push(...dayGeo.map((c) => [c[1], c[0]] as [number, number]));
+        } else {
+          for (const s of day.stops) {
+            if (!s.isHome) allCoords.push([s.lat, s.lng]);
+          }
         }
       }
-    }
-    if (allCoords.length > 0) {
-      try {
-        const bounds = L.latLngBounds(allCoords);
-        map.fitBounds(bounds, { padding: [80, 80], maxZoom: 16 });
-      } catch {}
+      if (allCoords.length > 0) {
+        try {
+          const bounds = L.latLngBounds(allCoords);
+          map.fitBounds(bounds, { padding: [80, 80], maxZoom: 16 });
+        } catch {}
+      }
     }
   }, [mapRef, options]); // eslint-disable-line react-hooks/exhaustive-deps
 
