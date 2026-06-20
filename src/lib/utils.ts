@@ -6,14 +6,28 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Format distance in km to a readable string */
-export function formatDistance(km: number): string {
+/**
+ * Format distance in km to a readable string.
+ *
+ * The numeric part uses `Intl.NumberFormat` so the decimal separator
+ * matches the active locale (`1.2 km` in `en/es`, `1,2 km` in `pt-BR`).
+ * Unit suffixes (`km`, `m`) are caller-supplied — the compact Latin
+ * abbreviations are universally understood and don't need translation.
+ */
+export function formatDistance(km: number, locale = "pt-BR"): string {
+  const fmt = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
   if (km < 1) return `${(km * 1000).toFixed(0)} m`;
-  return `${km.toFixed(1)} km`;
+  return `${fmt.format(km)} km`;
 }
 
-/** Format hours to a readable duration string */
-export function formatDuration(hours: number): string {
+/**
+ * Format hours to a readable duration string.
+ *
+ * The `locale` parameter is accepted for signature parity with
+ * `formatDistance`; the rendered output is unit-based (`Xh Ymin`) and
+ * doesn't use locale-sensitive number formatting yet.
+ */
+export function formatDuration(hours: number, _locale = "pt-BR"): string {
   const h = Math.floor(hours);
   const m = Math.round((hours - h) * 60);
   if (h === 0) return `${m} min`;

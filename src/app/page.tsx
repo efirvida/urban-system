@@ -29,6 +29,8 @@ import { applyMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
 import { buildDistanceMatrices, fetchAllRouteGeometries, MatrixProgress, RouteSource } from "@/utils/clientRouting";
 import { reoptimizeDay } from "@/utils/routerOptimizer";
+import { useTranslation } from "react-i18next";
+import LocaleSwitcher from "@/i18n/LocaleSwitcher";
 
 // ─── Matrix cache (localStorage) ─────────────────────────────
 // Format: { d: Record<"i,j", km>, home?: { lat, lng } }
@@ -145,20 +147,25 @@ import MapPOIActionBar from "@/components/MapPOIActionBar";
 import FloatingUnassignedPanel from "@/components/FloatingUnassignedPanel";
 
 // ─── Phase definition ───────────────────────────────────────
+// Phase keys are stable (used in URL/state); labels are translated
+// at render time so the wizard step text follows the active locale.
 
-const PHASES = [
-  { key: "upload", label: "Cargar", Icon: FolderOpen },
-  { key: "mapping", label: "Columnas", Icon: ClipboardList },
-  { key: "review", label: "Revisar", Icon: Pencil },
-  { key: "config", label: "Configurar", Icon: Settings },
-  { key: "results", label: "Resultados", Icon: CheckCheck },
-] as const;
-
-type PhaseKey = (typeof PHASES)[number]["key"];
+type PhaseKey = "upload" | "mapping" | "review" | "config" | "results";
 
 // ─── Component ──────────────────────────────────────────────
 
 export default function Home() {
+  // ── i18n ──
+  const { t, i18n } = useTranslation();
+
+  const PHASES = [
+    { key: "upload", label: t("wizard.steps.upload"), Icon: FolderOpen },
+    { key: "mapping", label: t("wizard.steps.mapping"), Icon: ClipboardList },
+    { key: "review", label: t("wizard.steps.review"), Icon: Pencil },
+    { key: "config", label: t("wizard.steps.config"), Icon: Settings },
+    { key: "results", label: t("wizard.steps.results"), Icon: CheckCheck },
+  ] as const;
+
   // ── Navigation ──
   const [phase, setPhase] = useState<PhaseKey>("upload");
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -264,7 +271,7 @@ export default function Home() {
         return new Set(allDays.filter((d) => d !== targetDay));
       });
 
-      const home: Location = { name: "Casa", lat: config.homeLat, lng: config.homeLng };
+      const home: Location = { name: t("routeEditor.home"), lat: config.homeLat, lng: config.homeLng };
       const stopsToLocs = (stops: Array<{ name: string; lat: number; lng: number; isHome?: boolean }>) =>
         stops.filter((s) => !s.isHome).map((s) => ({ name: s.name, lat: s.lat, lng: s.lng }));
 
@@ -312,7 +319,7 @@ export default function Home() {
       });
       setPreviewDays(preview);
     },
-    [selectedPOI, editDaysPreview, config]
+    [selectedPOI, editDaysPreview, config, t]
   );
 
   const handleAcceptMove = useCallback(() => {
@@ -444,11 +451,11 @@ export default function Home() {
         setSidebarOpen(true);
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Error al aplicar el mapeo"
+          err instanceof Error ? err.message : t("wizard.errors.applyMapping")
         );
       }
     },
-    []
+    [t]
   );
 
   const handleRowsChange = useCallback((rows: ValidatedRow[]) => {
@@ -470,11 +477,11 @@ export default function Home() {
     console.log(`${FLOW} Config:`, JSON.stringify({ homeLat: config.homeLat, homeLng: config.homeLng, constraintType: config.constraintType, constraintValue: config.constraintValue, avgSpeed: config.avgSpeed, visitTime: config.visitTime }));
 
     if (locations.length === 0) {
-      setError("No hay ubicaciones válidas.");
+      setError(t("wizard.errors.noValidLocations"));
       return;
     }
     if (!config.homeLat || !config.homeLng) {
-      setError("Configura las coordenadas de la casa.");
+      setError(t("wizard.errors.configureHome"));
       return;
     }
 
@@ -665,9 +672,7 @@ export default function Home() {
         }
       }
       if (!winner) {
-        throw new Error(
-          "Ningún optimizador pudo resolver el problema. Probá reducir las ubicaciones o revisar las conexiones de ruta.",
-        );
+        throw new Error(t("wizard.errors.noResult"));
       }
       const okCount = allResults.filter((r) => r !== null).length;
       console.log(
@@ -745,12 +750,12 @@ export default function Home() {
       setSidebarOpen(true);
     } catch (err) {
       console.error(`${FLOW} ERROR:`, err);
-      setError(err instanceof Error ? err.message : "Error inesperado");
+      setError(err instanceof Error ? err.message : t("wizard.errors.unexpectedError"));
       setOptimizePhase("error");
     } finally {
       setLoading(false);
     }
-  }, [locations, config, algorithm, routeSource]);
+  }, [locations, config, algorithm, routeSource, t]);
 
   const handlePlaceHome = useCallback(
     (lat: number, lng: number) => {
@@ -842,7 +847,7 @@ export default function Home() {
       // Trying to exit — check for unsaved changes
       if (editorDirty) {
         const ok = window.confirm(
-          "¿Descartar cambios sin guardar?\n\nTienes cambios en el editor que se perderán."
+          t("wizardPage.confirmDiscard")
         );
         if (!ok) return;
       }
@@ -1012,7 +1017,7 @@ export default function Home() {
                     onTogglePlaceHome={handleTogglePlaceHome}
                   />
                   <div className="text-center text-xs text-gray-400 bg-gray-50 rounded-lg p-2 border border-gray-200">
-                    Se ejecutan ambos algoritmos — se muestra el mejor resultado
+                    {t("wizardPage.bothAlgorithms")}
                   </div>
                   <OptimizeButton
                     onClick={handleOptimize}
@@ -1023,7 +1028,7 @@ export default function Home() {
                     onClick={() => setPhase("review")}
                     className="btn-secondary w-full text-sm"
                   >
-                    ← Volver a editar ubicaciones
+                    {t("wizardPage.backToEditLocations")}
                   </button>
                 </>
               ) : (
@@ -1057,7 +1062,6 @@ export default function Home() {
                     return new Set(allDays.filter((d) => d !== day));
                   })
                 }
-                routingLabel="Rutas optimizadas"
                 expandedDay={sidebarExpandedDay}
                 onExpandedDayChange={setSidebarExpandedDay}
                 results={optimizerResults ?? undefined}
@@ -1065,6 +1069,7 @@ export default function Home() {
                 winnerAlgorithm={winnerAlgorithm}
                 onAlgorithmChange={handleAlgorithmChange}
                 useConsensus={useConsensus}
+                locale={i18n.language}
               />
               )}
 
@@ -1089,8 +1094,10 @@ export default function Home() {
                   )}
                 >
                   {editMode
-                    ? (editorDirty ? "Terminar edición (con cambios)" : "Terminar edición")
-                    : "Editar rutas"}
+                    ? (editorDirty
+                        ? t("routeEditor.finishEditingWithChanges")
+                        : t("routeEditor.finishEditing"))
+                    : t("routeEditor.editRoutes")}
                 </button>
               )}
 
@@ -1138,14 +1145,14 @@ export default function Home() {
                   onClick={() => setPhase("config")}
                   className="btn-secondary w-full text-sm"
                 >
-                  ← Volver a configuración
+                  {t("wizardPage.backToConfig")}
                 </button>
                 <button
                   onClick={handleReset}
                   className="btn-secondary w-full text-sm inline-flex items-center justify-center gap-1.5"
                 >
                   <PlusCircle className="w-4 h-4" />
-                  Nueva optimización
+                  {t("wizardPage.newOptimization")}
                 </button>
               </div>
             </div>
@@ -1160,6 +1167,12 @@ export default function Home() {
   // ── Render ──
   return (
     <div className="h-screen w-screen overflow-hidden relative bg-gray-100">
+      {/* ── Locale switcher — top-right, always visible. Lives in the
+          wizard header area alongside the step indicators. ── */}
+      <div className="fixed top-4 right-4 z-40 bg-white border border-gray-200 rounded-lg shadow-sm px-2 py-1">
+        <LocaleSwitcher />
+      </div>
+
       {/* ── Full-screen map ── */}
       <MapView
         data={mapData}
@@ -1230,7 +1243,7 @@ export default function Home() {
           <span className="flex-1">{error}</span>
           <button
             onClick={() => setError(null)}
-            aria-label="Cerrar error"
+            aria-label={t("ariaLabels.closeError")}
             className="text-red-400 hover:text-red-600 inline-flex items-center"
           >
             <X className="w-4 h-4" aria-hidden="true" />
@@ -1252,7 +1265,7 @@ export default function Home() {
             onClick={handleReset}
             className="text-xs text-gray-400 hover:text-blue-600 transition-colors mb-3 block"
           >
-            ← Nueva optimización
+            {t("wizardPage.sidebarNewOptimization")}
           </button>
         )}
 
