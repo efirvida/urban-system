@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 interface SidebarProps {
@@ -21,12 +22,13 @@ export default function Sidebar({
   subtitle,
   children,
 }: SidebarProps) {
+  const { t } = useTranslation();
   return (
     <>
       {/* Toggle button — always visible */}
       <button
         onClick={onToggle}
-        aria-label={open ? "Cerrar panel" : "Abrir panel"}
+        aria-label={open ? t("sidebar.ariaLabels.closePanel") : t("sidebar.ariaLabels.openPanel")}
         className={cn(
           "fixed top-4 z-30 w-10 h-10 flex items-center justify-center rounded-full shadow-md transition-colors",
           "bg-white hover:bg-gray-100 border border-gray-200 text-gray-600"

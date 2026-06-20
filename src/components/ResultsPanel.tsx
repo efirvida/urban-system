@@ -10,6 +10,7 @@ import {
   BarChart3,
   Trophy,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { DayRoute, OptimizerResult } from "@/types";
 import { formatDistance, formatDuration, getRouteColor, cn } from "@/lib/utils";
 
@@ -41,6 +42,8 @@ interface ResultsPanelProps {
   onAlgorithmChange?: (algorithm: string) => void;
   /** Consensus-matrix change: `_meta.useConsensus` flag from the API. */
   useConsensus?: boolean;
+  /** Active locale for locale-aware formatters. */
+  locale: string;
 }
 
 export default function ResultsPanel({
@@ -59,7 +62,9 @@ export default function ResultsPanel({
   activeAlgorithm,
   onAlgorithmChange,
   useConsensus,
+  locale,
 }: ResultsPanelProps) {
+  const { t } = useTranslation();
   const [internalDay, setInternalDay] = useState<number | null>(1);
   const activeExpanded = controlledDay !== undefined ? controlledDay : internalDay;
 
@@ -85,7 +90,7 @@ export default function ResultsPanel({
         <div className="card-base overflow-hidden">
           <div className="card-header flex items-center gap-2">
             <BarChart3 className="w-4 h-4 text-blue-600" />
-            <span>Algoritmo</span>
+            <span>{t("resultsPanel.algorithm")}</span>
           </div>
           <div className="card-body p-2">
             <div className="flex flex-col gap-1">
@@ -102,7 +107,7 @@ export default function ResultsPanel({
                         ? "bg-blue-50 text-blue-800 shadow-sm border border-blue-300 font-medium"
                         : "text-gray-600 hover:bg-gray-50 border border-transparent",
                     )}
-                    title={`${tab.label} — ${tab.totalDays}d · ${formatDistance(tab.totalDistance)}`}
+                    title={`${tab.label} — ${tab.totalDays}d · ${formatDistance(tab.totalDistance, locale)}`}
                   >
                     <span className="flex items-center gap-2">
                       {isWinner && (
@@ -119,14 +124,14 @@ export default function ResultsPanel({
                                 ? "bg-amber-100 text-amber-700"
                                 : "bg-red-100 text-red-700",
                           )}
-                          title={`Fiabilidad media: ${(tab.avgReliability * 100).toFixed(0)}%`}
+                          title={t("resultsPanel.averageReliability", { percent: (tab.avgReliability * 100).toFixed(0) })}
                         >
                           {(tab.avgReliability * 100).toFixed(0)}%
                         </span>
                       )}
                     </span>
                     <span className="text-xs font-mono text-gray-500">
-                      {tab.totalDays}d · {formatDistance(tab.totalDistance)}
+                      {tab.totalDays}d · {formatDistance(tab.totalDistance, locale)}
                     </span>
                   </button>
                 );
@@ -134,10 +139,7 @@ export default function ResultsPanel({
             </div>
             {tabs.length < (results?.length ?? 0) && (
               <div className="text-xs text-gray-400 mt-2 px-3">
-                {results!.length - tabs.length} algoritmo
-                {results!.length - tabs.length === 1 ? "" : "s"} no
-                {tabs.length === 1 ? "" : "n"} disponible
-                {tabs.length === 1 ? "" : "s"} (sin API key o falló).
+                {t("resultsPanel.algorithmsUnavailable", { count: results!.length - tabs.length })}
               </div>
             )}
           </div>
@@ -149,33 +151,33 @@ export default function ResultsPanel({
         <div className="card-header flex items-center justify-between">
           <span className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4 text-blue-600" />
-            Resumen Global
+            {t("resultsPanel.globalSummary")}
           </span>
           {routingLabel && (
             <span className="text-xs font-normal text-gray-400">{routingLabel}</span>
           )}
           {useConsensus && (
             <span className="text-[10px] font-medium text-green-700 bg-green-50 px-1.5 py-0.5 rounded-full">
-              Consenso 3 proveedores
+              {t("resultsPanel.consensus")}
             </span>
           )}
         </div>
         <div className="card-body grid grid-cols-3 gap-4 text-center">
           <div>
             <div className="text-2xl font-bold text-blue-600">{totalDays}</div>
-            <div className="text-xs text-gray-500">Días</div>
+            <div className="text-xs text-gray-500">{t("resultsPanel.days")}</div>
           </div>
           <div>
             <div className="text-2xl font-bold text-green-600">
               {totalLocations}
             </div>
-            <div className="text-xs text-gray-500">Ubicaciones</div>
+            <div className="text-xs text-gray-500">{t("resultsPanel.locations")}</div>
           </div>
           <div>
             <div className="text-2xl font-bold text-amber-600">
-              {formatDistance(totalDistance)}
+              {formatDistance(totalDistance, locale)}
             </div>
-            <div className="text-xs text-gray-500">Total recorrido</div>
+            <div className="text-xs text-gray-500">{t("resultsPanel.totalDistance")}</div>
           </div>
         </div>
       </div>
@@ -202,9 +204,9 @@ export default function ResultsPanel({
                 className="w-3 h-3 rounded-full inline-block"
                 style={{ backgroundColor: color }}
               />
-              <span className="font-semibold">Día {day.day}</span>
+              <span className="font-semibold">{t("dayColumn.day", { day: day.day })}</span>
               <span className="text-xs text-gray-400">
-                {visitStops.length} paradas
+                {t("resultsPanel.stops", { count: visitStops.length })}
               </span>
             </div>
             <div className="flex items-center gap-3 text-xs text-gray-500">
@@ -217,8 +219,8 @@ export default function ResultsPanel({
                   }}
                   aria-label={
                     hiddenDays?.has(day.day)
-                      ? `Mostrar día ${day.day} en mapa`
-                      : `Ocultar día ${day.day} en mapa`
+                      ? t("resultsPanel.ariaLabels.showDayInMap", { day: day.day })
+                      : t("resultsPanel.ariaLabels.hideDayInMap", { day: day.day })
                   }
                   className={cn(
                     "w-7 h-7 flex items-center justify-center rounded-full border transition-colors text-xs",
@@ -234,8 +236,8 @@ export default function ResultsPanel({
                   )}
                 </button>
               )}
-              <span>{formatDistance(day.totalDistance)}</span>
-              <span>{formatDuration(day.totalTime)}</span>
+              <span>{formatDistance(day.totalDistance, locale)}</span>
+              <span>{formatDuration(day.totalTime, locale)}</span>
               <ChevronDown
                 className={cn(
                   "w-4 h-4 transition-transform",
@@ -249,9 +251,9 @@ export default function ResultsPanel({
               <div className="card-body p-0">
                 {/* Day summary bar */}
                 <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b text-xs text-gray-500">
-                  <span className="flex-1">{formatDistance(day.totalDistance)} distancia</span>
-                  <span>{formatDuration(day.totalTime)} duración</span>
-                  <span>{visitStops.length} visitas</span>
+                  <span className="flex-1">{`${formatDistance(day.totalDistance, locale)} ${t("resultsPanel.distance")}`}</span>
+                  <span>{`${formatDuration(day.totalTime, locale)} ${t("resultsPanel.duration")}`}</span>
+                  <span>{t("resultsPanel.visits", { count: visitStops.length })}</span>
                   <a
                     href={(() => {
                       // Google Maps expects lat,lng format (NOT lng,lat)
@@ -261,7 +263,7 @@ export default function ResultsPanel({
                     target="_blank"
                     rel="noopener noreferrer"
                     className="ml-auto text-blue-500 hover:text-blue-700 underline shrink-0 inline-flex items-center gap-1"
-                    title="Ver ruta en Google Maps"
+                    title={t("resultsPanel.viewInGoogleMaps")}
                   >
                     <MapIcon className="w-3.5 h-3.5" />
                     Maps
@@ -301,7 +303,7 @@ export default function ResultsPanel({
                         </div>
                         {stop.distanceFromPrev > 0 && (
                           <div className="text-xs text-gray-400">
-                            {formatDistance(stop.distanceFromPrev)} desde parada anterior
+                            {`${formatDistance(stop.distanceFromPrev, locale)} ${t("resultsPanel.fromPreviousStop")}`}
                           </div>
                         )}
                       </div>
@@ -309,10 +311,10 @@ export default function ResultsPanel({
                       {/* Cumulative */}
                       <div className="text-right text-xs text-gray-400 shrink-0">
                         {stop.cumulativeDistance > 0 && (
-                          <div>{formatDistance(stop.cumulativeDistance)}</div>
+                          <div>{formatDistance(stop.cumulativeDistance, locale)}</div>
                         )}
                         {stop.cumulativeTime > 0 && (
-                          <div>{formatDuration(stop.cumulativeTime)}</div>
+                          <div>{formatDuration(stop.cumulativeTime, locale)}</div>
                         )}
                       </div>
                     </div>

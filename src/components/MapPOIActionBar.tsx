@@ -1,6 +1,7 @@
 "use client";
 
 import { MapPin, Check, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 // Helper — render a check icon only when the predicate is true. Keeps the
@@ -32,6 +33,7 @@ export default function MapPOIActionBar({
   onAccept,
   onCancel,
 }: MapPOIActionBarProps) {
+  const { t } = useTranslation();
   const hasPreview = previewTargetDay !== null && previewTargetDay !== currentDay;
 
   return (
@@ -45,7 +47,7 @@ export default function MapPOIActionBar({
           </span>
           <span className="text-xs text-gray-400">·</span>
           <span className="text-xs font-medium text-blue-600">
-            Día {currentDay}
+            {t("mapPOI.day", { day: currentDay })}
           </span>
         </div>
 
@@ -66,7 +68,7 @@ export default function MapPOIActionBar({
                 )}
               >
                 <Checkmark show={isCurrent && !isSelected} />
-                Día {d}
+                {t("mapPOI.day", { day: d })}
               </button>
             );
           })}
@@ -80,7 +82,7 @@ export default function MapPOIActionBar({
             )}
           >
             <Checkmark show={previewTargetDay === UNASSIGNED} />
-            Sin ruta
+            {t("mapPOI.withoutRoute")}
           </button>
         </div>
 
@@ -89,19 +91,19 @@ export default function MapPOIActionBar({
           <div className="flex gap-2 pt-2 border-t border-gray-100">
             <button
               onClick={onAccept}
-              aria-label="Aceptar movimiento de POI"
+              aria-label={t("mapPOI.ariaLabels.acceptMovePOI")}
               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-colors"
             >
               <Check className="w-3.5 h-3.5" aria-hidden="true" />
-              Aceptar
+              {t("mapPOI.accept")}
             </button>
             <button
               onClick={onCancel}
-              aria-label="Cancelar movimiento de POI"
+              aria-label={t("mapPOI.ariaLabels.cancelMovePOI")}
               className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-white text-gray-600 text-xs font-medium border border-gray-200 hover:bg-gray-50 transition-colors"
             >
               <X className="w-3.5 h-3.5" aria-hidden="true" />
-              Cancelar
+              {t("mapPOI.cancel")}
             </button>
           </div>
         )}

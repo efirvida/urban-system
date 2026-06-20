@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { ChevronDown, Clock, Eye, EyeOff, MapPin } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { DayRoute, Config } from "@/types";
 import { cn, formatDistance, formatDuration } from "@/lib/utils";
 import StopItem from "./StopItem";
@@ -27,6 +29,8 @@ interface DayColumnProps {
   onToggleVisibility?: () => void;
   /** Initial collapsed state — defaults to expanded. */
   defaultCollapsed?: boolean;
+  /** Active locale for locale-aware formatters. */
+  locale: string;
 }
 
 /**
@@ -40,7 +44,8 @@ interface DayColumnProps {
  */
 function computeGauge(
   day: DayRoute,
-  config: Config
+  config: Config,
+  t: TFunction
 ): { ratio: number; label: string; hoursRatio?: number; visitsRatio?: number } {
   const usedHours = day.totalTime;
   const visitCount = day.totalStops;
@@ -48,11 +53,11 @@ function computeGauge(
   switch (config.constraintType) {
     case "hours": {
       const ratio = config.constraintValue > 0 ? usedHours / config.constraintValue : 0;
-      return { ratio, label: `${formatDuration(usedHours)} / ${config.constraintValue.toFixed(1)}h` };
+      return { ratio, label: `${formatDuration(usedHours)} / ${config.constraintValue.toFixed(1)}${t("units.h")}` };
     }
     case "visits": {
       const ratio = config.constraintValue > 0 ? visitCount / config.constraintValue : 0;
-      return { ratio, label: `${visitCount} / ${Math.round(config.constraintValue)} visitas` };
+      return { ratio, label: `${visitCount} / ${Math.round(config.constraintValue)} ${t("units.visits")}` };
     }
     case "hours+visits": {
       const hoursRatio = config.constraintValue > 0 ? usedHours / config.constraintValue : 0;
@@ -62,7 +67,7 @@ function computeGauge(
       const ratio = Math.max(hoursRatio, visitsRatio);
       return {
         ratio,
-        label: `${formatDuration(usedHours)} / ${config.constraintValue.toFixed(1)}h  ·  ${visitCount} / ${maxVisits}`,
+        label: `${formatDuration(usedHours)} / ${config.constraintValue.toFixed(1)}${t("units.h")}  ·  ${visitCount} / ${maxVisits}`,
         hoursRatio,
         visitsRatio,
       };
@@ -94,7 +99,9 @@ export default function DayColumn({
   hidden,
   onToggleVisibility,
   defaultCollapsed = false,
+  locale,
 }: DayColumnProps) {
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
   // The whole column body is a droppable zone.
@@ -103,7 +110,7 @@ export default function DayColumn({
     data: { kind: "day", dayIndex, dayNumber: day.day },
   });
 
-  const gauge = computeGauge(day, config);
+  const gauge = computeGauge(day, config, t);
   const gaugeFillPct = Math.min(gauge.ratio, 1) * 100;
   const visitStops = day.stops.filter((s) => !s.isHome);
 
@@ -129,10 +136,10 @@ export default function DayColumn({
             style={{ backgroundColor: color }}
           />
           <span className="text-sm font-semibold text-gray-800">
-            Día {day.day}
+            {t("dayColumn.day", { day: day.day })}
           </span>
           <span className="text-[10px] text-gray-400 shrink-0">
-            {visitStops.length} paradas
+            {t("dayColumn.stops", { count: visitStops.length })}
           </span>
         </div>
 
@@ -144,7 +151,7 @@ export default function DayColumn({
                 e.stopPropagation();
                 onToggleVisibility();
               }}
-              aria-label={hidden ? `Mostrar ruta día ${day.day} en mapa` : `Ocultar ruta día ${day.day} en mapa`}
+              aria-label={hidden ? t("dayColumn.ariaLabels.showRouteInMap", { day: day.day }) : t("dayColumn.ariaLabels.hideRouteInMap", { day: day.day })}
               className={cn(
                 "w-6 h-6 flex items-center justify-center rounded transition-colors",
                 hidden
@@ -155,8 +162,8 @@ export default function DayColumn({
               {hidden ? <EyeOff className="w-3.5 h-3.5" aria-hidden="true" /> : <Eye className="w-3.5 h-3.5" aria-hidden="true" />}
             </button>
           )}
-          <span>{formatDistance(day.totalDistance)}</span>
-          <span>{formatDuration(day.totalTime)}</span>
+          <span>{formatDistance(day.totalDistance, locale)}</span>
+          <span>{formatDuration(day.totalTime, locale)}</span>
           <ChevronDown
             className={cn(
               "w-3.5 h-3.5 transition-transform",
@@ -240,7 +247,7 @@ export default function DayColumn({
 
           {visitStops.length === 0 && (
             <div className="text-[10px] text-gray-400 italic text-center py-2">
-              (Día vacío — soltar POIs aquí)
+              {t("dayColumn.emptyDay")}
             </div>
           )}
         </div>
@@ -257,13 +264,14 @@ function SecondaryGaugeBar({
   hoursRatio: number;
   visitsRatio: number;
 }) {
+  const { t } = useTranslation();
   // The binding (larger) one is shown in the main bar above. Show the
   // looser one as a thin secondary line so the user sees both.
   const loose = Math.min(hoursRatio, visitsRatio);
   const label =
     hoursRatio < visitsRatio
-      ? `horas ${Math.round(hoursRatio * 100)}%`
-      : `visitas ${Math.round(visitsRatio * 100)}%`;
+      ? t("dayColumn.gauge.hours", { percent: Math.round(hoursRatio * 100) })
+      : t("dayColumn.gauge.visits", { percent: Math.round(visitsRatio * 100) });
   return (
     <div className="mt-1.5 flex items-center gap-2">
       <div className="flex-1 h-1 rounded-full bg-gray-100 overflow-hidden">

@@ -2,6 +2,7 @@
 
 import { useCallback, useState, useRef } from "react";
 import { FileSpreadsheet } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { RawFileData } from "@/types";
 import { extractRawData, autoDetectMapping } from "@/utils/parser";
 import { cn } from "@/lib/utils";
@@ -11,6 +12,7 @@ interface FileUploadProps {
 }
 
 export default function FileUpload({ onFileLoaded }: FileUploadProps) {
+  const { t } = useTranslation();
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -23,9 +25,7 @@ export default function FileUpload({ onFileLoaded }: FileUploadProps) {
 
       const ext = file.name.split(".").pop()?.toLowerCase();
       if (!ext || !["ods", "xlsx", "xls"].includes(ext)) {
-        setError(
-          "Formato no soportado. Usa archivos .ods, .xlsx o .xls."
-        );
+        setError(t("fileUpload.errors.unsupportedFormat"));
         setLoading(false);
         return;
       }
@@ -38,22 +38,19 @@ export default function FileUpload({ onFileLoaded }: FileUploadProps) {
         const suggested = autoDetectMapping(rawData.columns);
         if (!suggested) {
           // Still pass the data — the user can map manually
-          setError(
-            "No se pudieron detectar automáticamente las columnas " +
-              "de latitud/longitud. Seleccionalas manualmente."
-          );
+          setError(t("fileUpload.errors.autoDetectFailed"));
         }
 
         onFileLoaded(rawData);
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Error al leer el archivo"
+          err instanceof Error ? err.message : t("fileUpload.errors.readError")
         );
       } finally {
         setLoading(false);
       }
     },
-    [onFileLoaded]
+    [onFileLoaded, t]
   );
 
   const handleDrop = useCallback(
@@ -109,19 +106,19 @@ export default function FileUpload({ onFileLoaded }: FileUploadProps) {
         {loading ? (
           <div className="space-y-3">
             <div className="animate-spin w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full mx-auto" />
-            <p className="text-sm text-gray-600">Procesando archivo...</p>
+            <p className="text-sm text-gray-600">{t("fileUpload.processing")}</p>
           </div>
         ) : (
           <div className="space-y-3">
             <FileSpreadsheet className="w-10 h-10 text-gray-300 mx-auto" aria-hidden="true" />
             <p className="text-base font-medium text-gray-700">
-              Arrastra tu archivo .ods aquí
+              {t("fileUpload.dragHere")}
             </p>
             <p className="text-sm text-gray-400">
-              o haz clic para seleccionar (también .xlsx / .xls)
+              {t("fileUpload.clickToSelect")}
             </p>
             <div className="inline-block text-xs bg-gray-200 rounded px-2 py-1 text-gray-500">
-              Seleccionarás las columnas después
+              {t("fileUpload.selectColumnsLater")}
             </div>
           </div>
         )}

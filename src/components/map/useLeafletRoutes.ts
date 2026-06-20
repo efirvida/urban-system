@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import L from "leaflet";
+import i18n from "@/i18n/config";
 import type { RouteSource } from "@/utils/clientRouting";
 
 const ROUTE_COLORS = [
@@ -153,7 +154,7 @@ export function useLeafletRoutes(
         }
 
         circle.bindPopup(
-          `<strong>${stop.name}</strong><br/>Día ${day.day} · #${stop.sequence}<br/>${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`
+          `<strong>${stop.name}</strong><br/>${i18n.t("markerPopup.day", { day: day.day })} · #${stop.sequence}<br/>${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}`
         );
 
         const pd = { lat: stop.lat, lng: stop.lng, day: day.day, name: stop.name };

@@ -2,6 +2,7 @@
 
 import { useDroppable, useDraggable } from "@dnd-kit/core";
 import { MapPin } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Location } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +17,7 @@ interface UnassignedPoolProps {
  * Each POI is itself draggable — pick it up to add it to a DayColumn.
  */
 export default function UnassignedPool({ pois }: UnassignedPoolProps) {
+  const { t } = useTranslation();
   const { isOver, setNodeRef } = useDroppable({
     id: "pool-unassigned",
     data: { kind: "pool" },
@@ -36,7 +38,7 @@ export default function UnassignedPool({ pois }: UnassignedPoolProps) {
       <div className="flex items-center gap-2 mb-2">
         <MapPin className="w-3.5 h-3.5 text-amber-600" />
         <span className="text-xs font-semibold text-amber-700">
-          POIs sin ruta ({pois.length})
+          {t("unassignedPool.title", { count: pois.length })}
         </span>
       </div>
 
@@ -51,6 +53,7 @@ export default function UnassignedPool({ pois }: UnassignedPoolProps) {
 
 /** A single draggable POI chip in the unassigned pool. */
 function UnassignedChip({ poi }: { poi: Location }) {
+  const { t } = useTranslation();
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
       id: `pool-${poi.lat.toFixed(5)}-${poi.lng.toFixed(5)}-${poi.name}`,
@@ -80,7 +83,7 @@ function UnassignedChip({ poi }: { poi: Location }) {
         "bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200",
         isDragging && "shadow-md ring-2 ring-amber-300"
       )}
-      title={`${poi.name} — arrastrar a un día`}
+      title={`${poi.name} — ${t("unassignedPool.dragHint")}`}
       {...listeners}
       {...attributes}
     >

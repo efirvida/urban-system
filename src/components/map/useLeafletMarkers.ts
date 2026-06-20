@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import L from "leaflet";
+import i18n from "@/i18n/config";
 
 export interface MarkerData {
   routes?: Array<{
@@ -66,7 +67,7 @@ export function useLeafletMarkers(
         fillColor: "#f59e0b",
         fillOpacity: 0.9,
       }).addTo(map);
-      circle.bindPopup(`<strong>Casa</strong><br/>${home.lat.toFixed(4)}, ${home.lng.toFixed(4)}`);
+      circle.bindPopup(`<strong>${i18n.t("markerPopup.home")}</strong><br/>${home.lat.toFixed(4)}, ${home.lng.toFixed(4)}`);
       allPoints.push([home.lng, home.lat]);
     }
 
@@ -96,7 +97,7 @@ export function useLeafletMarkers(
           fillColor: "#ef4444",
           fillOpacity: 1,
         }).addTo(map);
-        circle.bindPopup(`<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}<br/>📍 Sin ruta`);
+        circle.bindPopup(`<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}<br/>📍 ${i18n.t("markerPopup.withoutRoute")}`);
         (circle as any)._poiData = { lat: loc.lat, lng: loc.lng, day: -1, name: loc.name };
         markersRef.current.set(`pin-${i}`, circle as any);
         allPoints.push([loc.lng, loc.lat]);

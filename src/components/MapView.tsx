@@ -3,6 +3,7 @@
 import { useRef, useEffect } from "react";
 import L from "leaflet";
 import { Car, Home, Ruler } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useLeafletMap } from "./map/useLeafletMap";
 import { useLeafletMarkers } from "./map/useLeafletMarkers";
 import { useLeafletRoutes } from "./map/useLeafletRoutes";
@@ -50,6 +51,7 @@ export default function MapView({
   highlightDay,
   selectedPOI,
 }: MapViewProps) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { mapRef, invalidateSize } = useLeafletMap(containerRef, {
@@ -137,12 +139,12 @@ export default function MapView({
           {REAL_ROAD_SOURCES.has(data.routingMode) ? (
             <>
               <Car className="w-3.5 h-3.5" />
-              Ruta real
+              {t("mapView.realRoute")}
             </>
           ) : (
             <>
               <Ruler className="w-3.5 h-3.5" aria-hidden="true" />
-              Línea recta
+              {t("mapView.straightLine")}
             </>
           )}
         </div>
@@ -151,7 +153,7 @@ export default function MapView({
       {placementMode === "home" && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-4 py-2 bg-blue-600 text-white rounded-full shadow-lg text-sm font-medium whitespace-nowrap inline-flex items-center gap-1.5">
           <Home className="w-4 h-4" aria-hidden="true" />
-          Haz clic en el mapa para colocar la casa
+          {t("mapView.placeHome")}
         </div>
       )}
 

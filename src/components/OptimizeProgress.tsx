@@ -1,6 +1,7 @@
 "use client";
 
 import { X, CheckCheck, RefreshCw } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { MatrixProgress } from "@/utils/clientRouting";
 
 interface OptimizeProgressProps {
@@ -16,6 +17,7 @@ export default function OptimizeProgress({
   totalLocations,
   error,
 }: OptimizeProgressProps) {
+  const { t } = useTranslation();
   // ── Error ──
   if (phase === "error") {
     return (
@@ -24,7 +26,7 @@ export default function OptimizeProgress({
           <X className="w-8 h-8 text-red-600" aria-hidden="true" />
         </div>
         <h3 className="text-lg font-semibold text-red-700 mb-2">
-          Error en la optimización
+          {t("optimizeProgress.errorTitle")}
         </h3>
         <p className="text-sm text-gray-500 max-w-sm">{error}</p>
       </div>
@@ -44,10 +46,10 @@ export default function OptimizeProgress({
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
         <h3 className="text-lg font-semibold text-gray-800 mb-2">
-          Ejecutando algoritmo...
+          {t("optimizeProgress.running")}
         </h3>
         <p className="text-sm text-gray-400">
-          Ordenando rutas con Clarke & Wright
+          {t("optimizeProgress.orderingRoutes")}
         </p>
       </div>
     );
@@ -62,13 +64,13 @@ export default function OptimizeProgress({
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
         <h3 className="text-lg font-semibold text-gray-800 mb-2">
-          Matriz de distancias
+          {t("optimizeProgress.matrixTitle")}
         </h3>
         <p className="text-sm text-gray-400">
-          Consultando Geoapify + ORS + OSRM para {totalLocations} ubicaciones...
+          {t("optimizeProgress.queryingProviders", { count: totalLocations })}
         </p>
         <p className="text-xs text-gray-300 mt-1">
-          {(totalLocations * (totalLocations - 1)) / 2} pares · 3 proveedores en paralelo
+          {t("optimizeProgress.pairCount", { count: (totalLocations * (totalLocations - 1)) / 2 })}
         </p>
       </div>
     );
@@ -77,10 +79,10 @@ export default function OptimizeProgress({
   const isComplete = p.percent >= 100;
   const etaText =
     p.etaSeconds > 120
-      ? `${Math.round(p.etaSeconds / 60)} min`
+      ? `${Math.round(p.etaSeconds / 60)} ${t("optimizeProgress.etaMin")}`
       : p.etaSeconds > 0
-      ? `${p.etaSeconds} seg`
-      : "calculando...";
+      ? `${p.etaSeconds} ${t("optimizeProgress.etaSeg")}`
+      : t("optimizeProgress.etaCalculating");
 
   return (
     <div className="py-6">
@@ -91,7 +93,7 @@ export default function OptimizeProgress({
           ) : (
             <RefreshCw className="w-5 h-5 text-blue-600 animate-spin" aria-hidden="true" />
           )}
-          {isComplete ? "Matriz de distancias completa" : "Calculando rutas"}
+          {isComplete ? t("optimizeProgress.complete") : t("optimizeProgress.calculating")}
         </h3>
         <p className="text-sm text-gray-400">
           {p.stage}
@@ -136,8 +138,8 @@ export default function OptimizeProgress({
       <div className="flex justify-center">
         <div className="bg-blue-50 rounded-lg p-3 text-center min-w-[120px]">
           <div className="text-lg font-bold text-blue-700">{p.current}</div>
-          <div className="text-xs text-blue-500">de {p.total}</div>
-          <div className="text-xs text-blue-400 mt-0.5">pares</div>
+          <div className="text-xs text-blue-500">{t("optimizeProgress.of")} {p.total}</div>
+          <div className="text-xs text-blue-400 mt-0.5">{t("optimizeProgress.pairs")}</div>
         </div>
       </div>
     </div>

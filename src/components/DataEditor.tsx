@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { Check, X, Search } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ValidatedRow, Location } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -14,12 +15,15 @@ interface DataEditorProps {
 
 type FilterOption = "all" | "valid" | "invalid" | "selected" | "unselected";
 
+const FILTER_KEYS: FilterOption[] = ["all", "valid", "invalid", "selected", "unselected"];
+
 export default function DataEditor({
   rows,
   onChange,
   onConfirm,
   onBack,
 }: DataEditorProps) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterOption>("all");
 
@@ -85,15 +89,15 @@ export default function DataEditor({
 
           if (field === "name") {
             newName = value.trim();
-            if (!newName) errors.push("Nombre vacío");
+            if (!newName) errors.push(t("dataEditor.errors.emptyName"));
           } else if (field === "lat") {
             newRawLat = value;
             const p = parseFloat(value.replace(",", "."));
             if (isNaN(p)) {
-              errors.push("Latitud inválida");
+              errors.push(t("dataEditor.errors.invalidLat"));
               newLat = null;
             } else if (p < -90 || p > 90) {
-              errors.push("Latitud fuera de rango");
+              errors.push(t("dataEditor.errors.latOutOfRange"));
               newLat = p;
             } else {
               newLat = p;
@@ -102,10 +106,10 @@ export default function DataEditor({
             newRawLng = value;
             const p = parseFloat(value.replace(",", "."));
             if (isNaN(p)) {
-              errors.push("Longitud inválida");
+              errors.push(t("dataEditor.errors.invalidLng"));
               newLng = null;
             } else if (p < -180 || p > 180) {
-              errors.push("Longitud fuera de rango");
+              errors.push(t("dataEditor.errors.lngOutOfRange"));
               newLng = p;
             } else {
               newLng = p;
@@ -126,7 +130,7 @@ export default function DataEditor({
         })
       );
     },
-    [rows, onChange]
+    [rows, onChange, t]
   );
 
   // ── Confirm ──
@@ -157,21 +161,13 @@ export default function DataEditor({
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre o coordenada..."
+            placeholder={t("dataEditor.searchPlaceholder")}
             className="input-field pl-8 text-sm"
           />
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {(
-            [
-              ["all", "Todas"],
-              ["valid", "Válidas"],
-              ["invalid", "Inválidas"],
-              ["selected", "Seleccionadas"],
-              ["unselected", "No seleccionadas"],
-            ] as [FilterOption, string][]
-          ).map(([key, label]) => (
+          {FILTER_KEYS.map((key) => (
             <button
               key={key}
               onClick={() => setFilter(key)}
@@ -182,7 +178,7 @@ export default function DataEditor({
                   : "bg-white text-gray-500 border-gray-200 hover:border-blue-300"
               )}
             >
-              {label}
+              {t(`dataEditor.filters.${key}`)}
             </button>
           ))}
         </div>
@@ -237,8 +233,8 @@ export default function DataEditor({
               <tr>
                 <td colSpan={5} className="p-6 text-center text-sm text-gray-400">
                   {search
-                    ? "Sin resultados para esa búsqueda"
-                    : "No hay filas para mostrar"}
+                    ? t("dataEditor.empty.noResults")
+                    : t("dataEditor.empty.noRows")}
                 </td>
               </tr>
             )}
@@ -266,7 +262,7 @@ export default function DataEditor({
                       handleEditField(row.id, "name", e.target.value)
                     }
                     className="w-full bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none px-1 py-0.5"
-                    placeholder="Sin nombre"
+                    placeholder={t("dataEditor.placeholders.noName")}
                   />
                 </td>
                 <td className="p-1.5">
@@ -303,7 +299,7 @@ export default function DataEditor({
                     </span>
                   ) : (
                     <span className="text-green-500">
-                      <Check className="w-3.5 h-3.5" aria-label="Fila válida" />
+                      <Check className="w-3.5 h-3.5" aria-label={t("dataEditor.ariaLabels.validRow")} />
                     </span>
                   )}
                 </td>
@@ -325,7 +321,7 @@ export default function DataEditor({
         >
           {selectedCount > 0
             ? `Confirmar ${selectedCount} →`
-            : "Selecciona al menos una"}
+            : t("dataEditor.selectionHint")}
         </button>
       </div>
     </div>

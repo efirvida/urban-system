@@ -1,6 +1,7 @@
 "use client";
 
 import { TriangleAlert, RotateCw, MapPin } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { UnreachablePoi } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,7 @@ export default function UnreachableWarning({
   onRetry,
   loading,
 }: UnreachableWarningProps) {
+  const { t } = useTranslation();
   if (unreachable.length === 0) return null;
 
   return (
@@ -31,7 +33,7 @@ export default function UnreachableWarning({
       <div className="card-header flex items-center justify-between bg-amber-100/60 border-amber-200 text-amber-800">
         <span className="flex items-center gap-2">
           <TriangleAlert className="w-4 h-4 text-amber-600" />
-          POIs sin ruta accesible
+          {t("unreachableWarning.title")}
         </span>
         <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-amber-200 text-amber-800">
           {unreachable.length}
@@ -40,8 +42,7 @@ export default function UnreachableWarning({
 
       <div className="card-body space-y-2">
         <p className="text-xs text-amber-700">
-          Estos puntos no pudieron conectarse a la red de rutas real desde la
-          casa. Revisa sus coordenadas o reintentá la consulta.
+          {t("unreachableWarning.description")}
         </p>
 
         <ul className="divide-y divide-amber-200/70 -mx-1">
@@ -61,7 +62,7 @@ export default function UnreachableWarning({
                 title={poi.reason}
                 className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-amber-200 text-amber-900 border-amber-300 shrink-0"
               >
-                {humanizeReason(poi.reason)}
+                {humanizeReason(poi.reason, t)}
               </span>
             </li>
           ))}
@@ -75,7 +76,7 @@ export default function UnreachableWarning({
           <RotateCw
             className={cn("w-3.5 h-3.5", loading && "animate-spin")}
           />
-          {loading ? "Reintentando..." : "Reintentar con todos"}
+          {loading ? t("unreachableWarning.retrying") : t("unreachableWarning.retry")}
         </button>
       </div>
     </div>
@@ -83,10 +84,10 @@ export default function UnreachableWarning({
 }
 
 /** Map server-side reason codes to short, user-facing Spanish labels. */
-function humanizeReason(reason: string): string {
+function humanizeReason(reason: string, t: (key: string) => string): string {
   switch (reason) {
     case "no_road_connection":
-      return "sin camino";
+      return t("unreachableWarning.noRoadConnection");
     default:
       return reason;
   }

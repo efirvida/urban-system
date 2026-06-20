@@ -1,6 +1,7 @@
 "use client";
 
 import { Save, Undo2, Redo2, XCircle, Pencil } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 interface EditorToolbarProps {
@@ -32,16 +33,17 @@ export default function EditorToolbar({
   onUndo,
   onRedo,
 }: EditorToolbarProps) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-2.5">
       <div className="flex items-center gap-2 mb-2">
         <Pencil className="w-3.5 h-3.5 text-blue-700" />
         <span className="text-xs font-semibold text-blue-800">
-          Modo edición
+          {t("editorToolbar.editMode")}
         </span>
         {hasChanges && (
           <span className="ml-auto text-[10px] font-medium text-amber-700 bg-amber-100 border border-amber-200 rounded-full px-2 py-0.5">
-            Cambios sin guardar
+            {t("editorToolbar.unsavedChanges")}
           </span>
         )}
       </div>
@@ -51,7 +53,7 @@ export default function EditorToolbar({
           type="button"
           onClick={onApply}
           disabled={!hasChanges}
-          aria-label="Aplicar cambios al resultado"
+          aria-label={t("editorToolbar.ariaLabels.applyChanges")}
           className={cn(
             "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
             hasChanges
@@ -60,14 +62,14 @@ export default function EditorToolbar({
           )}
         >
           <Save className="w-3.5 h-3.5" aria-hidden="true" />
-          Aplicar
+          {t("editorToolbar.apply")}
         </button>
 
         <button
           type="button"
           onClick={onDiscard}
           disabled={!hasChanges}
-          aria-label="Descartar cambios y volver al estado inicial"
+          aria-label={t("editorToolbar.ariaLabels.discardChanges")}
           className={cn(
             "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors border",
             hasChanges
@@ -76,14 +78,14 @@ export default function EditorToolbar({
           )}
         >
           <XCircle className="w-3.5 h-3.5" aria-hidden="true" />
-          Descartar
+          {t("editorToolbar.discard")}
         </button>
 
         <button
           type="button"
           onClick={onUndo}
           disabled={!canUndo}
-          aria-label="Deshacer última acción"
+          aria-label={t("editorToolbar.ariaLabels.undoLastAction")}
           className={cn(
             "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
             canUndo
@@ -92,14 +94,14 @@ export default function EditorToolbar({
           )}
         >
           <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
-          Deshacer
+          {t("editorToolbar.undo")}
         </button>
 
         <button
           type="button"
           onClick={onRedo}
           disabled={!canRedo}
-          aria-label="Rehacer acción deshecha"
+          aria-label={t("editorToolbar.ariaLabels.redoAction")}
           className={cn(
             "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
             canRedo
@@ -108,7 +110,7 @@ export default function EditorToolbar({
           )}
         >
           <Redo2 className="w-3.5 h-3.5" aria-hidden="true" />
-          Rehacer
+          {t("editorToolbar.redo")}
         </button>
       </div>
     </div>

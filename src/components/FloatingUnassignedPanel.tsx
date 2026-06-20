@@ -1,6 +1,7 @@
 "use client";
 
 import { MapPin, Crosshair } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Location } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +14,7 @@ export default function FloatingUnassignedPanel({
   pois,
   onPOIClick,
 }: FloatingUnassignedPanelProps) {
+  const { t } = useTranslation();
   if (pois.length === 0) return null;
 
   return (
@@ -25,10 +27,10 @@ export default function FloatingUnassignedPanel({
           </div>
           <div className="min-w-0">
             <div className="text-xs font-semibold text-red-800 leading-tight">
-              POIs sin ruta
+              {t("floatingPOI.title")}
             </div>
             <div className="text-[10px] text-red-500 font-medium">
-              {pois.length} pendiente{pois.length !== 1 ? "s" : ""}
+              {t("floatingPOI.pending", { count: pois.length })}
             </div>
           </div>
         </div>
@@ -56,7 +58,7 @@ export default function FloatingUnassignedPanel({
         {pois.length > 0 && (
           <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100">
             <p className="text-[9px] text-gray-400 text-center">
-              Click para asignar a una ruta
+              {t("floatingPOI.clickToAssign")}
             </p>
           </div>
         )}

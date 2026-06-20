@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { Tag, MapPin, Search, Ruler, Check, X, type LucideIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { RawFileData, ColumnMapping } from "@/types";
 import {
   autoDetectMapping,
@@ -20,12 +21,6 @@ interface ColumnMapperProps {
 
 type FieldKey = "nameColumn" | "latColumn" | "lngColumn";
 
-const FIELD_LABELS: Record<FieldKey, string> = {
-  nameColumn: "Nombre",
-  latColumn: "Latitud",
-  lngColumn: "Longitud",
-};
-
 const FIELD_ICONS: Record<FieldKey, LucideIcon> = {
   nameColumn: Tag,
   latColumn: MapPin,
@@ -37,6 +32,13 @@ export default function ColumnMapper({
   onConfirm,
   onBack,
 }: ColumnMapperProps) {
+  const { t } = useTranslation();
+  const FIELD_LABELS: Record<FieldKey, string> = {
+    nameColumn: t("columnMapper.defaults.name"),
+    latColumn: t("columnMapper.defaults.lat"),
+    lngColumn: t("columnMapper.defaults.lng"),
+  };
+
   // Detect header row issue
   const headerCheck = useMemo(() => detectHeaderRow(data.rows), [data.rows]);
 
@@ -208,13 +210,13 @@ export default function ColumnMapper({
               <tr className="border-b text-left text-gray-500">
                 <th className="pb-2 font-medium pr-3">#</th>
                 <th className="pb-2 font-medium pr-3">
-                  {mapping.nameColumn || "Nombre"}
+                  {mapping.nameColumn || t("columnMapper.defaults.name")}
                 </th>
                 <th className="pb-2 font-medium pr-3">
-                  {mapping.latColumn || "Lat"}
+                  {mapping.latColumn || t("columnMapper.defaults.lat")}
                 </th>
                 <th className="pb-2 font-medium pr-3">
-                  {mapping.lngColumn || "Lng"}
+                  {mapping.lngColumn || t("columnMapper.defaults.lng")}
                 </th>
                 <th className="pb-2 font-medium">Estado</th>
               </tr>
@@ -240,7 +242,7 @@ export default function ColumnMapper({
                         className="text-green-600 inline-flex"
                         title={`${row.lat}, ${row.lng}`}
                       >
-                        <Check className="w-3.5 h-3.5" aria-label="Fila válida" />
+                        <Check className="w-3.5 h-3.5" aria-label={t("columnMapper.ariaLabels.validRow")} />
                       </span>
                     ) : (
                       <span

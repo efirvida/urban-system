@@ -11,6 +11,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { MapPin, Plus } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { DayRoute, Location, Config, EditMutation } from "@/types";
 import { reoptimizeDay } from "@/utils/routerOptimizer";
 import { cn, getRouteColor } from "@/lib/utils";
@@ -96,6 +97,7 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
   hiddenDays,
   onToggleDay,
 }: RouteEditorProps, ref) {
+  const { t, i18n } = useTranslation();
   // ── Session state (initialized from props on first mount) ──
   const snapshotRef = useRef<DayRoute[] | null>(null);
   const initRef = useRef(false);
@@ -152,8 +154,8 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
 
   // ── Home reference used by reoptimizeDay ──
   const home: Location = useMemo(
-    () => ({ name: "Casa", lat: config.homeLat, lng: config.homeLng }),
-    [config.homeLat, config.homeLng]
+    () => ({ name: t("routeEditor.home"), lat: config.homeLat, lng: config.homeLng }),
+    [config.homeLat, config.homeLng, t]
   );
 
   // ── name → matrix-index map (0 = home, 1..n = locations) ──
@@ -583,7 +585,7 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
                 {selectedPOI.name}
               </span>
               <span className="text-blue-400">·</span>
-              <span className="text-blue-600 font-medium">Día {selectedPOI.day}</span>
+              <span className="text-blue-600 font-medium">{t("dayColumn.day", { day: selectedPOI.day })}</span>
               <span className="text-blue-400 ml-1">→</span>
               <div className="flex gap-1 flex-wrap">
                 {availableDays.map((d) => (
@@ -605,9 +607,9 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
                         : "bg-white text-blue-700 hover:bg-blue-100 border border-blue-200"
                     )}
                     disabled={d === selectedPOI.day}
-                    title={d === selectedPOI.day ? "Ya está en este día" : `Mover a Día ${d}`}
+                    title={d === selectedPOI.day ? t("routeEditor.alreadyInThisDay") : t("routeEditor.moveToDay", { day: d })}
                   >
-                    Día {d}
+                    {t("dayColumn.day", { day: d })}
                   </button>
                 ))}
                 <button
@@ -621,9 +623,9 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
                     )
                   }
                   className="px-2 py-0.5 rounded text-[10px] font-medium bg-white text-amber-700 hover:bg-amber-50 border border-amber-200 transition-colors"
-                  title="Quitar de la ruta"
+                  title={t("routeEditor.removeFromRoute")}
                 >
-                  Sin ruta
+                  {t("mapPOI.withoutRoute")}
                 </button>
               </div>
             </div>
@@ -647,6 +649,7 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
                 if (stop) handleRemoveStop(day.day, stop.name, stop.lat, stop.lng);
               }}
               onStopClick={(name, lat, lng) => handleStopClick(day.day, name, lat, lng)}
+              locale={i18n.language}
             />
           ))}
         </div>
