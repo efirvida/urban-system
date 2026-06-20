@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import "leaflet/dist/leaflet.css";
+import I18nProvider from "@/i18n/Provider";
+import HtmlLang from "@/i18n/HtmlLang";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -17,9 +19,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es">
+    <html lang="pt-BR">
       <body className={inter.className}>
-        <div className="min-h-screen flex flex-col">{children}</div>
+        <I18nProvider>
+          <HtmlLang />
+          <div className="min-h-screen flex flex-col">{children}</div>
+        </I18nProvider>
       </body>
     </html>
   );

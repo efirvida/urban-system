@@ -1,0 +1,265 @@
+{
+  "wizard": {
+    "steps": {
+      "upload": "Carregar",
+      "mapping": "Colunas",
+      "review": "Revisar",
+      "config": "Configurar",
+      "results": "Resultados"
+    },
+    "errors": {
+      "applyMapping": "Erro ao aplicar o mapeamento",
+      "noValidLocations": "Não há localizações válidas.",
+      "configureHome": "Configure as coordenadas da casa.",
+      "unexpectedError": "Erro inesperado",
+      "noResult": "Nenhum otimizador conseguiu resolver o problema. Tente reduzir as localizações ou verificar as conexões de rota.",
+      "serverError": "Erro do servidor",
+      "noResponseBody": "Sem corpo de resposta"
+    },
+    "status": {
+      "preparingOptimization": "Preparando otimização...",
+      "optimizing": "Otimizando..."
+    }
+  },
+  "wizardPage": {
+    "confirmDiscard": "Descartar alterações sem salvar?\n\nVocê tem alterações no editor que serão perdidas.",
+    "backToEditLocations": "← Voltar a editar localizações",
+    "backToConfig": "← Voltar à configuração",
+    "newOptimization": "Nova otimização",
+    "bothAlgorithms": "Executa ambos os algoritmos — mostra o melhor resultado",
+    "sidebarNewOptimization": "← Nova otimização"
+  },
+  "fileUpload": {
+    "processing": "Processando arquivo...",
+    "dragHere": "Arraste seu arquivo .ods aqui",
+    "clickToSelect": "ou clique para selecionar (também .xlsx / .xls)",
+    "selectColumnsLater": "Você selecionará as colunas depois",
+    "errors": {
+      "unsupportedFormat": "Formato não suportado. Use arquivos .ods, .xlsx ou .xls.",
+      "autoDetectFailed": "Não foi possível detectar automaticamente as colunas ",
+      "readError": "Erro ao ler o arquivo"
+    }
+  },
+  "columnMapper": {
+    "defaults": {
+      "name": "Nome",
+      "lat": "Latitude",
+      "lng": "Longitude"
+    },
+    "ariaLabels": {
+      "validRow": "Linha válida"
+    }
+  },
+  "dataEditor": {
+    "errors": {
+      "emptyName": "Nome vazio",
+      "invalidLat": "Latitude inválida",
+      "latOutOfRange": "Latitude fora do intervalo",
+      "invalidLng": "Longitude inválida",
+      "lngOutOfRange": "Longitude fora do intervalo"
+    },
+    "searchPlaceholder": "Buscar por nome ou coordenada...",
+    "filters": {
+      "all": "Todas",
+      "valid": "Válidas",
+      "invalid": "Inválidas",
+      "selected": "Selecionadas",
+      "unselected": "Não selecionadas"
+    },
+    "empty": {
+      "noResults": "Sem resultados para essa busca",
+      "noRows": "Não há linhas para mostrar"
+    },
+    "placeholders": {
+      "noName": "Sem nome"
+    },
+    "ariaLabels": {
+      "validRow": "Linha válida"
+    },
+    "selectionHint": "Selecione pelo menos uma"
+  },
+  "configPanel": {
+    "constraintTypes": {
+      "hours": "Horas máximas por jornada",
+      "visits": "Visitas máximas por jornada",
+      "hoursAndVisits": "Horas + Visitas máximas"
+    },
+    "labels": {
+      "workDay": "Jornada de trabalho",
+      "visitsPerDay": "Visitas por dia",
+      "dailyRestriction": "Restrição diária",
+      "homeCoords": "Coordenadas da Casa",
+      "latitude": "Latitude",
+      "longitude": "Longitude",
+      "clickOnMap": "Clique no mapa...",
+      "placeOnMap": "Colocar no mapa",
+      "homeAt": "Casa em {{lat}}, {{lng}}",
+      "speed": "Velocidade",
+      "timePerStop": "Tempo por parada"
+    },
+    "ariaLabels": {
+      "placeHome": "Colocar casa no mapa",
+      "cancelPlaceHome": "Cancelar colocação no mapa",
+      "decreaseHours": "Diminuir horas",
+      "increaseHours": "Aumentar horas",
+      "decreaseVisits": "Diminuir visitas",
+      "increaseVisits": "Aumentar visitas"
+    },
+    "button": {
+      "loadLocationsFirst": "Carregue localizações primeiro"
+    }
+  },
+  "resultsPanel": {
+    "algorithm": "Algoritmo",
+    "globalSummary": "Resumo Global",
+    "consensus": "Consenso 3 provedores",
+    "days": "Dias",
+    "locations": "Localizações",
+    "totalDistance": "Total percorrido",
+    "stops": "paradas",
+    "visits": "visitas",
+    "distance": "distância",
+    "duration": "duração",
+    "fromPreviousStop": "desde parada anterior",
+    "algorithmsUnavailable_one": "{{count}} algoritmo não disponível (sem API key ou falhou).",
+    "algorithmsUnavailable_other": "{{count}} algoritmos não disponíveis (sem API key ou falharam).",
+    "ariaLabels": {
+      "showDayInMap": "Mostrar dia {{day}} no mapa",
+      "hideDayInMap": "Ocultar dia {{day}} no mapa"
+    },
+    "averageReliability": "Confiabilidade média: {{percent}}%",
+    "viewInGoogleMaps": "Ver rota no Google Maps"
+  },
+  "dayColumn": {
+    "day": "Dia {{day}}",
+    "stops": "{{count}} paradas",
+    "stops_one": "{{count}} parada",
+    "stops_other": "{{count}} paradas",
+    "emptyDay": "(Dia vazio — soltar POIs aqui)",
+    "gauge": {
+      "hours": "horas {{percent}}%",
+      "visits": "visitas {{percent}}%"
+    },
+    "ariaLabels": {
+      "showRouteInMap": "Mostrar rota dia {{day}} no mapa",
+      "hideRouteInMap": "Ocultar rota dia {{day}} no mapa"
+    }
+  },
+  "stopItem": {
+    "ariaLabels": {
+      "dragStop": "Arrastar parada",
+      "removeStop": "Remover parada"
+    },
+    "home": "Casa",
+    "removeFromRoute": "Remover da rota"
+  },
+  "sidebar": {
+    "ariaLabels": {
+      "openPanel": "Abrir painel",
+      "closePanel": "Fechar painel"
+    }
+  },
+  "editorToolbar": {
+    "editMode": "Modo edição",
+    "unsavedChanges": "Alterações não salvas",
+    "apply": "Aplicar",
+    "discard": "Descartar",
+    "undo": "Desfazer",
+    "redo": "Refazer",
+    "ariaLabels": {
+      "applyChanges": "Aplicar alterações ao resultado",
+      "discardChanges": "Descartar alterações e voltar ao estado inicial",
+      "undoLastAction": "Desfazer última ação",
+      "redoAction": "Refazer ação desfeita"
+    }
+  },
+  "routeEditor": {
+    "home": "Casa",
+    "alreadyInThisDay": "Já está neste dia",
+    "moveToDay": "Mover para Dia {{day}}",
+    "removeFromRoute": "Remover da rota",
+    "finishEditing": "Finalizar edição",
+    "finishEditingWithChanges": "Finalizar edição (com alterações)",
+    "editRoutes": "Editar rotas"
+  },
+  "optimizeProgress": {
+    "complete": "Matriz de distâncias completa",
+    "calculating": "Calculando rotas",
+    "errorTitle": "Erro na otimização",
+    "running": "Executando algoritmo...",
+    "orderingRoutes": "Ordenando rotas com Clarke & Wright",
+    "matrixTitle": "Matriz de distâncias",
+    "queryingProviders": "Consultando Geoapify + ORS + OSRM para {{count}} localizações...",
+    "pairs": "pares",
+    "of": "de",
+    "etaCalculating": "calculando...",
+    "etaMin": "min",
+    "etaSeg": "seg",
+    "pairCount": "{{count}} pares · 3 provedores em paralelo"
+  },
+  "unreachableWarning": {
+    "title": "POIs sem rota acessível",
+    "description": "Estes pontos não puderam ser conectados à rede de rotas reais a partir da casa. Verifique as coordenadas ou tente novamente.",
+    "retry": "Tentar com todos",
+    "retrying": "Tentando novamente...",
+    "noRoadConnection": "sem caminho",
+    "coordinates": "{{lat}}, {{lng}}"
+  },
+  "unassignedPool": {
+    "title": "POIs sem rota ({{count}})",
+    "dragHint": "arrastar para um dia"
+  },
+  "floatingPOI": {
+    "title": "POIs sem rota",
+    "pending_one": "{{count}} pendente",
+    "pending_other": "{{count}} pendentes",
+    "clickToAssign": "Clique para atribuir a uma rota"
+  },
+  "mapPOI": {
+    "withoutRoute": "Sem rota",
+    "accept": "Aceitar",
+    "cancel": "Cancelar",
+    "day": "Dia {{day}}",
+    "ariaLabels": {
+      "acceptMovePOI": "Aceitar movimento de POI",
+      "cancelMovePOI": "Cancelar movimento de POI"
+    }
+  },
+  "mapView": {
+    "realRoute": "Rota real",
+    "straightLine": "Linha reta",
+    "placeHome": "Clique no mapa para colocar a casa"
+  },
+  "markerPopup": {
+    "home": "Casa",
+    "withoutRoute": "Sem rota",
+    "day": "Dia {{day}}",
+    "stop": "Parada"
+  },
+  "units": {
+    "km": "km",
+    "m": "m",
+    "h": "h",
+    "min": "min",
+    "visits": "visitas",
+    "stops": "paradas",
+    "perDay": "por dia",
+    "distanceFromPrev": "desde parada anterior"
+  },
+  "ariaLabels": {
+    "closeError": "Fechar erro"
+  },
+  "localeSwitcher": {
+    "ariaLabel": "Selecionar idioma"
+  },
+  "metadata": {
+    "title": "Otimizador de Rotas VRP",
+    "description": "Otimização de rotas diárias multi-trajeto com restrições (Vehicle Routing Problem)"
+  },
+  "apiErrors": {
+    "minStops": "São necessárias pelo menos 2 paradas.",
+    "minLocations": "É necessária pelo menos uma localização.",
+    "invalidHomeCoords": "Coordenadas da casa inválidas.",
+    "noOptimizerResult": "Nenhum otimizador conseguiu resolver o problema. Tente reduzir o número de localizações ou verificar as conexões de rota."
+  }
+}
