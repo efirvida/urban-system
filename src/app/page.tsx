@@ -12,6 +12,7 @@ import {
   Eye,
   PlusCircle,
   X,
+  FileDown,
 } from "lucide-react";
 import {
   Location,
@@ -145,6 +146,7 @@ import Sidebar from "@/components/Sidebar";
 import RouteEditor, { RouteEditorHandle } from "@/components/RouteEditor";
 import MapPOIActionBar from "@/components/MapPOIActionBar";
 import FloatingUnassignedPanel from "@/components/FloatingUnassignedPanel";
+import { downloadRoutePlan } from "@/lib/routeExport";
 
 // ─── Phase definition ───────────────────────────────────────
 // Phase keys are stable (used in URL/state); labels are translated
@@ -216,6 +218,7 @@ export default function Home() {
   const [highlightDay, setHighlightDay] = useState<number | null>(null);
   /** Which day is expanded in the ResultsPanel sidebar. */
   const [sidebarExpandedDay, setSidebarExpandedDay] = useState<number | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   /** Floating action bar: target day being previewed (null = no preview). */
   const [previewTargetDay, setPreviewTargetDay] = useState<number | null>(null);
   /** Preview routes — shown on the map while user decides in the action bar. */
@@ -1139,6 +1142,91 @@ export default function Home() {
                 <Eye className="w-3.5 h-3.5" />
                 Ver todas las rutas en el mapa
               </button>
+
+              {/* Export — dropdown with format picker */}
+              <div className="relative">
+                <button
+                  onClick={() => setExportOpen((v) => !v)}
+                  className="btn-secondary w-full text-sm inline-flex items-center justify-center gap-1.5"
+                >
+                  <FileDown className="w-4 h-4" />
+                  {t("export.exportPlan")}
+                </button>
+                {exportOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setExportOpen(false)}
+                    />
+                    <div className="absolute bottom-full left-0 right-0 mb-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden divide-y divide-gray-100">
+                      <button
+                        onClick={() => {
+                          downloadRoutePlan({
+                            days: result.days,
+                            totalDistance: result.totalDistance,
+                            totalDays: result.totalDays,
+                            totalLocations: result.totalLocations,
+                            locale: i18n.language,
+                          }, "html");
+                          setExportOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <span className="text-xs font-mono w-12 font-semibold text-blue-600">HTML</span>
+                        <span className="text-gray-700">{t("export.htmlDesc")}</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          downloadRoutePlan({
+                            days: result.days,
+                            totalDistance: result.totalDistance,
+                            totalDays: result.totalDays,
+                            totalLocations: result.totalLocations,
+                            locale: i18n.language,
+                          }, "pdf");
+                          setExportOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <span className="text-xs font-mono w-12 font-semibold text-red-600">PDF</span>
+                        <span className="text-gray-700">{t("export.pdfDesc")}</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          downloadRoutePlan({
+                            days: result.days,
+                            totalDistance: result.totalDistance,
+                            totalDays: result.totalDays,
+                            totalLocations: result.totalLocations,
+                            locale: i18n.language,
+                          }, "docx");
+                          setExportOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <span className="text-xs font-mono w-12 font-semibold text-blue-800">DOCX</span>
+                        <span className="text-gray-700">{t("export.docxDesc")}</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          downloadRoutePlan({
+                            days: result.days,
+                            totalDistance: result.totalDistance,
+                            totalDays: result.totalDays,
+                            totalLocations: result.totalLocations,
+                            locale: i18n.language,
+                          }, "xlsx");
+                          setExportOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <span className="text-xs font-mono w-12 font-semibold text-green-700">XLSX</span>
+                        <span className="text-gray-700">{t("export.xlsxDesc")}</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
 
               <div className="flex flex-col gap-2">
                 <button
