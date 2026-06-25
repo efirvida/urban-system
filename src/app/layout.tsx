@@ -4,6 +4,8 @@ import "./globals.css";
 import "leaflet/dist/leaflet.css";
 import I18nProvider from "@/i18n/Provider";
 import HtmlLang from "@/i18n/HtmlLang";
+import { ToastProvider } from "@/lib/toast";
+import ToastHost from "@/components/ToastHost";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -23,7 +25,10 @@ export default function RootLayout({
       <body className={inter.className}>
         <I18nProvider>
           <HtmlLang />
-          <div className="min-h-screen flex flex-col">{children}</div>
+          <ToastProvider>
+            <div className="min-h-screen flex flex-col">{children}</div>
+            <ToastHost />
+          </ToastProvider>
         </I18nProvider>
       </body>
     </html>
