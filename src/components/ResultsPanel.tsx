@@ -11,8 +11,9 @@ import {
   Trophy,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { DayRoute, OptimizerResult } from "@/types";
+import { DayRoute, OptimizerResult, type OptimizeResponse } from "@/types";
 import { formatDistance, formatDuration, getRouteColor, cn } from "@/lib/utils";
+import RoutingModeBadge from "./RoutingModeBadge";
 
 interface ResultsPanelProps {
   days: DayRoute[];
@@ -42,6 +43,8 @@ interface ResultsPanelProps {
   onAlgorithmChange?: (algorithm: string) => void;
   /** Consensus-matrix change: `_meta.useConsensus` flag from the API. */
   useConsensus?: boolean;
+  /** _meta block from the optimize response — drives RoutingModeBadge. */
+  meta?: OptimizeResponse["_meta"];
   /** Active locale for locale-aware formatters. */
   locale: string;
 }
@@ -62,6 +65,7 @@ export default function ResultsPanel({
   activeAlgorithm,
   onAlgorithmChange,
   useConsensus,
+  meta,
   locale,
 }: ResultsPanelProps) {
   const { t } = useTranslation();
@@ -153,14 +157,17 @@ export default function ResultsPanel({
             <BarChart3 className="w-4 h-4 text-blue-600" />
             {t("resultsPanel.globalSummary")}
           </span>
-          {routingLabel && (
-            <span className="text-xs font-normal text-gray-400">{routingLabel}</span>
-          )}
-          {useConsensus && (
-            <span className="text-[10px] font-medium text-green-700 bg-green-50 px-1.5 py-0.5 rounded-full">
-              {t("resultsPanel.consensus")}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {routingLabel && (
+              <span className="text-xs font-normal text-gray-400">{routingLabel}</span>
+            )}
+            {useConsensus && (
+              <span className="text-[10px] font-medium text-green-700 bg-green-50 px-1.5 py-0.5 rounded-full">
+                {t("resultsPanel.consensus")}
+              </span>
+            )}
+            <RoutingModeBadge meta={meta} />
+          </div>
         </div>
         <div className="card-body grid grid-cols-3 gap-4 text-center">
           <div>

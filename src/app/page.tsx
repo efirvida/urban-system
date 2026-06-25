@@ -357,6 +357,7 @@ export default function Home() {
                   winnerAlgorithm={flow.winnerAlgorithm}
                   onAlgorithmChange={flow.handleAlgorithmChange}
                   useConsensus={flow.useConsensus}
+                  meta={flow.result._meta}
                   locale={i18n.language}
                 />
               )}

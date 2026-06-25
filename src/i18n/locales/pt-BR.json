@@ -129,7 +129,19 @@
       "hideDayInMap": "Ocultar dia {{day}} no mapa"
     },
     "averageReliability": "Confiabilidade média: {{percent}}%",
-    "viewInGoogleMaps": "Ver rota no Google Maps"
+    "viewInGoogleMaps": "Ver rota no Google Maps",
+    "routingModes": {
+      "geoapify": "Geoapify",
+      "osrm": "OSRM",
+      "api": "Cliente",
+      "haversine": "Haversine"
+    },
+    "routingModeTitle": "Modo de roteamento: {{mode}}",
+    "unreachableCountLabel_one": "{{count}} inacessível",
+    "unreachableCountLabel_other": "{{count}} inacessíveis",
+    "unreachableCountTitle_one": "{{count}} POI inacessível",
+    "unreachableCountTitle_other": "{{count}} POIs inacessíveis",
+    "routingSourceBreakdown": "{{real}} reais · {{estimated}} estimados"
   },
   "dayColumn": {
     "day": "Dia {{day}}",
