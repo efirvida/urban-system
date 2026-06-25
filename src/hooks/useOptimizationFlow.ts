@@ -62,6 +62,9 @@ export interface OptimizationFlow {
   handleToggleDay: (day: number) => void;
   handleExpandDay: (day: number) => void;
   handleReset: () => void;
+  /** Direct setter for `hiddenDays` — used by the "show all" button
+   *  in the results sidebar to wipe a per-day isolation. */
+  setHiddenDays: React.Dispatch<React.SetStateAction<Set<number>>>;
 }
 
 // ─── Local helpers ────────────────────────────────────────────
@@ -530,5 +533,6 @@ export function useOptimizationFlow({
     handleToggleDay,
     handleExpandDay,
     handleReset,
+    setHiddenDays,
   };
 }
