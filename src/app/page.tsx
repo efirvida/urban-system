@@ -14,6 +14,7 @@ import {
   X,
   FileDown,
 } from "lucide-react";
+import { useToast } from "@/lib/toast";
 import {
   Location,
   Config,
@@ -159,6 +160,12 @@ type PhaseKey = "upload" | "mapping" | "review" | "config" | "results";
 export default function Home() {
   // ── i18n ──
   const { t, i18n } = useTranslation();
+  // ── Toast notifications ──
+  const { show: showToast } = useToast();
+  const reportExportError = useCallback(
+    (msg: string) => showToast(msg, { kind: "error" }),
+    [showToast],
+  );
 
   const PHASES = [
     { key: "upload", label: t("wizard.steps.upload"), Icon: FolderOpen },
@@ -1167,7 +1174,7 @@ export default function Home() {
                             totalDays: result.totalDays,
                             totalLocations: result.totalLocations,
                             locale: i18n.language,
-                          }, "html");
+                          }, "html", reportExportError);
                           setExportOpen(false);
                         }}
                         className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2"
@@ -1183,7 +1190,7 @@ export default function Home() {
                             totalDays: result.totalDays,
                             totalLocations: result.totalLocations,
                             locale: i18n.language,
-                          }, "pdf");
+                          }, "pdf", reportExportError);
                           setExportOpen(false);
                         }}
                         className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2"
@@ -1199,7 +1206,7 @@ export default function Home() {
                             totalDays: result.totalDays,
                             totalLocations: result.totalLocations,
                             locale: i18n.language,
-                          }, "docx");
+                          }, "docx", reportExportError);
                           setExportOpen(false);
                         }}
                         className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2"
@@ -1215,7 +1222,7 @@ export default function Home() {
                             totalDays: result.totalDays,
                             totalLocations: result.totalLocations,
                             locale: i18n.language,
-                          }, "xlsx");
+                          }, "xlsx", reportExportError);
                           setExportOpen(false);
                         }}
                         className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2"

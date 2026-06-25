@@ -866,29 +866,57 @@ export function downloadRoutePlanXlsx(options: ExportOptions): void {
  * | docx   | Word document with styled tables     |
  * | xlsx   | Excel workbook with per-day sheets   |
  */
+/**
+ * Optional callback for surfacing export errors back to the caller.
+ * Receives the already-localized error message. When omitted, the
+ * caller is expected to handle the rejected promise from
+ * `downloadRoutePlan` (we keep it returning `void` to keep the call
+ * sites terse; the function never throws).
+ */
+export type OnExportError = (msg: string) => void;
+
 export function downloadRoutePlan(
   options: ExportOptions,
   format: ExportFormat = "html",
+  onError?: OnExportError,
 ): void {
   const lng = options.locale || i18n.language;
+  const reportError = (fallback: string) => {
+    if (!onError) return;
+    const msg = i18n.t("export.exportError", { lng, defaultValue: fallback });
+    onError(msg);
+  };
   switch (format) {
     case "html":
-      downloadRoutePlanHtml(options);
+      try {
+        downloadRoutePlanHtml(options);
+      } catch (err) {
+        reportError(err instanceof Error ? err.message : "HTML export failed");
+      }
       break;
     case "pdf":
-      downloadRoutePlanPdf(options);
+      try {
+        downloadRoutePlanPdf(options);
+      } catch (err) {
+        reportError(err instanceof Error ? err.message : "PDF export failed");
+      }
       break;
     case "docx":
       // Async but we fire and forget — the download happens
-      downloadRoutePlanDocx(options).catch(() => {
-        const msg = i18n.t("export.exportError", { lng });
-        if (typeof window !== "undefined") {
-          window.alert(msg);
-        }
+      downloadRoutePlanDocx(options).catch((err) => {
+        const msg =
+          err instanceof Error && err.message
+            ? err.message
+            : "DOCX export failed";
+        reportError(msg);
       });
       break;
     case "xlsx":
-      downloadRoutePlanXlsx(options);
+      try {
+        downloadRoutePlanXlsx(options);
+      } catch (err) {
+        reportError(err instanceof Error ? err.message : "XLSX export failed");
+      }
       break;
   }
 }
