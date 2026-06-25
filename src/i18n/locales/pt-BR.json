@@ -14,7 +14,8 @@
       "unexpectedError": "Erro inesperado",
       "noResult": "Nenhum otimizador conseguiu resolver o problema. Tente reduzir as localizações ou verificar as conexões de rota.",
       "serverError": "Erro do servidor",
-      "noResponseBody": "Sem corpo de resposta"
+      "noResponseBody": "Sem corpo de resposta",
+      "routeGeometry": "Falha ao buscar geometria das rotas"
     },
     "status": {
       "preparingOptimization": "Preparando otimização...",

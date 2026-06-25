@@ -14,7 +14,8 @@
       "unexpectedError": "Error inesperado",
       "noResult": "Ningún optimizador pudo resolver el problema. Probá reducir las ubicaciones o revisar las conexiones de ruta.",
       "serverError": "Error del servidor",
-      "noResponseBody": "Sin cuerpo de respuesta"
+      "noResponseBody": "Sin cuerpo de respuesta",
+      "routeGeometry": "Error al obtener la geometría de las rutas"
     },
     "status": {
       "preparingOptimization": "Preparando optimización...",

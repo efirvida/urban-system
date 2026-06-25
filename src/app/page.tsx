@@ -167,6 +167,22 @@ export default function Home() {
     [showToast],
   );
 
+  /**
+   * Single-channel error surface: pops a toast AND records the message
+   * on the legacy `error` state for any in-page code that still reads
+   * it. Replaces the previous "log to console and pray" pattern that
+   * left users staring at a silent failure.
+   */
+  const notifyError = useCallback(
+    (err: unknown, fallback: string) => {
+      const msg = err instanceof Error && err.message ? err.message : fallback;
+      showToast(msg, { kind: "error" });
+      setError(msg);
+      console.error("[notifyError]", err);
+    },
+    [showToast],
+  );
+
   const PHASES = [
     { key: "upload", label: t("wizard.steps.upload"), Icon: FolderOpen },
     { key: "mapping", label: t("wizard.steps.mapping"), Icon: ClipboardList },
@@ -740,7 +756,7 @@ export default function Home() {
             setRouteSource(sources);
           }
         }).catch((err: unknown) => {
-          console.error(`${FLOW} Route geometry error:`, err);
+          notifyError(err, t("wizard.errors.routeGeometry"));
         });
       } else {
         console.log(`${FLOW} SKIP geometry fetch — geometryDays empty or undefined`);
@@ -759,13 +775,12 @@ export default function Home() {
       setPhase("results");
       setSidebarOpen(true);
     } catch (err) {
-      console.error(`${FLOW} ERROR:`, err);
-      setError(err instanceof Error ? err.message : t("wizard.errors.unexpectedError"));
+      notifyError(err, t("wizard.errors.unexpectedError"));
       setOptimizePhase("error");
     } finally {
       setLoading(false);
     }
-  }, [locations, config, algorithm, routeSource, t]);
+  }, [locations, config, algorithm, routeSource, notifyError, t]);
 
   const handlePlaceHome = useCallback(
     (lat: number, lng: number) => {
@@ -795,9 +810,9 @@ export default function Home() {
         setRouteSource(sources);
       }
     }).catch(err => {
-      console.error("[FLOW] Post-Apply geometry fetch error:", err);
+      notifyError(err, t("wizard.errors.routeGeometry"));
     });
-  }, []);
+  }, [notifyError, t]);
 
   // ── Auto-dismiss error toast (6s) with cleanup on unmount/error change ──
   useEffect(() => {
