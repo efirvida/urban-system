@@ -9,13 +9,7 @@
  * to the UI inside `OptimizeResponse.results`.
  */
 
-import type {
-  ConsensusMatrix,
-  DayRoute,
-  Location,
-  Config,
-  DistanceMatrix,
-} from "@/types";
+import type { ConsensusMatrix, DayRoute, Location, Config, DistanceMatrix } from '@/types';
 
 /** Inputs every optimizer receives. */
 export interface OptimizeParams {

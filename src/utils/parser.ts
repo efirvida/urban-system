@@ -1,5 +1,5 @@
-import * as XLSX from "xlsx";
-import { RawFileData, ColumnMapping, ValidatedRow, Location } from "@/types";
+import * as XLSX from 'xlsx';
+import { RawFileData, ColumnMapping, ValidatedRow, Location } from '@/types';
 
 // ─── Step 1: Extract raw data from file ──────────────────────
 
@@ -7,26 +7,23 @@ import { RawFileData, ColumnMapping, ValidatedRow, Location } from "@/types";
  * Read a spreadsheet buffer and return all columns + all rows
  * without applying any mapping or validation.
  */
-export function extractRawData(
-  buffer: ArrayBuffer,
-  fileName: string
-): RawFileData {
-  const workbook = XLSX.read(buffer, { type: "array" });
+export function extractRawData(buffer: ArrayBuffer, fileName: string): RawFileData {
+  const workbook = XLSX.read(buffer, { type: 'array' });
 
   const firstSheetName = workbook.SheetNames[0];
   if (!firstSheetName) {
-    throw new Error("El archivo no contiene ninguna hoja de cálculo.");
+    throw new Error('El archivo no contiene ninguna hoja de cálculo.');
   }
 
   const sheet = workbook.Sheets[firstSheetName];
 
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     raw: true,
-    defval: "",
+    defval: '',
   });
 
   if (rows.length === 0) {
-    throw new Error("La hoja de cálculo está vacía.");
+    throw new Error('La hoja de cálculo está vacía.');
   }
 
   const columns = Object.keys(rows[0]);
@@ -41,31 +38,30 @@ export function extractRawData(
  * Heuristic: all values are strings (or mostly strings) and none look like
  * numeric coordinates.
  */
-export function detectHeaderRow(
-  rows: Record<string, unknown>[]
-): { isHeader: boolean; suggestedNames: string[] } {
+export function detectHeaderRow(rows: Record<string, unknown>[]): {
+  isHeader: boolean;
+  suggestedNames: string[];
+} {
   if (rows.length === 0) return { isHeader: false, suggestedNames: [] };
 
   const firstRow = rows[0];
-  const values = Object.values(firstRow).map((v) => String(v ?? "").trim());
+  const values = Object.values(firstRow).map((v) => String(v ?? '').trim());
   const keys = Object.keys(firstRow);
 
   // If column names contain __EMPTY or are very short, it's likely
   // the spreadsheet had merged cells and xlsx couldn't read headers
-  const hasEmptyCols = keys.some(
-    (k) => k.startsWith("__EMPTY") || k.length <= 2
-  );
+  const hasEmptyCols = keys.some((k) => k.startsWith('__EMPTY') || k.length <= 2);
 
   // Check if first row values look like headers (all text, no numbers with decimals)
   const numericCount = values.filter(
-    (v) => v !== "" && !isNaN(parseFloat(v.replace(",", ".")))
+    (v) => v !== '' && !isNaN(parseFloat(v.replace(',', '.'))),
   ).length;
 
   const mostlyText = numericCount / values.length < 0.3;
 
   return {
     isHeader: hasEmptyCols && mostlyText,
-    suggestedNames: values.map((v) => v || ""),
+    suggestedNames: values.map((v) => v || ''),
   };
 }
 
@@ -73,10 +69,7 @@ export function detectHeaderRow(
  * Rebuild raw data using the first row values as column names.
  * Skips the first row (which becomes the header) and re-keys all rows.
  */
-export function reheader(
-  data: RawFileData,
-  newColumnNames: string[]
-): RawFileData {
+export function reheader(data: RawFileData, newColumnNames: string[]): RawFileData {
   const oldColumns = data.columns;
   const oldRows = data.rows;
 
@@ -121,31 +114,31 @@ interface CoordDetail {
  *   - DMS with direction: "15°02'51.6''S"  or  "47°40'10.6''W"
  */
 function parseCoordDetailed(raw: string): CoordDetail {
-  if (!raw || raw.trim() === "") {
+  if (!raw || raw.trim() === '') {
     return { value: null, raw, explicitSign: false, isDMS: false };
   }
 
-  let str = raw.trim().replace(/\s+/g, "");
-  const isDMS = str.includes("°");
+  let str = raw.trim().replace(/\s+/g, '');
+  const isDMS = str.includes('°');
 
   let explicitSign = false;
   let sign = 1;
 
-  if (str.endsWith("S") || str.endsWith("W") || str.endsWith("s") || str.endsWith("w")) {
+  if (str.endsWith('S') || str.endsWith('W') || str.endsWith('s') || str.endsWith('w')) {
     explicitSign = true;
     sign = -1;
     str = str.slice(0, -1);
-  } else if (str.startsWith("-")) {
+  } else if (str.startsWith('-')) {
     explicitSign = true;
     sign = -1;
     str = str.slice(1);
-  } else if (str.startsWith("+")) {
+  } else if (str.startsWith('+')) {
     explicitSign = true;
     str = str.slice(1);
   }
 
   if (!isDMS) {
-    const decimal = parseFloat(str.replace(",", "."));
+    const decimal = parseFloat(str.replace(',', '.'));
     if (!isNaN(decimal) && isFinite(decimal)) {
       return { value: sign * decimal, raw, explicitSign, isDMS: false };
     }
@@ -154,19 +147,14 @@ function parseCoordDetailed(raw: string): CoordDetail {
 
   // DMS format
   try {
-    const normalized = str
-      .replace(/''|″|"|´´/g, "'")
-      .replace(/´|`|′/g, "'");
+    const normalized = str.replace(/''|″|"|´´/g, "'").replace(/´|`|′/g, "'");
 
     const parts = normalized.split(/[°']/).filter(Boolean);
     if (parts.length < 2) return { value: null, raw, explicitSign, isDMS: true };
 
-    const degrees = parseFloat(parts[0].replace(",", "."));
-    const minutes = parseFloat((parts[1] ?? "0").replace(",", "."));
-    const seconds =
-      parts.length >= 3
-        ? parseFloat((parts[2] ?? "0").replace(",", "."))
-        : 0;
+    const degrees = parseFloat(parts[0].replace(',', '.'));
+    const minutes = parseFloat((parts[1] ?? '0').replace(',', '.'));
+    const seconds = parts.length >= 3 ? parseFloat((parts[2] ?? '0').replace(',', '.')) : 0;
 
     if (isNaN(degrees) || isNaN(minutes) || isNaN(seconds)) {
       return { value: null, raw, explicitSign, isDMS: true };
@@ -189,12 +177,8 @@ function parseCoordDetailed(raw: string): CoordDetail {
  * DMS-without-sign values are also negative (and vice versa).
  */
 function inferMissingSigns(details: CoordDetail[]): void {
-  const explicitValues = details.filter(
-    (d) => d.value !== null && d.explicitSign
-  );
-  const dmsNoSign = details.filter(
-    (d) => d.isDMS && !d.explicitSign && d.value !== null
-  );
+  const explicitValues = details.filter((d) => d.value !== null && d.explicitSign);
+  const dmsNoSign = details.filter((d) => d.isDMS && !d.explicitSign && d.value !== null);
 
   if (dmsNoSign.length === 0 || explicitValues.length === 0) return;
 
@@ -222,7 +206,7 @@ export function parseCoordinate(raw: string): number | null {
  */
 export function applyMapping(
   rows: Record<string, unknown>[],
-  mapping: ColumnMapping
+  mapping: ColumnMapping,
 ): ValidatedRow[] {
   const n = rows.length;
 
@@ -233,13 +217,9 @@ export function applyMapping(
 
   for (let i = 0; i < n; i++) {
     const row = rows[i];
-    nameValues.push(String(row[mapping.nameColumn] ?? "").trim());
-    latDetails.push(
-      parseCoordDetailed(String(row[mapping.latColumn] ?? "").trim())
-    );
-    lngDetails.push(
-      parseCoordDetailed(String(row[mapping.lngColumn] ?? "").trim())
-    );
+    nameValues.push(String(row[mapping.nameColumn] ?? '').trim());
+    latDetails.push(parseCoordDetailed(String(row[mapping.latColumn] ?? '').trim()));
+    lngDetails.push(parseCoordDetailed(String(row[mapping.lngColumn] ?? '').trim()));
   }
 
   // --- Pass 2: Infer sign for DMS without direction ---
@@ -258,7 +238,7 @@ export function applyMapping(
 
     const errors: string[] = [];
 
-    if (!rawName) errors.push("Nombre vacío");
+    if (!rawName) errors.push('Nombre vacío');
 
     if (parsedLat === null) {
       errors.push(`Latitud inválida: "${rawLat}"`);
@@ -284,7 +264,7 @@ export function applyMapping(
       rawLat,
       rawLng,
       isValid,
-      validationError: errors.length > 0 ? errors.join("; ") : undefined,
+      validationError: errors.length > 0 ? errors.join('; ') : undefined,
       edited: false,
     });
   }
@@ -295,34 +275,55 @@ export function applyMapping(
 // ─── Auto-detect column mapping ──────────────────────────────
 
 /** Auto-detect column mapping from column names */
-export function autoDetectMapping(
-  columns: string[]
-): ColumnMapping | null {
+export function autoDetectMapping(columns: string[]): ColumnMapping | null {
   const lowerCols = columns.map((c) => c.toLowerCase().trim());
 
   const findCol = (variants: string[]): string | undefined => {
-    const idx = lowerCols.findIndex((c) =>
-      variants.some((v) => c === v || c.startsWith(v))
-    );
+    const idx = lowerCols.findIndex((c) => variants.some((v) => c === v || c.startsWith(v)));
     return idx !== -1 ? columns[idx] : undefined;
   };
 
   const nameCol =
     findCol([
-      "nombre", "name", "propriedade", "propiedad", "property",
-      "location", "dirección", "direccion", "title", "estabelecimento",
-      "establecimiento", "fazenda", "finca", "farm", "local", "localização",
-      "localizacion",
+      'nombre',
+      'name',
+      'propriedade',
+      'propiedad',
+      'property',
+      'location',
+      'dirección',
+      'direccion',
+      'title',
+      'estabelecimento',
+      'establecimiento',
+      'fazenda',
+      'finca',
+      'farm',
+      'local',
+      'localização',
+      'localizacion',
     ]) ?? columns[0];
 
   const latCol = findCol([
-    "latitud", "latitude", "lat", "y", "coord_y", "coordenada_y",
-    "coordenaday",
+    'latitud',
+    'latitude',
+    'lat',
+    'y',
+    'coord_y',
+    'coordenada_y',
+    'coordenaday',
   ]);
 
   const lngCol = findCol([
-    "longitud", "longitude", "lng", "lon", "long", "x", "coord_x",
-    "coordenada_x", "coordenadax",
+    'longitud',
+    'longitude',
+    'lng',
+    'lon',
+    'long',
+    'x',
+    'coord_x',
+    'coordenada_x',
+    'coordenadax',
   ]);
 
   if (!latCol || !lngCol) return null;

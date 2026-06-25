@@ -8,12 +8,12 @@
  * a distance value and as a polylines for the map.
  */
 
-import type { Point, RouteLegResult, RouteProvider } from "../types";
+import type { Point, RouteLegResult, RouteProvider } from '../types';
 
 const OSRM_TIMEOUT_MS = 5000;
 
 export class OSRMProvider implements RouteProvider {
-  readonly name = "osrm";
+  readonly name = 'osrm';
   readonly priority = 1;
 
   async route(a: Point, b: Point): Promise<RouteLegResult | null> {
@@ -31,16 +31,19 @@ export class OSRMProvider implements RouteProvider {
       const data: unknown = await res.json();
       if (
         !data ||
-        typeof data !== "object" ||
-        (data as { code?: string }).code !== "Ok" ||
+        typeof data !== 'object' ||
+        (data as { code?: string }).code !== 'Ok' ||
         !Array.isArray((data as { routes?: unknown[] }).routes) ||
         (data as { routes: unknown[] }).routes.length === 0
       ) {
         return null;
       }
 
-      const route = (data as { routes: { distance: number; duration: number; geometry?: { coordinates?: number[][] } }[] })
-        .routes[0];
+      const route = (
+        data as {
+          routes: { distance: number; duration: number; geometry?: { coordinates?: number[][] } }[];
+        }
+      ).routes[0];
       const rawCoords = route.geometry?.coordinates ?? [];
       const geometry: [number, number][] = rawCoords
         .filter((c): c is number[] => Array.isArray(c) && c.length >= 2)

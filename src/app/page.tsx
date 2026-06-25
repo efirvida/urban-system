@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useCallback, useMemo, useState } from "react";
-import dynamic from "next/dynamic";
-import { useTranslation } from "react-i18next";
+import { useCallback, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { useTranslation } from 'react-i18next';
 import {
   FolderOpen,
   ClipboardList,
@@ -14,35 +14,44 @@ import {
   PlusCircle,
   FileDown,
   X,
-} from "lucide-react";
-import type { MapViewData } from "@/components/MapView";
-import type { Config, Location, OptimizerResult, RawFileData, ValidatedRow, ColumnMapping } from "@/types";
-import { applyMapping } from "@/utils/parser";
-import { cn } from "@/lib/utils";
-import { useToast } from "@/lib/toast";
-import { useOptimizationFlow, useRouteEditor, useHomePlacement } from "@/hooks";
-import { downloadRoutePlan } from "@/lib/routeExport";
+} from 'lucide-react';
+import type { MapViewData } from '@/components/MapView';
+import type {
+  Config,
+  Location,
+  OptimizerResult,
+  RawFileData,
+  ValidatedRow,
+  ColumnMapping,
+} from '@/types';
+import { applyMapping } from '@/utils/parser';
+import { cn } from '@/lib/utils';
+import { useToast } from '@/lib/toast';
+import { useOptimizationFlow, useRouteEditor, useHomePlacement } from '@/hooks';
+import { downloadRoutePlan } from '@/lib/routeExport';
 
-import FileUpload from "@/components/FileUpload";
-import ColumnMapper from "@/components/ColumnMapper";
-import DataEditor from "@/components/DataEditor";
-import ConfigPanel from "@/components/ConfigPanel";
-import ResultsPanel from "@/components/ResultsPanel";
-import OptimizeButton from "@/components/OptimizeButton";
-import OptimizeProgress from "@/components/OptimizeProgress";
-import UnreachableWarning from "@/components/UnreachableWarning";
-import WizardSteps from "@/components/WizardSteps";
-import Sidebar from "@/components/Sidebar";
-import RouteEditor from "@/components/RouteEditor";
-import MapPOIActionBar from "@/components/MapPOIActionBar";
-import FloatingUnassignedPanel from "@/components/FloatingUnassignedPanel";
-import LocaleSwitcher from "@/i18n/LocaleSwitcher";
+import FileUpload from '@/components/FileUpload';
+import ColumnMapper from '@/components/ColumnMapper';
+import DataEditor from '@/components/DataEditor';
+import ConfigPanel from '@/components/ConfigPanel';
+import ResultsPanel from '@/components/ResultsPanel';
+import OptimizeButton from '@/components/OptimizeButton';
+import OptimizeProgress from '@/components/OptimizeProgress';
+import UnreachableWarning from '@/components/UnreachableWarning';
+import WizardSteps from '@/components/WizardSteps';
+import Sidebar from '@/components/Sidebar';
+import RouteEditor from '@/components/RouteEditor';
+import MapPOIActionBar from '@/components/MapPOIActionBar';
+import FloatingUnassignedPanel from '@/components/FloatingUnassignedPanel';
+import LocaleSwitcher from '@/i18n/LocaleSwitcher';
 
 // MapView imports Leaflet at module level — dynamic import defers it
 // to client-side only (window is not defined during SSR).
-const MapView = dynamic(() => import("@/components/MapView").then((m) => m.default), { ssr: false });
+const MapView = dynamic(() => import('@/components/MapView').then((m) => m.default), {
+  ssr: false,
+});
 
-type PhaseKey = "upload" | "mapping" | "review" | "config" | "results";
+type PhaseKey = 'upload' | 'mapping' | 'review' | 'config' | 'results';
 
 export default function Home() {
   // ── i18n ──
@@ -51,16 +60,16 @@ export default function Home() {
   // ── Toasts ──
   const { show: showToast } = useToast();
   const notify = useCallback(
-    (msg: string, kind: "error" | "info") => showToast(msg, { kind }),
+    (msg: string, kind: 'error' | 'info') => showToast(msg, { kind }),
     [showToast],
   );
   const reportExportError = useCallback(
-    (msg: string) => showToast(msg, { kind: "error" }),
+    (msg: string) => showToast(msg, { kind: 'error' }),
     [showToast],
   );
 
   // ── Wizard state (stays in page.tsx) ──
-  const [phase, setPhase] = useState<PhaseKey>("upload");
+  const [phase, setPhase] = useState<PhaseKey>('upload');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rawData, setRawData] = useState<RawFileData | null>(null);
   const [validatedRows, setValidatedRows] = useState<ValidatedRow[]>([]);
@@ -68,12 +77,12 @@ export default function Home() {
   const [config, setConfig] = useState<Config>({
     homeLat: 0,
     homeLng: 0,
-    constraintType: "hours",
+    constraintType: 'hours',
     constraintValue: 8,
     avgSpeed: 60,
     visitTime: 30,
   });
-  const [algorithm, setAlgorithm] = useState<"auto" | "nsga2">("nsga2");
+  const [algorithm, setAlgorithm] = useState<'auto' | 'nsga2'>('nsga2');
   const [exportOpen, setExportOpen] = useState(false);
 
   // ── Hooks ──
@@ -85,7 +94,7 @@ export default function Home() {
     t,
     notify,
     onSuccess: () => {
-      setPhase("results");
+      setPhase('results');
       setSidebarOpen(true);
     },
   });
@@ -102,7 +111,7 @@ export default function Home() {
   const handleFileLoaded = useCallback((data: RawFileData) => {
     setRawData(data);
     setSidebarOpen(true);
-    setPhase("mapping");
+    setPhase('mapping');
   }, []);
 
   const handleMappingConfirm = useCallback(
@@ -111,10 +120,10 @@ export default function Home() {
         const rows = applyMapping(dataRows, mapping);
         setValidatedRows(rows);
         setSidebarOpen(true);
-        setPhase("review");
+        setPhase('review');
       } catch (err) {
-        const msg = err instanceof Error ? err.message : t("wizard.errors.applyMapping");
-        notify(msg, "error");
+        const msg = err instanceof Error ? err.message : t('wizard.errors.applyMapping');
+        notify(msg, 'error');
       }
     },
     [t, notify],
@@ -127,14 +136,14 @@ export default function Home() {
   const handleReviewConfirm = useCallback((locs: Location[]) => {
     setLocations(locs);
     setSidebarOpen(true);
-    setPhase("config");
+    setPhase('config');
   }, []);
 
   const handleReset = useCallback(() => {
     setRawData(null);
     setValidatedRows([]);
     setLocations([]);
-    setPhase("upload");
+    setPhase('upload');
     setSidebarOpen(true);
     flow.handleReset();
     editor.reset();
@@ -144,11 +153,11 @@ export default function Home() {
   const PHASES = useMemo(
     () =>
       [
-        { key: "upload", label: t("wizard.steps.upload"), Icon: FolderOpen },
-        { key: "mapping", label: t("wizard.steps.mapping"), Icon: ClipboardList },
-        { key: "review", label: t("wizard.steps.review"), Icon: Pencil },
-        { key: "config", label: t("wizard.steps.config"), Icon: Settings },
-        { key: "results", label: t("wizard.steps.results"), Icon: CheckCheck },
+        { key: 'upload', label: t('wizard.steps.upload'), Icon: FolderOpen },
+        { key: 'mapping', label: t('wizard.steps.mapping'), Icon: ClipboardList },
+        { key: 'review', label: t('wizard.steps.review'), Icon: Pencil },
+        { key: 'config', label: t('wizard.steps.config'), Icon: Settings },
+        { key: 'results', label: t('wizard.steps.results'), Icon: CheckCheck },
       ] as const,
     [t],
   );
@@ -157,45 +166,62 @@ export default function Home() {
   // ── Map data (derived) ──
   const mapData = useMemo((): MapViewData => {
     const homeCoord =
-      config.homeLat && config.homeLng
-        ? { lat: config.homeLat, lng: config.homeLng }
-        : undefined;
+      config.homeLat && config.homeLng ? { lat: config.homeLat, lng: config.homeLng } : undefined;
 
-    if (phase === "review") {
+    if (phase === 'review') {
       return { markers: validatedRows };
     }
 
-    if (phase === "results" && flow.result) {
-      const preview = editor.previewDays ?? (editor.editMode && editor.editDaysPreview ? editor.editDaysPreview : null);
+    if (phase === 'results' && flow.result) {
+      const preview =
+        editor.previewDays ??
+        (editor.editMode && editor.editDaysPreview ? editor.editDaysPreview : null);
       const editRoutes = preview ?? flow.result.days;
       return {
         routes: editRoutes,
         locations,
         home: homeCoord,
         hiddenDays: flow.hiddenDays,
-        routingMode: editor.previewDays ? "haversine" : flow.routingMode,
+        routingMode: editor.previewDays ? 'haversine' : flow.routingMode,
         routeGeometry:
-          !editor.previewDays && flow.routingMode === "osrm" ? flow.routeGeometry ?? undefined : undefined,
+          !editor.previewDays && flow.routingMode === 'osrm'
+            ? (flow.routeGeometry ?? undefined)
+            : undefined,
         routeSource:
-          !editor.previewDays && flow.routingMode === "osrm" ? flow.routeSource ?? undefined : undefined,
+          !editor.previewDays && flow.routingMode === 'osrm'
+            ? (flow.routeSource ?? undefined)
+            : undefined,
       };
     }
 
-    if (phase === "config") {
+    if (phase === 'config') {
       return { locations, home: homeCoord };
     }
 
     return {};
-  }, [phase, validatedRows, locations, config, flow.result, flow.hiddenDays, flow.routingMode, flow.routeGeometry, flow.routeSource, editor.previewDays, editor.editMode, editor.editDaysPreview]);
+  }, [
+    phase,
+    validatedRows,
+    locations,
+    config,
+    flow.result,
+    flow.hiddenDays,
+    flow.routingMode,
+    flow.routeGeometry,
+    flow.routeSource,
+    editor.previewDays,
+    editor.editMode,
+    editor.editDaysPreview,
+  ]);
 
   // ── Sidebar content per phase ──
-  const sidebarTitle = PHASES[currentIdx]?.label ?? "";
+  const sidebarTitle = PHASES[currentIdx]?.label ?? '';
   const sidebarSubtitle =
-    phase === "review"
+    phase === 'review'
       ? `${validatedRows.filter((r) => r.selected && r.isValid).length} de ${validatedRows.length} selecionadas`
-      : phase === "config"
+      : phase === 'config'
         ? `${locations.length} ubicaciones`
-        : phase === "results" && flow.result
+        : phase === 'results' && flow.result
           ? `${flow.result.totalDays} días · ${flow.result.totalDistance.toFixed(0)} km`
           : undefined;
 
@@ -206,14 +232,14 @@ export default function Home() {
         className="btn-secondary w-full text-sm inline-flex items-center justify-center gap-1.5"
       >
         <FileDown className="w-4 h-4" />
-        {t("export.exportPlan")}
+        {t('export.exportPlan')}
       </button>
       {exportOpen && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />
           <div className="absolute bottom-full left-0 right-0 mb-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden divide-y divide-gray-100">
-            {(["html", "pdf", "docx", "xlsx"] as const).map((fmt) => {
-              const color = { html: "blue", pdf: "red", docx: "blue", xlsx: "green" }[fmt];
+            {(['html', 'pdf', 'docx', 'xlsx'] as const).map((fmt) => {
+              const color = { html: 'blue', pdf: 'red', docx: 'blue', xlsx: 'green' }[fmt];
               const desc = t(`export.${fmt}Desc`);
               return (
                 <button
@@ -236,10 +262,10 @@ export default function Home() {
                 >
                   <span
                     className={cn(
-                      "text-xs font-mono w-12 font-semibold",
-                      color === "red" && "text-red-600",
-                      color === "blue" && (fmt === "docx" ? "text-blue-800" : "text-blue-600"),
-                      color === "green" && "text-green-700",
+                      'text-xs font-mono w-12 font-semibold',
+                      color === 'red' && 'text-red-600',
+                      color === 'blue' && (fmt === 'docx' ? 'text-blue-800' : 'text-blue-600'),
+                      color === 'green' && 'text-green-700',
                     )}
                   >
                     {fmt.toUpperCase()}
@@ -256,25 +282,27 @@ export default function Home() {
 
   const sidebarContent = (() => {
     switch (phase) {
-      case "upload":
+      case 'upload':
         return (
           <div className="pt-8">
             <FileUpload onFileLoaded={handleFileLoaded} />
           </div>
         );
-      case "mapping":
+      case 'mapping':
         return rawData ? (
           <ColumnMapper
             data={rawData}
             onConfirm={handleMappingConfirm}
-            onBack={() => setPhase("upload")}
+            onBack={() => setPhase('upload')}
           />
         ) : null;
-      case "review":
+      case 'review':
         return (
           <>
             <WizardSteps
-              phases={PHASES as unknown as { key: PhaseKey; label: string; Icon: typeof FolderOpen }[]}
+              phases={
+                PHASES as unknown as { key: PhaseKey; label: string; Icon: typeof FolderOpen }[]
+              }
               currentIdx={currentIdx}
               onStepClick={(i) => setPhase(PHASES[i]!.key)}
             />
@@ -283,21 +311,23 @@ export default function Home() {
                 rows={validatedRows}
                 onChange={handleRowsChange}
                 onConfirm={handleReviewConfirm}
-                onBack={() => setPhase("mapping")}
+                onBack={() => setPhase('mapping')}
               />
             </div>
           </>
         );
-      case "config":
+      case 'config':
         return (
           <>
             <WizardSteps
-              phases={PHASES as unknown as { key: PhaseKey; label: string; Icon: typeof FolderOpen }[]}
+              phases={
+                PHASES as unknown as { key: PhaseKey; label: string; Icon: typeof FolderOpen }[]
+              }
               currentIdx={currentIdx}
               onStepClick={(i) => setPhase(PHASES[i]!.key)}
             />
             <div className="mt-3 space-y-4">
-              {flow.optimizePhase === "idle" || flow.optimizePhase === "done" ? (
+              {flow.optimizePhase === 'idle' || flow.optimizePhase === 'done' ? (
                 <>
                   <ConfigPanel
                     config={config}
@@ -307,7 +337,7 @@ export default function Home() {
                     onTogglePlaceHome={home.handleTogglePlaceHome}
                   />
                   <div className="text-center text-xs text-gray-400 bg-gray-50 rounded-lg p-2 border border-gray-200">
-                    {t("wizardPage.bothAlgorithms")}
+                    {t('wizardPage.bothAlgorithms')}
                   </div>
                   <OptimizeButton
                     onClick={flow.handleOptimize}
@@ -315,16 +345,16 @@ export default function Home() {
                     disabled={locations.length === 0}
                   />
                   <button
-                    onClick={() => setPhase("review")}
+                    onClick={() => setPhase('review')}
                     className="btn-secondary w-full text-sm"
                   >
-                    {t("wizardPage.backToEditLocations")}
+                    {t('wizardPage.backToEditLocations')}
                   </button>
                 </>
               ) : (
                 <OptimizeProgress
                   progress={flow.matrixProgress}
-                  phase={flow.optimizePhase === "algorithm" ? "algorithm" : "matrix"}
+                  phase={flow.optimizePhase === 'algorithm' ? 'algorithm' : 'matrix'}
                   totalLocations={locations.length}
                   error={flow.error ?? undefined}
                 />
@@ -332,11 +362,13 @@ export default function Home() {
             </div>
           </>
         );
-      case "results":
+      case 'results':
         return flow.result ? (
           <>
             <WizardSteps
-              phases={PHASES as unknown as { key: PhaseKey; label: string; Icon: typeof FolderOpen }[]}
+              phases={
+                PHASES as unknown as { key: PhaseKey; label: string; Icon: typeof FolderOpen }[]
+              }
               currentIdx={currentIdx}
               onStepClick={(i) => setPhase(PHASES[i]!.key)}
             />
@@ -374,17 +406,17 @@ export default function Home() {
                 <button
                   onClick={editor.toggleEditMode}
                   className={cn(
-                    "w-full text-sm py-2 rounded-lg font-medium transition-all",
+                    'w-full text-sm py-2 rounded-lg font-medium transition-all',
                     editor.editMode
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200",
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
                   )}
                 >
                   {editor.editMode
                     ? editor.editorDirty
-                      ? t("routeEditor.finishEditingWithChanges")
-                      : t("routeEditor.finishEditing")
-                    : t("routeEditor.editRoutes")}
+                      ? t('routeEditor.finishEditingWithChanges')
+                      : t('routeEditor.finishEditing')
+                    : t('routeEditor.editRoutes')}
                 </button>
               )}
 
@@ -418,15 +450,15 @@ export default function Home() {
               {exportButton}
 
               <div className="flex flex-col gap-2">
-                <button onClick={() => setPhase("config")} className="btn-secondary w-full text-sm">
-                  {t("wizardPage.backToConfig")}
+                <button onClick={() => setPhase('config')} className="btn-secondary w-full text-sm">
+                  {t('wizardPage.backToConfig')}
                 </button>
                 <button
                   onClick={handleReset}
                   className="btn-secondary w-full text-sm inline-flex items-center justify-center gap-1.5"
                 >
                   <PlusCircle className="w-4 h-4" />
-                  {t("wizardPage.newOptimization")}
+                  {t('wizardPage.newOptimization')}
                 </button>
               </div>
             </div>
@@ -458,7 +490,7 @@ export default function Home() {
           editor.setSidebarExpandedDay(day);
         }}
         highlightDay={editor.highlightDay}
-        homeDraggable={phase === "config"}
+        homeDraggable={phase === 'config'}
       />
 
       {/* Floating POI action bar (edit mode only). */}
@@ -493,7 +525,7 @@ export default function Home() {
           <span className="flex-1">{flow.error}</span>
           <button
             onClick={() => flow.setError(null)}
-            aria-label={t("ariaLabels.closeError")}
+            aria-label={t('ariaLabels.closeError')}
             className="text-red-400 hover:text-red-600 inline-flex items-center"
           >
             <X className="w-4 h-4" aria-hidden="true" />
@@ -509,12 +541,12 @@ export default function Home() {
         sidebarIcon={<Truck className="w-4 h-4 text-blue-600" />}
         subtitle={sidebarSubtitle}
       >
-        {phase !== "upload" && (
+        {phase !== 'upload' && (
           <button
             onClick={handleReset}
             className="text-xs text-gray-400 hover:text-blue-600 transition-colors mb-3 block"
           >
-            {t("wizardPage.sidebarNewOptimization")}
+            {t('wizardPage.sidebarNewOptimization')}
           </button>
         )}
         {sidebarContent}

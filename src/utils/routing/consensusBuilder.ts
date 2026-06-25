@@ -30,21 +30,9 @@
  * See: openspec/changes/consensus-matrix/specs/consensus-matrix/spec.md
  */
 
-import {
-  CONSENSUS_TOLERANCE,
-  RELIABILITY_FLOOR,
-} from "@/utils/constants";
-import type {
-  ConsensusEntry,
-  ConsensusMatrix,
-  ProviderVote,
-  RoutingSourceExtended,
-} from "@/types";
-import type {
-  BatchRouteProvider,
-  Point,
-  RouteProvider,
-} from "./types";
+import { CONSENSUS_TOLERANCE, RELIABILITY_FLOOR } from '@/utils/constants';
+import type { ConsensusEntry, ConsensusMatrix, ProviderVote, RoutingSourceExtended } from '@/types';
+import type { BatchRouteProvider, Point, RouteProvider } from './types';
 
 const PER_PAIR_CONCURRENCY = 5;
 
@@ -102,10 +90,9 @@ export class ConsensusBuilder {
       total: number,
       detail: string,
       extra?: { geoapifyCount?: number; orsCount?: number; osrmCount?: number },
-    ) =>
-      this.onProgress?.({ stage, current, total, detail, ...extra });
+    ) => this.onProgress?.({ stage, current, total, detail, ...extra });
 
-    emit("providers", 0, totalPairs, "Iniciando proveedores batch...");
+    emit('providers', 0, totalPairs, 'Iniciando proveedores batch...');
 
     // 1. Fire every batch provider in parallel.
     const batchResults = await Promise.all(
@@ -116,10 +103,10 @@ export class ConsensusBuilder {
       const p = this.batchProviders[idx]!;
       const r = batchResults[idx];
       const finiteCount = r ? [...r.values()].filter((v) => v !== null).length : 0;
-      if (p.name === "geoapify-matrix") geoapifyFinite = finiteCount;
-      if (p.name === "ors-matrix") orsFinite = finiteCount;
+      if (p.name === 'geoapify-matrix') geoapifyFinite = finiteCount;
+      if (p.name === 'ors-matrix') orsFinite = finiteCount;
       emit(
-        "providers",
+        'providers',
         idx + 1,
         this.batchProviders.length,
         `${p.name}: ${finiteCount} pares resueltos`,
@@ -147,7 +134,7 @@ export class ConsensusBuilder {
           const dist = map.get(key);
           return {
             provider: this.batchProviders[idx]!.name as RoutingSourceExtended,
-            distance: typeof dist === "number" ? dist : null,
+            distance: typeof dist === 'number' ? dist : null,
           };
         });
         batchVotesByKey.set(key, batchVotes);
@@ -160,23 +147,21 @@ export class ConsensusBuilder {
     if (allPairs.length > 0) {
       let osrmDone = 0;
       const numWorkers = Math.min(PER_PAIR_CONCURRENCY, allPairs.length);
-      const workers = Array.from(
-        { length: numWorkers },
-        (_, i) =>
-          this.perPairWorker(allPairs, i, numWorkers, perPairVotes, (n, result) => {
-            osrmDone += n;
-            osrmFinite += result ? 1 : 0;
-            emit("osrm", osrmDone, allPairs.length, `OSRM: ${osrmDone}/${allPairs.length} pares`, {
-              osrmCount: osrmFinite,
-              geoapifyCount: geoapifyFinite,
-              orsCount: orsFinite,
-            });
-          }),
+      const workers = Array.from({ length: numWorkers }, (_, i) =>
+        this.perPairWorker(allPairs, i, numWorkers, perPairVotes, (n, result) => {
+          osrmDone += n;
+          osrmFinite += result ? 1 : 0;
+          emit('osrm', osrmDone, allPairs.length, `OSRM: ${osrmDone}/${allPairs.length} pares`, {
+            osrmCount: osrmFinite,
+            geoapifyCount: geoapifyFinite,
+            orsCount: orsFinite,
+          });
+        }),
       );
       await Promise.all(workers);
     }
 
-    emit("crossref", 0, allPairs.length, "Cruzando referencias...", {
+    emit('crossref', 0, allPairs.length, 'Cruzando referencias...', {
       geoapifyCount: geoapifyFinite,
       orsCount: orsFinite,
       osrmCount: osrmFinite,
@@ -193,11 +178,16 @@ export class ConsensusBuilder {
       };
       matrix[key] = this.crossReference([...batchVotes, osrmVote]);
       if (pi % 100 === 0 || pi === allPairs.length - 1) {
-        emit("crossref", pi + 1, allPairs.length, `Referencias cruzadas: ${pi + 1}/${allPairs.length}`);
+        emit(
+          'crossref',
+          pi + 1,
+          allPairs.length,
+          `Referencias cruzadas: ${pi + 1}/${allPairs.length}`,
+        );
       }
     }
 
-    emit("complete", totalPairs, totalPairs, "Matriz de consenso completa", {
+    emit('complete', totalPairs, totalPairs, 'Matriz de consenso completa', {
       geoapifyCount: geoapifyFinite,
       orsCount: orsFinite,
       osrmCount: osrmFinite,
@@ -267,7 +257,7 @@ export class ConsensusBuilder {
   private crossReference(votes: ProviderVote[]): ConsensusEntry {
     const finite = votes.filter(
       (v): v is ProviderVote & { distance: number } =>
-        typeof v.distance === "number" && Number.isFinite(v.distance),
+        typeof v.distance === 'number' && Number.isFinite(v.distance),
     );
 
     if (finite.length === 0) {
@@ -275,15 +265,13 @@ export class ConsensusBuilder {
         distance: Infinity,
         reliability: 0,
         votes,
-        source: "unreachable",
+        source: 'unreachable',
       };
     }
 
     const median = pickMedian(finite.map((v) => v.distance));
     const tolerance = CONSENSUS_TOLERANCE * Math.max(median, 1e-9);
-    const agreed = finite.filter(
-      (v) => Math.abs(v.distance - median) <= tolerance,
-    );
+    const agreed = finite.filter((v) => Math.abs(v.distance - median) <= tolerance);
 
     // Reliability = fraction of providers WITH DATA that agree within tolerance.
     // Null/unreachable votes mean "no data for this pair", not "disagreement".
@@ -297,7 +285,7 @@ export class ConsensusBuilder {
         distance: Infinity,
         reliability,
         votes,
-        source: "unreachable",
+        source: 'unreachable',
       };
     }
 

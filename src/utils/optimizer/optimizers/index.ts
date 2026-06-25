@@ -14,14 +14,14 @@
  * extra entry in `defaultOptimizers`.
  */
 
-import { CwOptimizer } from "./cw";
-import { Nsga2Optimizer } from "./nsga2";
-import { OrsOptimizer } from "./ors";
-import type { Optimizer } from "../types";
+import { CwOptimizer } from './cw';
+import { Nsga2Optimizer } from './nsga2';
+import { OrsOptimizer } from './ors';
+import type { Optimizer } from '../types';
 
-export { CwOptimizer } from "./cw";
-export { Nsga2Optimizer } from "./nsga2";
-export { OrsOptimizer } from "./ors";
+export { CwOptimizer } from './cw';
+export { Nsga2Optimizer } from './nsga2';
+export { OrsOptimizer } from './ors';
 
 export const defaultOptimizers: Optimizer[] = [
   new CwOptimizer(),

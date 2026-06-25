@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { MapPin, Check, X } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { cn } from "@/lib/utils";
+import { MapPin, Check, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
 
 // Helper — render a check icon only when the predicate is true. Keeps the
 // call sites terse and avoids leaking emoji into the markup.
@@ -42,12 +42,10 @@ export default function MapPOIActionBar({
         {/* POI info */}
         <div className="flex items-center gap-2 mb-2.5 pb-2 border-b border-gray-100">
           <MapPin className="w-4 h-4 text-blue-600 shrink-0" aria-hidden="true" />
-          <span className="font-semibold text-sm text-gray-800 truncate">
-            {poiName}
-          </span>
+          <span className="font-semibold text-sm text-gray-800 truncate">{poiName}</span>
           <span className="text-xs text-gray-400">·</span>
           <span className="text-xs font-medium text-blue-600">
-            {t("mapPOI.day", { day: currentDay })}
+            {t('mapPOI.day', { day: currentDay })}
           </span>
         </div>
 
@@ -61,28 +59,30 @@ export default function MapPOIActionBar({
                 key={d}
                 onClick={() => onSelectDay(isSelected ? null : d)}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border inline-flex items-center gap-1",
-                  isSelected && "ring-2 ring-blue-500 bg-blue-50 text-blue-700 border-blue-300",
-                  isCurrent && "bg-blue-100 text-blue-700 border-blue-200 font-semibold",
-                  !isCurrent && !isSelected && "bg-white text-gray-700 hover:bg-gray-50 border-gray-200",
+                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-all border inline-flex items-center gap-1',
+                  isSelected && 'ring-2 ring-blue-500 bg-blue-50 text-blue-700 border-blue-300',
+                  isCurrent && 'bg-blue-100 text-blue-700 border-blue-200 font-semibold',
+                  !isCurrent &&
+                    !isSelected &&
+                    'bg-white text-gray-700 hover:bg-gray-50 border-gray-200',
                 )}
               >
                 <Checkmark show={isCurrent && !isSelected} />
-                {t("mapPOI.day", { day: d })}
+                {t('mapPOI.day', { day: d })}
               </button>
             );
           })}
           <button
             onClick={() => onSelectDay(previewTargetDay === UNASSIGNED ? null : UNASSIGNED)}
             className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border inline-flex items-center gap-1",
+              'px-3 py-1.5 rounded-lg text-xs font-medium transition-all border inline-flex items-center gap-1',
               previewTargetDay === UNASSIGNED
-                ? "ring-2 ring-amber-500 bg-amber-50 text-amber-700 border-amber-300"
-                : "bg-white text-gray-700 hover:bg-gray-50 border-gray-200",
+                ? 'ring-2 ring-amber-500 bg-amber-50 text-amber-700 border-amber-300'
+                : 'bg-white text-gray-700 hover:bg-gray-50 border-gray-200',
             )}
           >
             <Checkmark show={previewTargetDay === UNASSIGNED} />
-            {t("mapPOI.withoutRoute")}
+            {t('mapPOI.withoutRoute')}
           </button>
         </div>
 
@@ -91,19 +91,19 @@ export default function MapPOIActionBar({
           <div className="flex gap-2 pt-2 border-t border-gray-100">
             <button
               onClick={onAccept}
-              aria-label={t("mapPOI.ariaLabels.acceptMovePOI")}
+              aria-label={t('mapPOI.ariaLabels.acceptMovePOI')}
               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-colors"
             >
               <Check className="w-3.5 h-3.5" aria-hidden="true" />
-              {t("mapPOI.accept")}
+              {t('mapPOI.accept')}
             </button>
             <button
               onClick={onCancel}
-              aria-label={t("mapPOI.ariaLabels.cancelMovePOI")}
+              aria-label={t('mapPOI.ariaLabels.cancelMovePOI')}
               className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-white text-gray-600 text-xs font-medium border border-gray-200 hover:bg-gray-50 transition-colors"
             >
               <X className="w-3.5 h-3.5" aria-hidden="true" />
-              {t("mapPOI.cancel")}
+              {t('mapPOI.cancel')}
             </button>
           </div>
         )}

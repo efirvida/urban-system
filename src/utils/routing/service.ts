@@ -15,20 +15,15 @@
  * candidate instead of substituting a 0 or a Haversine estimate.
  */
 
-import type { ConsensusMatrix } from "@/types";
-import { ConsensusBuilder } from "./consensusBuilder";
-import type { OnConsensusProgress } from "./consensusBuilder";
-import { getCachedLeg, setCachedLeg } from "./cache";
-import type {
-  BatchRouteProvider,
-  Point,
-  RouteLegResult,
-  RouteProvider,
-} from "./types";
+import type { ConsensusMatrix } from '@/types';
+import { ConsensusBuilder } from './consensusBuilder';
+import type { OnConsensusProgress } from './consensusBuilder';
+import { getCachedLeg, setCachedLeg } from './cache';
+import type { BatchRouteProvider, Point, RouteLegResult, RouteProvider } from './types';
 
 /** Progress shape consumed by the loading UI in `ResultsPanel`. */
 export interface MatrixProgress {
-  phase: "matrix";
+  phase: 'matrix';
   stage: string;
   current: number;
   total: number;
@@ -132,11 +127,11 @@ export class RoutingService {
       const elapsed = (Date.now() - startTime) / 1000;
       const speed = done / Math.max(elapsed, 0.1);
       onProgress({
-        phase: "matrix",
+        phase: 'matrix',
         stage:
           totalReal() > 0
             ? `Geoapify: ${geoapifyCount} · OSRM: ${osrmCount}`
-            : "Calculando distancias...",
+            : 'Calculando distancias...',
         current: done,
         total: totalPairs,
         percent: totalPairs === 0 ? 100 : Math.round((done / totalPairs) * 100),
@@ -159,7 +154,7 @@ export class RoutingService {
         const result = await this.route(pair.a, pair.b);
         if (result && Number.isFinite(result.distanceKm)) {
           matrix[key] = result.distanceKm;
-          if (result.source === "geoapify") geoapifyCount++;
+          if (result.source === 'geoapify') geoapifyCount++;
           else osrmCount++;
         } else {
           matrix[key] = Infinity;
@@ -170,9 +165,7 @@ export class RoutingService {
       }
     };
 
-    await Promise.all(
-      Array.from({ length: MATRIX_CONCURRENCY }, () => worker()),
-    );
+    await Promise.all(Array.from({ length: MATRIX_CONCURRENCY }, () => worker()));
     report();
 
     return matrix;

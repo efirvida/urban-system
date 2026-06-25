@@ -13,8 +13,8 @@
  * appends to the locations array before hashing).
  */
 
-import type { Config, Location } from "@/types";
-import type { OptimizerResult } from "./types";
+import type { Config, Location } from '@/types';
+import type { OptimizerResult } from './types';
 
 interface CacheEntry {
   result: OptimizerResult;
@@ -28,25 +28,22 @@ const EVICT_BATCH = 20;
 const cache = new Map<string, CacheEntry>();
 
 /** Build a stable cache key from the locations + config the route runs. */
-export function optimizerCacheKey(
-  locations: Location[],
-  config: Config,
-): string {
+export function optimizerCacheKey(locations: Location[], config: Config): string {
   const locHash = locations
     .map((l) => `${l.lat.toFixed(5)},${l.lng.toFixed(5)}`)
     .sort()
-    .join("|");
+    .join('|');
   const cfgStr = [
     config.constraintType,
     config.constraintValue,
-    config.maxVisits ?? "",
+    config.maxVisits ?? '',
     config.avgSpeed,
     config.visitTime,
     config.homeLat.toFixed(5),
     config.homeLng.toFixed(5),
-  ].join("|");
+  ].join('|');
   let h = 5381;
-  for (const s of locHash + "|" + cfgStr) {
+  for (const s of locHash + '|' + cfgStr) {
     h = ((h << 5) + h + s.charCodeAt(0)) | 0;
   }
   return Math.abs(h).toString(36);
@@ -67,9 +64,7 @@ export function getCachedOptimizerResult(key: string): OptimizerResult | null {
 export function setCachedOptimizerResult(key: string, result: OptimizerResult): void {
   cache.set(key, { result, timestamp: Date.now() });
   if (cache.size > MAX_ENTRIES) {
-    const oldest = [...cache.entries()].sort(
-      (a, b) => a[1].timestamp - b[1].timestamp,
-    );
+    const oldest = [...cache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
     for (let i = 0; i < EVICT_BATCH && i < oldest.length; i++) {
       const entry = oldest[i];
       if (entry) cache.delete(entry[0]);

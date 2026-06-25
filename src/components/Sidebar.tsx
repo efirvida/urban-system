@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { ReactNode } from "react";
-import { useTranslation } from "react-i18next";
-import { cn } from "@/lib/utils";
+import { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
 
 interface SidebarProps {
   open: boolean;
@@ -28,14 +28,14 @@ export default function Sidebar({
       {/* Toggle button — always visible */}
       <button
         onClick={onToggle}
-        aria-label={open ? t("sidebar.ariaLabels.closePanel") : t("sidebar.ariaLabels.openPanel")}
+        aria-label={open ? t('sidebar.ariaLabels.closePanel') : t('sidebar.ariaLabels.openPanel')}
         className={cn(
-          "fixed top-4 z-30 w-10 h-10 flex items-center justify-center rounded-full shadow-md transition-colors",
-          "bg-white hover:bg-gray-100 border border-gray-200 text-gray-600"
+          'fixed top-4 z-30 w-10 h-10 flex items-center justify-center rounded-full shadow-md transition-colors',
+          'bg-white hover:bg-gray-100 border border-gray-200 text-gray-600',
         )}
         style={{
-          left: open ? "calc(min(420px, 90vw) + 16px)" : "16px",
-          transition: "left 0.3s ease",
+          left: open ? 'calc(min(420px, 90vw) + 16px)' : '16px',
+          transition: 'left 0.3s ease',
         }}
       >
         <svg
@@ -69,8 +69,8 @@ export default function Sidebar({
       {/* Sidebar panel */}
       <aside
         className={cn(
-          "fixed left-0 top-0 z-20 h-full bg-white shadow-xl transition-all duration-300 ease-in-out flex flex-col",
-          open ? "w-[min(420px,90vw)]" : "w-0 overflow-hidden"
+          'fixed left-0 top-0 z-20 h-full bg-white shadow-xl transition-all duration-300 ease-in-out flex flex-col',
+          open ? 'w-[min(420px,90vw)]' : 'w-0 overflow-hidden',
         )}
       >
         {/* Header inside sidebar */}
@@ -79,9 +79,7 @@ export default function Sidebar({
             {sidebarIcon}
             {title}
           </h2>
-          {subtitle && (
-            <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>
-          )}
+          {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
         </div>
 
         {/* Scrollable content */}

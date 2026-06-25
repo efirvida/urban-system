@@ -16,9 +16,9 @@
  * when the threshold is crossed, so the steady-state cost is zero.
  */
 
-import type { CachedLeg, Point, RouteLegResult } from "./types";
+import type { CachedLeg, Point, RouteLegResult } from './types';
 
-const RC_PREFIX = "route_";
+const RC_PREFIX = 'route_';
 const CACHE_CAP = 2000; // smaller cap since entries are smaller (no geometry)
 
 /**
@@ -29,16 +29,8 @@ const CACHE_CAP = 2000; // smaller cap since entries are smaller (no geometry)
  * Matches the legacy `routeLegKey` in `clientRouting.ts` for backwards
  * compatibility with existing localStorage entries.
  */
-export function routeLegKey(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number,
-): string {
-  return (
-    RC_PREFIX +
-    `${lat1.toFixed(5)},${lng1.toFixed(5)}|${lat2.toFixed(5)},${lng2.toFixed(5)}`
-  );
+export function routeLegKey(lat1: number, lng1: number, lat2: number, lng2: number): string {
+  return RC_PREFIX + `${lat1.toFixed(5)},${lng1.toFixed(5)}|${lat2.toFixed(5)},${lng2.toFixed(5)}`;
 }
 
 /** Convenience wrapper accepting `Point` objects. */
@@ -64,9 +56,9 @@ export function getCachedLeg(
     const parsed: unknown = JSON.parse(raw);
     if (
       !parsed ||
-      typeof parsed !== "object" ||
-      typeof (parsed as CachedLeg).distanceKm !== "number" ||
-      typeof (parsed as CachedLeg).source !== "string"
+      typeof parsed !== 'object' ||
+      typeof (parsed as CachedLeg).distanceKm !== 'number' ||
+      typeof (parsed as CachedLeg).source !== 'string'
     ) {
       return null;
     }
@@ -123,7 +115,9 @@ function evictIfNeeded(): void {
         const raw = localStorage.getItem(key);
         const parsed: unknown = raw ? JSON.parse(raw) : null;
         const ts =
-          parsed && typeof parsed === "object" && typeof (parsed as CachedLeg).timestamp === "number"
+          parsed &&
+          typeof parsed === 'object' &&
+          typeof (parsed as CachedLeg).timestamp === 'number'
             ? (parsed as CachedLeg).timestamp
             : 0;
         return { key, timestamp: ts };

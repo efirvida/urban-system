@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import { useCallback, useMemo, useRef, useState } from "react";
-import type { TFunction } from "i18next";
-import type { DayRoute, Location, OptimizerResult } from "@/types";
-import { reoptimizeDay } from "@/utils/routerOptimizer";
-import type { RouteEditorHandle } from "@/components/RouteEditor";
+import { useCallback, useMemo, useRef, useState } from 'react';
+import type { TFunction } from 'i18next';
+import type { DayRoute, Location, OptimizerResult } from '@/types';
+import { reoptimizeDay } from '@/utils/routerOptimizer';
+import type { RouteEditorHandle } from '@/components/RouteEditor';
 
 /** Selected POI on the map — drives sidebar highlight + action bar. */
 export interface SelectedPOI {
@@ -20,7 +20,16 @@ interface UseRouteEditorParams {
   /** Map of optimized results by algorithm id — used to restore days
    *  when the user switches tabs while editing. */
   optimizerResults: (OptimizerResult | null)[] | null;
-  config: { homeLat: number; lng?: number; homeLng: number; avgSpeed: number; visitTime: number; constraintType: "hours" | "visits" | "hours+visits"; constraintValue: number; maxVisits?: number };
+  config: {
+    homeLat: number;
+    lng?: number;
+    homeLng: number;
+    avgSpeed: number;
+    visitTime: number;
+    constraintType: 'hours' | 'visits' | 'hours+visits';
+    constraintValue: number;
+    maxVisits?: number;
+  };
   /** All uploaded locations (used to compute unassigned POIs). */
   locations: Location[];
   t: TFunction;
@@ -144,13 +153,24 @@ export function useRouteEditor({
       }
 
       setHighlightDay(targetDay);
-      const home: Location = { name: t("routeEditor.home"), lat: config.homeLat, lng: config.homeLng };
+      const home: Location = {
+        name: t('routeEditor.home'),
+        lat: config.homeLat,
+        lng: config.homeLng,
+      };
 
       if (targetDay === 0) {
         const sourceDay = editDaysPreview.find((d) => d.day === selectedPOI.day);
         if (!sourceDay) return;
         const sourcePois = stopsToLocs(sourceDay.stops).filter((s) => s.name !== selectedPOI.name);
-        const newSource = reoptimizeDay(sourcePois, home, config as never, undefined, sourceDay.day, undefined);
+        const newSource = reoptimizeDay(
+          sourcePois,
+          home,
+          config as never,
+          undefined,
+          sourceDay.day,
+          undefined,
+        );
         const preview = editDaysPreview.map((d) => (d.day === sourceDay.day ? newSource : d));
         setPreviewDays(preview);
         return;
@@ -162,7 +182,14 @@ export function useRouteEditor({
         const targetPois = stopsToLocs(targetDayData.stops).concat([
           { name: selectedPOI.name, lat: selectedPOI.lat, lng: selectedPOI.lng },
         ]);
-        const newTarget = reoptimizeDay(targetPois, home, config as never, undefined, targetDayData.day, undefined);
+        const newTarget = reoptimizeDay(
+          targetPois,
+          home,
+          config as never,
+          undefined,
+          targetDayData.day,
+          undefined,
+        );
         const preview = editDaysPreview.map((d) => (d.day === targetDayData.day ? newTarget : d));
         setPreviewDays(preview);
         return;
@@ -177,8 +204,22 @@ export function useRouteEditor({
         { name: selectedPOI.name, lat: selectedPOI.lat, lng: selectedPOI.lng },
       ]);
 
-      const newSource = reoptimizeDay(sourcePois, home, config as never, undefined, sourceDay.day, undefined);
-      const newTarget = reoptimizeDay(targetPois, home, config as never, undefined, targetDayData.day, undefined);
+      const newSource = reoptimizeDay(
+        sourcePois,
+        home,
+        config as never,
+        undefined,
+        sourceDay.day,
+        undefined,
+      );
+      const newTarget = reoptimizeDay(
+        targetPois,
+        home,
+        config as never,
+        undefined,
+        targetDayData.day,
+        undefined,
+      );
 
       const preview = editDaysPreview.map((d) => {
         if (d.day === sourceDay.day) return newSource;
@@ -201,7 +242,12 @@ export function useRouteEditor({
       );
     } else {
       editorRef.current?.commitMove(
-        { name: selectedPOI.name, lat: selectedPOI.lat, lng: selectedPOI.lng, fromDay: selectedPOI.day },
+        {
+          name: selectedPOI.name,
+          lat: selectedPOI.lat,
+          lng: selectedPOI.lng,
+          fromDay: selectedPOI.day,
+        },
         target,
       );
     }
@@ -253,7 +299,7 @@ export function useRouteEditor({
   const toggleEditMode = useCallback(() => {
     if (editMode) {
       if (editorDirty) {
-        const ok = window.confirm(t("wizardPage.confirmDiscard"));
+        const ok = window.confirm(t('wizardPage.confirmDiscard'));
         if (!ok) return;
       }
       setEditMode(false);

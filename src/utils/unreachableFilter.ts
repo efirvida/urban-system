@@ -14,13 +14,13 @@
  * See: openspec/changes/real-roads-only/spec.md §unreachable-poi-handling
  */
 
-import { Location, UnreachablePoi, DistanceMatrix } from "@/types";
-import { TINY_DISTANCE_KM } from "./constants";
+import { Location, UnreachablePoi, DistanceMatrix } from '@/types';
+import { TINY_DISTANCE_KM } from './constants';
 
 export function filterUnreachable(
   locations: Location[],
   home: Location,
-  matrix: DistanceMatrix
+  matrix: DistanceMatrix,
 ): { reachable: Location[]; unreachable: UnreachablePoi[] } {
   void home;
 
@@ -32,10 +32,10 @@ export function filterUnreachable(
     const poiIndex = i + 1;
     const key = `${HOME_INDEX},${poiIndex}`;
     const entry = matrix[key];
-    if (entry && (entry.source === "real" || entry.distance < TINY_DISTANCE_KM)) {
+    if (entry && (entry.source === 'real' || entry.distance < TINY_DISTANCE_KM)) {
       reachable.push(locations[i]);
     } else {
-      unreachable.push({ ...locations[i], reason: "no_road_connection" });
+      unreachable.push({ ...locations[i], reason: 'no_road_connection' });
     }
   }
 

@@ -55,7 +55,13 @@ export interface CachedLeg {
  * possible sources; previously duplicated as a local type in
  * `clientRouting.ts`.
  */
-export type RouteSource = "geoapify" | "geoapify-matrix" | "ors" | "ors-matrix" | "osrm" | "haversine";
+export type RouteSource =
+  | 'geoapify'
+  | 'geoapify-matrix'
+  | 'ors'
+  | 'ors-matrix'
+  | 'osrm'
+  | 'haversine';
 
 /**
  * Pluggable routing strategy.
@@ -79,11 +85,7 @@ export interface RouteProvider {
  * member is reserved for entries that the consensus deemed below the
  * reliability floor; it never appears as a `ProviderVote.provider`.
  */
-export type RoutingSourceExtended =
-  | "geoapify-matrix"
-  | "ors-matrix"
-  | "osrm"
-  | "unreachable";
+export type RoutingSourceExtended = 'geoapify-matrix' | 'ors-matrix' | 'osrm' | 'unreachable';
 
 /**
  * Batch routing strategy — distinct from `RouteProvider` because batch

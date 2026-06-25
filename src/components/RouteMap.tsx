@@ -1,16 +1,16 @@
-"use client";
+'use client';
 
-import { useEffect, useRef } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import { Stop } from "@/types";
+import { useEffect, useRef } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { Stop } from '@/types';
 
 interface RouteMapProps {
   stops: Stop[];
   color?: string;
 }
 
-export default function RouteMap({ stops, color = "#3b82f6" }: RouteMapProps) {
+export default function RouteMap({ stops, color = '#3b82f6' }: RouteMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
 
@@ -22,8 +22,8 @@ export default function RouteMap({ stops, color = "#3b82f6" }: RouteMapProps) {
       zoom: 13,
       attributionControl: false,
     });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap contributors",
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
       maxZoom: 19,
     }).addTo(map);
     L.control.attribution({ prefix: false }).addTo(map);
@@ -45,9 +45,7 @@ export default function RouteMap({ stops, color = "#3b82f6" }: RouteMapProps) {
 
     // Add a marker for each stop
     stops.forEach((stop) => {
-      L.marker([stop.lat, stop.lng])
-        .addTo(map)
-        .bindPopup(`<strong>${stop.name}</strong>`);
+      L.marker([stop.lat, stop.lng]).addTo(map).bindPopup(`<strong>${stop.name}</strong>`);
     });
 
     // Fit bounds to all stops
@@ -64,10 +62,5 @@ export default function RouteMap({ stops, color = "#3b82f6" }: RouteMapProps) {
     };
   }, [stops, color]);
 
-  return (
-    <div
-      ref={containerRef}
-      style={{ width: "100%", height: "300px", borderRadius: "8px" }}
-    />
-  );
+  return <div ref={containerRef} style={{ width: '100%', height: '300px', borderRadius: '8px' }} />;
 }

@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useCallback, useState } from "react";
-import type { Config } from "@/types";
+import { useCallback, useState } from 'react';
+import type { Config } from '@/types';
 
-export type PlacementMode = "home" | null;
+export type PlacementMode = 'home' | null;
 
 interface UseHomePlacementParams {
   /** Current config — the hook writes homeLat/homeLng through setConfig. */
@@ -41,7 +41,7 @@ export function useHomePlacement({
   );
 
   const handleTogglePlaceHome = useCallback(() => {
-    setPlacementMode((prev) => (prev === "home" ? null : "home"));
+    setPlacementMode((prev) => (prev === 'home' ? null : 'home'));
   }, []);
 
   const handleDragHome = useCallback(
@@ -53,7 +53,7 @@ export function useHomePlacement({
 
   return {
     placementMode,
-    placingHome: placementMode === "home",
+    placingHome: placementMode === 'home',
     setPlacementMode,
     handlePlaceHome,
     handleTogglePlaceHome,

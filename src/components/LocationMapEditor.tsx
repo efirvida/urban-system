@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useEffect, useRef } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import type { Location } from "@/types";
+import { useEffect, useRef } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import type { Location } from '@/types';
 
 interface LocationMapEditorProps {
   locations: Location[];
@@ -14,7 +14,7 @@ interface LocationMapEditorProps {
 export default function LocationMapEditor({
   locations,
   onChange,
-  height = "100%",
+  height = '100%',
 }: LocationMapEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -24,14 +24,12 @@ export default function LocationMapEditor({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = L.map(containerRef.current, {
-      center: locations[0]
-        ? [locations[0].lat, locations[0].lng]
-        : [-15.5, -47.5],
+      center: locations[0] ? [locations[0].lat, locations[0].lng] : [-15.5, -47.5],
       zoom: 13,
       attributionControl: false,
     });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap contributors",
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
       maxZoom: 19,
     }).addTo(map);
     L.control.attribution({ prefix: false }).addTo(map);
@@ -59,7 +57,7 @@ export default function LocationMapEditor({
       const marker = L.marker([loc.lat, loc.lng], { draggable: true })
         .addTo(map)
         .bindPopup(`<strong>${loc.name}</strong>`)
-        .on("dragend", () => {
+        .on('dragend', () => {
           const pos = marker.getLatLng();
           onChange(i, pos.lat, pos.lng);
         });
@@ -72,5 +70,5 @@ export default function LocationMapEditor({
     }
   }, [locations, onChange]);
 
-  return <div ref={containerRef} style={{ width: "100%", height }} />;
+  return <div ref={containerRef} style={{ width: '100%', height }} />;
 }

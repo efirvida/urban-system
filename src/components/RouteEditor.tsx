@@ -1,6 +1,14 @@
-"use client";
+'use client';
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   DndContext,
   DragEndEvent,
@@ -9,16 +17,16 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-} from "@dnd-kit/core";
-import { MapPin, Plus } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { DayRoute, Location, Config, EditMutation } from "@/types";
-import { reoptimizeDay } from "@/utils/routerOptimizer";
-import { cn, getRouteColor } from "@/lib/utils";
+} from '@dnd-kit/core';
+import { MapPin, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { DayRoute, Location, Config, EditMutation } from '@/types';
+import { reoptimizeDay } from '@/utils/routerOptimizer';
+import { cn, getRouteColor } from '@/lib/utils';
 
-import EditorToolbar from "./EditorToolbar";
-import DayColumn from "./DayColumn";
-import UnassignedPool from "./UnassignedPool";
+import EditorToolbar from './EditorToolbar';
+import DayColumn from './DayColumn';
+import UnassignedPool from './UnassignedPool';
 
 interface RouteEditorProps {
   /** The current optimization result — used as the snapshot seed. */
@@ -60,7 +68,7 @@ export interface RouteEditorHandle {
    *  This mutates workingDays and pushes to the undo stack. */
   commitMove: (
     poi: { name: string; lat: number; lng: number; fromDay: number },
-    toDay: number | null
+    toDay: number | null,
   ) => void;
   /** Add an unassigned POI to a specific day. */
   addPOI?: (poi: { name: string; lat: number; lng: number }, toDay: number) => void;
@@ -82,21 +90,24 @@ const POOL_DAY = 0; // 0 = unassigned pool in mutation metadata
  *  - Within-day drop → ignored. The day is reoptimized regardless of
  *    drop index, so manual reordering is impossible.
  */
-const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function RouteEditor({
-  result,
-  config,
-  locations,
-  matrix,
-  selectedPOI,
-  onPOISelect,
-  onApply,
-  onDirtyChange,
-  onDiscard,
-  onWorkingDaysChange,
-  onClearSelection,
-  hiddenDays,
-  onToggleDay,
-}: RouteEditorProps, ref) {
+const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function RouteEditor(
+  {
+    result,
+    config,
+    locations,
+    matrix,
+    selectedPOI,
+    onPOISelect,
+    onApply,
+    onDirtyChange,
+    onDiscard,
+    onWorkingDaysChange,
+    onClearSelection,
+    hiddenDays,
+    onToggleDay,
+  }: RouteEditorProps,
+  ref,
+) {
   const { t, i18n } = useTranslation();
   // ── Session state (initialized from props on first mount) ──
   const snapshotRef = useRef<DayRoute[] | null>(null);
@@ -117,7 +128,7 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
   // Scroll to the action bar when a POI is selected
   useEffect(() => {
     if (selectedPOI && actionBarRef.current) {
-      actionBarRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      actionBarRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }, [selectedPOI]);
 
@@ -147,15 +158,12 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
   }, [workingDays, onWorkingDaysChange]);
 
   // ── Highlighted day = selected POI's day (read-only prop) ──
-  const highlightedDay = useMemo(
-    () => (selectedPOI ? selectedPOI.day : null),
-    [selectedPOI]
-  );
+  const highlightedDay = useMemo(() => (selectedPOI ? selectedPOI.day : null), [selectedPOI]);
 
   // ── Home reference used by reoptimizeDay ──
   const home: Location = useMemo(
-    () => ({ name: t("routeEditor.home"), lat: config.homeLat, lng: config.homeLng }),
-    [config.homeLat, config.homeLng, t]
+    () => ({ name: t('routeEditor.home'), lat: config.homeLat, lng: config.homeLng }),
+    [config.homeLat, config.homeLng, t],
   );
 
   // ── name → matrix-index map (0 = home, 1..n = locations) ──
@@ -172,13 +180,11 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
   }, [home.name, locations]);
 
   // ── dnd-kit sensors ──
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   // ── Helpers ──
   const pushUndo = useCallback(
-    (mut: Omit<EditMutation, "priorDays" | "priorUnassigned">) => {
+    (mut: Omit<EditMutation, 'priorDays' | 'priorUnassigned'>) => {
       setUndoStack((prev) => {
         const next = [
           ...prev,
@@ -193,14 +199,12 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
       setRedoStack([]);
       setDirty(true);
     },
-    [workingDays, unassigned]
+    [workingDays, unassigned],
   );
 
   // ── Drag end ──
   const handleDragStart = (e: DragStartEvent) => {
-    const data = e.active.data.current as
-      | { kind: "stop" | "pool-item"; name: string }
-      | undefined;
+    const data = e.active.data.current as { kind: 'stop' | 'pool-item'; name: string } | undefined;
     if (data?.name) setActiveDrag({ name: data.name });
   };
 
@@ -208,15 +212,15 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
     (e: DragEndEvent) => {
       setActiveDrag(null);
       const active = e.active.data.current as
-        | { kind: "stop" | "pool-item"; name: string; lat: number; lng: number; dayIndex: number }
+        | { kind: 'stop' | 'pool-item'; name: string; lat: number; lng: number; dayIndex: number }
         | undefined;
       const over = e.over?.data.current as
-        | { kind: "day" | "pool"; dayIndex?: number; dayNumber?: number }
+        | { kind: 'day' | 'pool'; dayIndex?: number; dayNumber?: number }
         | undefined;
       if (!active || !over) return;
 
       // ── Case 1: stop dragged to a different day ──
-      if (active.kind === "stop" && over.kind === "day" && over.dayIndex !== undefined) {
+      if (active.kind === 'stop' && over.kind === 'day' && over.dayIndex !== undefined) {
         const fromDayIdx = active.dayIndex;
         const toDayIdx = over.dayIndex;
         if (fromDayIdx === toDayIdx) return; // within-day drop — ignore
@@ -226,18 +230,32 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
         const targetDay = workingDays[toDayIdx];
         if (!sourceDay || !targetDay) return;
 
-        const sourcePois = stopsToLocations(
-          sourceDay.stops.filter((s) => !s.isHome)
-        ).filter((p) => p.name !== active.name);
-        const targetPois = stopsToLocations(
-          targetDay.stops.filter((s) => !s.isHome)
-        ).concat([{ name: active.name, lat: active.lat, lng: active.lng }]);
+        const sourcePois = stopsToLocations(sourceDay.stops.filter((s) => !s.isHome)).filter(
+          (p) => p.name !== active.name,
+        );
+        const targetPois = stopsToLocations(targetDay.stops.filter((s) => !s.isHome)).concat([
+          { name: active.name, lat: active.lat, lng: active.lng },
+        ]);
 
-        const newSource = reoptimizeDay(sourcePois, home, config, matrix, sourceDay.day, nameToIndex);
-        const newTarget = reoptimizeDay(targetPois, home, config, matrix, targetDay.day, nameToIndex);
+        const newSource = reoptimizeDay(
+          sourcePois,
+          home,
+          config,
+          matrix,
+          sourceDay.day,
+          nameToIndex,
+        );
+        const newTarget = reoptimizeDay(
+          targetPois,
+          home,
+          config,
+          matrix,
+          targetDay.day,
+          nameToIndex,
+        );
 
         pushUndo({
-          type: "move",
+          type: 'move',
           poiName: active.name,
           fromDay: sourceDay.day,
           toDay: targetDay.day,
@@ -253,19 +271,26 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
       }
 
       // ── Case 2: stop dragged to the unassigned pool ──
-      if (active.kind === "stop" && over.kind === "pool") {
+      if (active.kind === 'stop' && over.kind === 'pool') {
         const fromDayIdx = active.dayIndex;
         const sourceDay = workingDays[fromDayIdx];
         if (!sourceDay) return;
 
-        const sourcePois = stopsToLocations(
-          sourceDay.stops.filter((s) => !s.isHome)
-        ).filter((p) => p.name !== active.name);
+        const sourcePois = stopsToLocations(sourceDay.stops.filter((s) => !s.isHome)).filter(
+          (p) => p.name !== active.name,
+        );
 
-        const newSource = reoptimizeDay(sourcePois, home, config, matrix, sourceDay.day, nameToIndex);
+        const newSource = reoptimizeDay(
+          sourcePois,
+          home,
+          config,
+          matrix,
+          sourceDay.day,
+          nameToIndex,
+        );
 
         pushUndo({
-          type: "remove",
+          type: 'remove',
           poiName: active.name,
           fromDay: sourceDay.day,
           toDay: POOL_DAY,
@@ -276,27 +301,31 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
           next[fromDayIdx] = newSource;
           return next;
         });
-        setUnassigned((prev) => [
-          ...prev,
-          { name: active.name, lat: active.lat, lng: active.lng },
-        ]);
+        setUnassigned((prev) => [...prev, { name: active.name, lat: active.lat, lng: active.lng }]);
         return;
       }
 
       // ── Case 3: pool item dragged onto a day ──
-      if (active.kind === "pool-item" && over.kind === "day" && over.dayIndex !== undefined) {
+      if (active.kind === 'pool-item' && over.kind === 'day' && over.dayIndex !== undefined) {
         const toDayIdx = over.dayIndex;
         const targetDay = workingDays[toDayIdx];
         if (!targetDay) return;
 
-        const targetPois = stopsToLocations(
-          targetDay.stops.filter((s) => !s.isHome)
-        ).concat([{ name: active.name, lat: active.lat, lng: active.lng }]);
+        const targetPois = stopsToLocations(targetDay.stops.filter((s) => !s.isHome)).concat([
+          { name: active.name, lat: active.lat, lng: active.lng },
+        ]);
 
-        const newTarget = reoptimizeDay(targetPois, home, config, matrix, targetDay.day, nameToIndex);
+        const newTarget = reoptimizeDay(
+          targetPois,
+          home,
+          config,
+          matrix,
+          targetDay.day,
+          nameToIndex,
+        );
 
         pushUndo({
-          type: "add",
+          type: 'add',
           poiName: active.name,
           fromDay: POOL_DAY,
           toDay: targetDay.day,
@@ -309,21 +338,16 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
         });
         setUnassigned((prev) =>
           prev.filter(
-            (p) =>
-              !(
-                p.name === active.name &&
-                p.lat === active.lat &&
-                p.lng === active.lng
-              )
-          )
+            (p) => !(p.name === active.name && p.lat === active.lat && p.lng === active.lng),
+          ),
         );
         return;
       }
 
       // ── Case 4: pool item dropped on pool — no-op ──
-      if (active.kind === "pool-item" && over.kind === "pool") return;
+      if (active.kind === 'pool-item' && over.kind === 'pool') return;
     },
-    [workingDays, home, config, matrix, nameToIndex, pushUndo]
+    [workingDays, home, config, matrix, nameToIndex, pushUndo],
   );
 
   // ── Undo ──
@@ -404,11 +428,11 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
       if (dayIdx === -1) return;
       const day = workingDays[dayIdx];
       const newPois = stopsToLocations(day.stops.filter((s) => !s.isHome)).filter(
-        (p) => p.name !== stopName
+        (p) => p.name !== stopName,
       );
       const newDay = reoptimizeDay(newPois, home, config, matrix, day.day, nameToIndex);
       pushUndo({
-        type: "remove",
+        type: 'remove',
         poiName: stopName,
         fromDay: day.day,
         toDay: POOL_DAY,
@@ -418,12 +442,9 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
         next[dayIdx] = newDay;
         return next;
       });
-      setUnassigned((prev) => [
-        ...prev,
-        { name: stopName, lat, lng },
-      ]);
+      setUnassigned((prev) => [...prev, { name: stopName, lat, lng }]);
     },
-    [workingDays, home, config, matrix, nameToIndex, pushUndo]
+    [workingDays, home, config, matrix, nameToIndex, pushUndo],
   );
 
   // ── Stop click → notify parent (for map highlight) ──
@@ -431,7 +452,7 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
     (dayNumber: number, name: string, lat: number, lng: number) => {
       onPOISelect?.(name, lat, lng, dayNumber);
     },
-    [onPOISelect]
+    [onPOISelect],
   );
 
   // ── Add an empty day ──
@@ -460,13 +481,19 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
       totalStops: 0,
     };
 
-    pushUndo({ type: "add", poiName: `day-${newDayNumber}`, fromDay: 0, toDay: newDayNumber });
+    pushUndo({ type: 'add', poiName: `day-${newDayNumber}`, fromDay: 0, toDay: newDayNumber });
     setWorkingDays((prev) => [...prev, emptyDay]);
   }, [workingDays, pushUndo]);
 
   // ── Move POI to a different day (from the action bar) ──
   const handleMovePOI = useCallback(
-    (poiName: string, lat: number, lng: number, fromDayNumber: number, toDayNumber: number | null) => {
+    (
+      poiName: string,
+      lat: number,
+      lng: number,
+      fromDayNumber: number,
+      toDayNumber: number | null,
+    ) => {
       if (toDayNumber === fromDayNumber) return;
       const fromDayIdx = workingDays.findIndex((d) => d.day === fromDayNumber);
       if (fromDayIdx === -1) return;
@@ -474,11 +501,18 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
       if (toDayNumber === null) {
         // Move to unassigned
         const sourceDay = workingDays[fromDayIdx];
-        const sourcePois = stopsToLocations(
-          sourceDay.stops.filter((s) => !s.isHome)
-        ).filter((p) => p.name !== poiName);
-        const newSource = reoptimizeDay(sourcePois, home, config, matrix, sourceDay.day, nameToIndex);
-        pushUndo({ type: "remove", poiName, fromDay: fromDayNumber, toDay: 0 });
+        const sourcePois = stopsToLocations(sourceDay.stops.filter((s) => !s.isHome)).filter(
+          (p) => p.name !== poiName,
+        );
+        const newSource = reoptimizeDay(
+          sourcePois,
+          home,
+          config,
+          matrix,
+          sourceDay.day,
+          nameToIndex,
+        );
+        pushUndo({ type: 'remove', poiName, fromDay: fromDayNumber, toDay: 0 });
         setWorkingDays((prev) => {
           const next = [...prev];
           next[fromDayIdx] = newSource;
@@ -495,15 +529,17 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
 
       const sourceDay = workingDays[fromDayIdx];
       const targetDay = workingDays[toDayIdx];
-      const sourcePois = stopsToLocations(sourceDay.stops.filter((s) => !s.isHome))
-        .filter((p) => p.name !== poiName);
-      const targetPois = stopsToLocations(targetDay.stops.filter((s) => !s.isHome))
-        .concat([{ name: poiName, lat, lng }]);
+      const sourcePois = stopsToLocations(sourceDay.stops.filter((s) => !s.isHome)).filter(
+        (p) => p.name !== poiName,
+      );
+      const targetPois = stopsToLocations(targetDay.stops.filter((s) => !s.isHome)).concat([
+        { name: poiName, lat, lng },
+      ]);
 
       const newSource = reoptimizeDay(sourcePois, home, config, matrix, sourceDay.day, nameToIndex);
       const newTarget = reoptimizeDay(targetPois, home, config, matrix, targetDay.day, nameToIndex);
 
-      pushUndo({ type: "move", poiName, fromDay: fromDayNumber, toDay: toDayNumber });
+      pushUndo({ type: 'move', poiName, fromDay: fromDayNumber, toDay: toDayNumber });
       setWorkingDays((prev) => {
         const next = [...prev];
         next[fromDayIdx] = newSource;
@@ -513,12 +549,12 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
       // Update selection to the new day
       onPOISelect?.(poiName, lat, lng, toDayNumber);
     },
-    [workingDays, home, config, matrix, nameToIndex, pushUndo, onPOISelect, onClearSelection]
+    [workingDays, home, config, matrix, nameToIndex, pushUndo, onPOISelect, onClearSelection],
   );
 
   const availableDays = useMemo(
     () => workingDays.map((d) => d.day).sort((a, b) => a - b),
-    [workingDays]
+    [workingDays],
   );
 
   // ── Expose commitMove + addPOI via ref (called by the floating MapPOIActionBar) ──
@@ -532,12 +568,19 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
         const toDayIdx = workingDays.findIndex((d) => d.day === toDay);
         if (toDayIdx === -1) return;
         const targetDay = workingDays[toDayIdx];
-        const targetPois = stopsToLocations(
-          targetDay.stops.filter((s) => !s.isHome)
-        ).concat([{ name: poi.name, lat: poi.lat, lng: poi.lng }]);
-        const newTarget = reoptimizeDay(targetPois, home, config, matrix, targetDay.day, nameToIndex);
+        const targetPois = stopsToLocations(targetDay.stops.filter((s) => !s.isHome)).concat([
+          { name: poi.name, lat: poi.lat, lng: poi.lng },
+        ]);
+        const newTarget = reoptimizeDay(
+          targetPois,
+          home,
+          config,
+          matrix,
+          targetDay.day,
+          nameToIndex,
+        );
         pushUndo({
-          type: "add",
+          type: 'add',
           poiName: poi.name,
           fromDay: POOL_DAY,
           toDay: targetDay.day,
@@ -548,21 +591,17 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
           return next;
         });
         setUnassigned((prev) =>
-          prev.filter((p) => !(p.name === poi.name && p.lat === poi.lat && p.lng === poi.lng))
+          prev.filter((p) => !(p.name === poi.name && p.lat === poi.lat && p.lng === poi.lng)),
         );
       },
     }),
-    [handleMovePOI, workingDays, home, config, matrix, nameToIndex, pushUndo]
+    [handleMovePOI, workingDays, home, config, matrix, nameToIndex, pushUndo],
   );
 
   // ── Render ──
   return (
     <div className="space-y-3">
-      <DndContext
-        sensors={sensors}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-      >
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <EditorToolbar
           canUndo={undoStack.length > 0}
           canRedo={redoStack.length > 0}
@@ -585,7 +624,9 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
                 {selectedPOI.name}
               </span>
               <span className="text-blue-400">·</span>
-              <span className="text-blue-600 font-medium">{t("dayColumn.day", { day: selectedPOI.day })}</span>
+              <span className="text-blue-600 font-medium">
+                {t('dayColumn.day', { day: selectedPOI.day })}
+              </span>
               <span className="text-blue-400 ml-1">→</span>
               <div className="flex gap-1 flex-wrap">
                 {availableDays.map((d) => (
@@ -597,19 +638,23 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
                         selectedPOI.lat,
                         selectedPOI.lng,
                         selectedPOI.day,
-                        d === selectedPOI.day ? null : d
+                        d === selectedPOI.day ? null : d,
                       )
                     }
                     className={cn(
-                      "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+                      'px-2 py-0.5 rounded text-[10px] font-medium transition-colors',
                       d === selectedPOI.day
-                        ? "bg-blue-100 text-blue-300 cursor-not-allowed"
-                        : "bg-white text-blue-700 hover:bg-blue-100 border border-blue-200"
+                        ? 'bg-blue-100 text-blue-300 cursor-not-allowed'
+                        : 'bg-white text-blue-700 hover:bg-blue-100 border border-blue-200',
                     )}
                     disabled={d === selectedPOI.day}
-                    title={d === selectedPOI.day ? t("routeEditor.alreadyInThisDay") : t("routeEditor.moveToDay", { day: d })}
+                    title={
+                      d === selectedPOI.day
+                        ? t('routeEditor.alreadyInThisDay')
+                        : t('routeEditor.moveToDay', { day: d })
+                    }
                   >
-                    {t("dayColumn.day", { day: d })}
+                    {t('dayColumn.day', { day: d })}
                   </button>
                 ))}
                 <button
@@ -619,13 +664,13 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
                       selectedPOI.lat,
                       selectedPOI.lng,
                       selectedPOI.day,
-                      null
+                      null,
                     )
                   }
                   className="px-2 py-0.5 rounded text-[10px] font-medium bg-white text-amber-700 hover:bg-amber-50 border border-amber-200 transition-colors"
-                  title={t("routeEditor.removeFromRoute")}
+                  title={t('routeEditor.removeFromRoute')}
                 >
-                  {t("mapPOI.withoutRoute")}
+                  {t('mapPOI.withoutRoute')}
                 </button>
               </div>
             </div>
@@ -658,9 +703,9 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
         <button
           onClick={handleAddDay}
           className={cn(
-            "w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border-2 border-dashed",
-            "border-gray-300 text-gray-400 hover:text-blue-600 hover:border-blue-300",
-            "text-xs font-medium transition-colors"
+            'w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border-2 border-dashed',
+            'border-gray-300 text-gray-400 hover:text-blue-600 hover:border-blue-300',
+            'text-xs font-medium transition-colors',
           )}
         >
           <Plus className="w-3.5 h-3.5" />
@@ -673,8 +718,8 @@ const RouteEditor = forwardRef<RouteEditorHandle, RouteEditorProps>(function Rou
           {activeDrag && (
             <div
               className={cn(
-                "px-2 py-1 rounded text-[10px] font-medium shadow-lg",
-                "bg-blue-600 text-white border-2 border-blue-300"
+                'px-2 py-1 rounded text-[10px] font-medium shadow-lg',
+                'bg-blue-600 text-white border-2 border-blue-300',
               )}
             >
               {activeDrag.name}
@@ -708,7 +753,7 @@ function computeUnassigned(days: DayRoute[], allLocations: Location[]): Location
     }
   }
   return allLocations.filter(
-      (l) => !assignedKeys.has(`${l.name}__${l.lat.toFixed(5)}__${l.lng.toFixed(5)}`)
+    (l) => !assignedKeys.has(`${l.name}__${l.lat.toFixed(5)}__${l.lng.toFixed(5)}`),
   );
 }
 

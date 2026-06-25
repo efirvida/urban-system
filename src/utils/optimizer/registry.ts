@@ -12,7 +12,7 @@
  * day count are tied.
  */
 
-import type { Optimizer, OptimizeParams, OptimizerResult } from "./types";
+import type { Optimizer, OptimizeParams, OptimizerResult } from './types';
 
 export class OptimizerRegistry {
   private readonly optimizers: Optimizer[];
@@ -36,9 +36,7 @@ export class OptimizerRegistry {
    * slots; the request itself always returns 200.
    */
   async runAll(params: OptimizeParams): Promise<(OptimizerResult | null)[]> {
-    const settled = await Promise.allSettled(
-      this.optimizers.map((o) => o.optimize(params)),
-    );
-    return settled.map((r) => (r.status === "fulfilled" ? r.value : null));
+    const settled = await Promise.allSettled(this.optimizers.map((o) => o.optimize(params)));
+    return settled.map((r) => (r.status === 'fulfilled' ? r.value : null));
   }
 }

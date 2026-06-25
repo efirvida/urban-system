@@ -1,19 +1,19 @@
-"use client";
+'use client';
 
-import { useEffect, useRef, useCallback } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import { useEffect, useRef, useCallback } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 interface UseLeafletMapOptions {
   center?: [number, number];
   zoom?: number;
   onPlaceHome?: (lat: number, lng: number) => void;
-  placementMode?: "home" | null;
+  placementMode?: 'home' | null;
 }
 
 export function useLeafletMap(
   containerRef: React.RefObject<HTMLDivElement | null>,
-  options: UseLeafletMapOptions
+  options: UseLeafletMapOptions,
 ) {
   const mapRef = useRef<L.Map | null>(null);
   const placementRef = useRef(options.placementMode);
@@ -32,13 +32,13 @@ export function useLeafletMap(
       attributionControl: false,
     });
 
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap contributors",
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
       maxZoom: 19,
     }).addTo(map);
 
     L.control.attribution({ prefix: false }).addTo(map);
-    L.control.zoom({ position: "topright" }).addTo(map);
+    L.control.zoom({ position: 'topright' }).addTo(map);
 
     mapRef.current = map;
 
@@ -54,14 +54,14 @@ export function useLeafletMap(
     if (!map) return;
 
     const handler = (e: L.LeafletMouseEvent) => {
-      if (placementRef.current === "home" && options.onPlaceHome) {
+      if (placementRef.current === 'home' && options.onPlaceHome) {
         options.onPlaceHome(e.latlng.lat, e.latlng.lng);
       }
     };
 
-    map.on("click", handler);
+    map.on('click', handler);
     return () => {
-      map.off("click", handler);
+      map.off('click', handler);
     };
   }, [options.onPlaceHome]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -71,10 +71,10 @@ export function useLeafletMap(
     if (!map) return;
 
     const container = map.getContainer();
-    container.style.cursor = options.placementMode === "home" ? "crosshair" : "";
+    container.style.cursor = options.placementMode === 'home' ? 'crosshair' : '';
 
     return () => {
-      container.style.cursor = "";
+      container.style.cursor = '';
     };
   }, [options.placementMode]);
 

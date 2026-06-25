@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { X, Info, AlertCircle } from "lucide-react";
-import { useEffect } from "react";
-import { useToastHost, type ToastItem } from "@/lib/toast";
+import { X, Info, AlertCircle } from 'lucide-react';
+import { useEffect } from 'react';
+import { useToastHost, type ToastItem } from '@/lib/toast';
 
 /**
  * Fixed-position host that renders every active toast.
@@ -28,13 +28,7 @@ export default function ToastHost() {
   );
 }
 
-function ToastCard({
-  item,
-  onDismiss,
-}: {
-  item: ToastItem;
-  onDismiss: (id: string) => void;
-}) {
+function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: string) => void }) {
   // Auto-dismiss timer — clears when the item unmounts or the deps change.
   useEffect(() => {
     if (item.durationMs <= 0) return;
@@ -42,18 +36,18 @@ function ToastCard({
     return () => clearTimeout(timer);
   }, [item.id, item.durationMs, onDismiss]);
 
-  const isError = item.kind === "error";
+  const isError = item.kind === 'error';
   const Icon = isError ? AlertCircle : Info;
 
   return (
     <div
-      role={isError ? "alert" : "status"}
+      role={isError ? 'alert' : 'status'}
       className={
-        "pointer-events-auto flex items-start gap-2 min-w-[260px] max-w-md px-4 py-2.5 " +
-        "rounded-lg shadow-lg border text-sm animate-slide-down " +
+        'pointer-events-auto flex items-start gap-2 min-w-[260px] max-w-md px-4 py-2.5 ' +
+        'rounded-lg shadow-lg border text-sm animate-slide-down ' +
         (isError
-          ? "bg-red-50 border-red-200 text-red-700"
-          : "bg-blue-50 border-blue-200 text-blue-700")
+          ? 'bg-red-50 border-red-200 text-red-700'
+          : 'bg-blue-50 border-blue-200 text-blue-700')
       }
     >
       <Icon className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
@@ -62,8 +56,8 @@ function ToastCard({
         onClick={() => onDismiss(item.id)}
         aria-label="Close"
         className={
-          "shrink-0 inline-flex items-center " +
-          (isError ? "text-red-400 hover:text-red-600" : "text-blue-400 hover:text-blue-600")
+          'shrink-0 inline-flex items-center ' +
+          (isError ? 'text-red-400 hover:text-red-600' : 'text-blue-400 hover:text-blue-600')
         }
       >
         <X className="w-4 h-4" aria-hidden="true" />

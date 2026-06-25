@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import { useCallback, useState, useRef } from "react";
-import { FileSpreadsheet } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { RawFileData } from "@/types";
-import { extractRawData, autoDetectMapping } from "@/utils/parser";
-import { cn } from "@/lib/utils";
+import { useCallback, useState, useRef } from 'react';
+import { FileSpreadsheet } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { RawFileData } from '@/types';
+import { extractRawData, autoDetectMapping } from '@/utils/parser';
+import { cn } from '@/lib/utils';
 
 interface FileUploadProps {
   onFileLoaded: (data: RawFileData) => void;
@@ -23,9 +23,9 @@ export default function FileUpload({ onFileLoaded }: FileUploadProps) {
       setError(null);
       setLoading(true);
 
-      const ext = file.name.split(".").pop()?.toLowerCase();
-      if (!ext || !["ods", "xlsx", "xls"].includes(ext)) {
-        setError(t("fileUpload.errors.unsupportedFormat"));
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      if (!ext || !['ods', 'xlsx', 'xls'].includes(ext)) {
+        setError(t('fileUpload.errors.unsupportedFormat'));
         setLoading(false);
         return;
       }
@@ -38,19 +38,17 @@ export default function FileUpload({ onFileLoaded }: FileUploadProps) {
         const suggested = autoDetectMapping(rawData.columns);
         if (!suggested) {
           // Still pass the data — the user can map manually
-          setError(t("fileUpload.errors.autoDetectFailed"));
+          setError(t('fileUpload.errors.autoDetectFailed'));
         }
 
         onFileLoaded(rawData);
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : t("fileUpload.errors.readError")
-        );
+        setError(err instanceof Error ? err.message : t('fileUpload.errors.readError'));
       } finally {
         setLoading(false);
       }
     },
-    [onFileLoaded, t]
+    [onFileLoaded, t],
   );
 
   const handleDrop = useCallback(
@@ -60,7 +58,7 @@ export default function FileUpload({ onFileLoaded }: FileUploadProps) {
       const file = e.dataTransfer.files[0];
       if (file) processFile(file);
     },
-    [processFile]
+    [processFile],
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -78,7 +76,7 @@ export default function FileUpload({ onFileLoaded }: FileUploadProps) {
       const file = e.target.files?.[0];
       if (file) processFile(file);
     },
-    [processFile]
+    [processFile],
   );
 
   return (
@@ -89,10 +87,10 @@ export default function FileUpload({ onFileLoaded }: FileUploadProps) {
         onDragLeave={handleDragLeave}
         onClick={() => inputRef.current?.click()}
         className={cn(
-          "border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-200",
+          'border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-200',
           isDragging
-            ? "border-blue-500 bg-blue-50 scale-[1.02]"
-            : "border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400"
+            ? 'border-blue-500 bg-blue-50 scale-[1.02]'
+            : 'border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400',
         )}
       >
         <input
@@ -106,19 +104,15 @@ export default function FileUpload({ onFileLoaded }: FileUploadProps) {
         {loading ? (
           <div className="space-y-3">
             <div className="animate-spin w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full mx-auto" />
-            <p className="text-sm text-gray-600">{t("fileUpload.processing")}</p>
+            <p className="text-sm text-gray-600">{t('fileUpload.processing')}</p>
           </div>
         ) : (
           <div className="space-y-3">
             <FileSpreadsheet className="w-10 h-10 text-gray-300 mx-auto" aria-hidden="true" />
-            <p className="text-base font-medium text-gray-700">
-              {t("fileUpload.dragHere")}
-            </p>
-            <p className="text-sm text-gray-400">
-              {t("fileUpload.clickToSelect")}
-            </p>
+            <p className="text-base font-medium text-gray-700">{t('fileUpload.dragHere')}</p>
+            <p className="text-sm text-gray-400">{t('fileUpload.clickToSelect')}</p>
             <div className="inline-block text-xs bg-gray-200 rounded px-2 py-1 text-gray-500">
-              {t("fileUpload.selectColumnsLater")}
+              {t('fileUpload.selectColumnsLater')}
             </div>
           </div>
         )}

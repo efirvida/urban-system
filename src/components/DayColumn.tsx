@@ -1,13 +1,13 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { useDroppable } from "@dnd-kit/core";
-import { ChevronDown, Clock, Eye, EyeOff, MapPin } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
-import { DayRoute, Config } from "@/types";
-import { cn, formatDistance, formatDuration } from "@/lib/utils";
-import StopItem from "./StopItem";
+import { useState } from 'react';
+import { useDroppable } from '@dnd-kit/core';
+import { ChevronDown, Clock, Eye, EyeOff, MapPin } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import { DayRoute, Config } from '@/types';
+import { cn, formatDistance, formatDuration } from '@/lib/utils';
+import StopItem from './StopItem';
 
 interface DayColumnProps {
   day: DayRoute;
@@ -45,21 +45,27 @@ interface DayColumnProps {
 function computeGauge(
   day: DayRoute,
   config: Config,
-  t: TFunction
+  t: TFunction,
 ): { ratio: number; label: string; hoursRatio?: number; visitsRatio?: number } {
   const usedHours = day.totalTime;
   const visitCount = day.totalStops;
 
   switch (config.constraintType) {
-    case "hours": {
+    case 'hours': {
       const ratio = config.constraintValue > 0 ? usedHours / config.constraintValue : 0;
-      return { ratio, label: `${formatDuration(usedHours)} / ${config.constraintValue.toFixed(1)}${t("units.h")}` };
+      return {
+        ratio,
+        label: `${formatDuration(usedHours)} / ${config.constraintValue.toFixed(1)}${t('units.h')}`,
+      };
     }
-    case "visits": {
+    case 'visits': {
       const ratio = config.constraintValue > 0 ? visitCount / config.constraintValue : 0;
-      return { ratio, label: `${visitCount} / ${Math.round(config.constraintValue)} ${t("units.visits")}` };
+      return {
+        ratio,
+        label: `${visitCount} / ${Math.round(config.constraintValue)} ${t('units.visits')}`,
+      };
     }
-    case "hours+visits": {
+    case 'hours+visits': {
       const hoursRatio = config.constraintValue > 0 ? usedHours / config.constraintValue : 0;
       const maxVisits = config.maxVisits ?? 10;
       const visitsRatio = visitCount / maxVisits;
@@ -67,7 +73,7 @@ function computeGauge(
       const ratio = Math.max(hoursRatio, visitsRatio);
       return {
         ratio,
-        label: `${formatDuration(usedHours)} / ${config.constraintValue.toFixed(1)}${t("units.h")}  ·  ${visitCount} / ${maxVisits}`,
+        label: `${formatDuration(usedHours)} / ${config.constraintValue.toFixed(1)}${t('units.h')}  ·  ${visitCount} / ${maxVisits}`,
         hoursRatio,
         visitsRatio,
       };
@@ -76,15 +82,15 @@ function computeGauge(
 }
 
 function gaugeColor(ratio: number): string {
-  if (ratio >= 1) return "bg-red-500";
-  if (ratio >= 0.8) return "bg-amber-500";
-  return "bg-emerald-500";
+  if (ratio >= 1) return 'bg-red-500';
+  if (ratio >= 0.8) return 'bg-amber-500';
+  return 'bg-emerald-500';
 }
 
 function gaugeTextColor(ratio: number): string {
-  if (ratio >= 1) return "text-red-700";
-  if (ratio >= 0.8) return "text-amber-700";
-  return "text-emerald-700";
+  if (ratio >= 1) return 'text-red-700';
+  if (ratio >= 0.8) return 'text-amber-700';
+  return 'text-emerald-700';
 }
 
 export default function DayColumn({
@@ -107,7 +113,7 @@ export default function DayColumn({
   // The whole column body is a droppable zone.
   const { isOver, setNodeRef } = useDroppable({
     id: `day-${day.day}`,
-    data: { kind: "day", dayIndex, dayNumber: day.day },
+    data: { kind: 'day', dayIndex, dayNumber: day.day },
   });
 
   const gauge = computeGauge(day, config, t);
@@ -117,10 +123,8 @@ export default function DayColumn({
   return (
     <div
       className={cn(
-        "rounded-lg border-2 transition-all",
-        highlighted
-          ? "border-blue-500 bg-blue-50/50 shadow-md"
-          : "border-gray-200 bg-white"
+        'rounded-lg border-2 transition-all',
+        highlighted ? 'border-blue-500 bg-blue-50/50 shadow-md' : 'border-gray-200 bg-white',
       )}
     >
       {/* Header — clickable to collapse */}
@@ -136,10 +140,10 @@ export default function DayColumn({
             style={{ backgroundColor: color }}
           />
           <span className="text-sm font-semibold text-gray-800">
-            {t("dayColumn.day", { day: day.day })}
+            {t('dayColumn.day', { day: day.day })}
           </span>
           <span className="text-[10px] text-gray-400 shrink-0">
-            {t("dayColumn.stops", { count: visitStops.length })}
+            {t('dayColumn.stops', { count: visitStops.length })}
           </span>
         </div>
 
@@ -151,24 +155,27 @@ export default function DayColumn({
                 e.stopPropagation();
                 onToggleVisibility();
               }}
-              aria-label={hidden ? t("dayColumn.ariaLabels.showRouteInMap", { day: day.day }) : t("dayColumn.ariaLabels.hideRouteInMap", { day: day.day })}
-              className={cn(
-                "w-6 h-6 flex items-center justify-center rounded transition-colors",
+              aria-label={
                 hidden
-                  ? "text-gray-300 hover:text-gray-500"
-                  : "text-gray-500 hover:text-blue-600"
+                  ? t('dayColumn.ariaLabels.showRouteInMap', { day: day.day })
+                  : t('dayColumn.ariaLabels.hideRouteInMap', { day: day.day })
+              }
+              className={cn(
+                'w-6 h-6 flex items-center justify-center rounded transition-colors',
+                hidden ? 'text-gray-300 hover:text-gray-500' : 'text-gray-500 hover:text-blue-600',
               )}
             >
-              {hidden ? <EyeOff className="w-3.5 h-3.5" aria-hidden="true" /> : <Eye className="w-3.5 h-3.5" aria-hidden="true" />}
+              {hidden ? (
+                <EyeOff className="w-3.5 h-3.5" aria-hidden="true" />
+              ) : (
+                <Eye className="w-3.5 h-3.5" aria-hidden="true" />
+              )}
             </button>
           )}
           <span>{formatDistance(day.totalDistance, locale)}</span>
           <span>{formatDuration(day.totalTime, locale)}</span>
           <ChevronDown
-            className={cn(
-              "w-3.5 h-3.5 transition-transform",
-              !collapsed && "rotate-180"
-            )}
+            className={cn('w-3.5 h-3.5 transition-transform', !collapsed && 'rotate-180')}
           />
         </div>
       </button>
@@ -178,23 +185,18 @@ export default function DayColumn({
         <div className="flex items-center justify-between mb-1">
           <div
             className={cn(
-              "flex items-center gap-1 text-[10px] font-medium",
-              gaugeTextColor(gauge.ratio)
+              'flex items-center gap-1 text-[10px] font-medium',
+              gaugeTextColor(gauge.ratio),
             )}
           >
-            {config.constraintType === "visits" ? (
+            {config.constraintType === 'visits' ? (
               <MapPin className="w-3 h-3" />
             ) : (
               <Clock className="w-3 h-3" />
             )}
             <span>{gauge.label}</span>
           </div>
-          <span
-            className={cn(
-              "text-[10px] font-bold",
-              gaugeTextColor(gauge.ratio)
-            )}
-          >
+          <span className={cn('text-[10px] font-bold', gaugeTextColor(gauge.ratio))}>
             {Math.round(gauge.ratio * 100)}%
           </span>
         </div>
@@ -206,19 +208,16 @@ export default function DayColumn({
           aria-valuemax={100}
         >
           <div
-            className={cn("h-full rounded-full transition-all", gaugeColor(gauge.ratio))}
+            className={cn('h-full rounded-full transition-all', gaugeColor(gauge.ratio))}
             style={{ width: `${gaugeFillPct}%` }}
           />
         </div>
 
         {/* For hours+visits show a second bar for the looser constraint */}
-        {config.constraintType === "hours+visits" &&
+        {config.constraintType === 'hours+visits' &&
           gauge.hoursRatio !== undefined &&
           gauge.visitsRatio !== undefined && (
-            <SecondaryGaugeBar
-              hoursRatio={gauge.hoursRatio}
-              visitsRatio={gauge.visitsRatio}
-            />
+            <SecondaryGaugeBar hoursRatio={gauge.hoursRatio} visitsRatio={gauge.visitsRatio} />
           )}
       </div>
 
@@ -227,8 +226,8 @@ export default function DayColumn({
         <div
           ref={setNodeRef}
           className={cn(
-            "px-3 pb-3 space-y-1.5 min-h-[40px] transition-colors",
-            isOver && "bg-blue-50 ring-2 ring-blue-300 ring-inset"
+            'px-3 pb-3 space-y-1.5 min-h-[40px] transition-colors',
+            isOver && 'bg-blue-50 ring-2 ring-blue-300 ring-inset',
           )}
         >
           {day.stops.map((stop) => (
@@ -238,16 +237,14 @@ export default function DayColumn({
               dayIndex={dayIndex}
               color={color}
               onRemove={() => onRemoveStop(stop.sequence)}
-              onClick={() =>
-                onStopClick?.(stop.name, stop.lat, stop.lng)
-              }
+              onClick={() => onStopClick?.(stop.name, stop.lat, stop.lng)}
               selected={selectedStopName === stop.name}
             />
           ))}
 
           {visitStops.length === 0 && (
             <div className="text-[10px] text-gray-400 italic text-center py-2">
-              {t("dayColumn.emptyDay")}
+              {t('dayColumn.emptyDay')}
             </div>
           )}
         </div>
@@ -270,13 +267,13 @@ function SecondaryGaugeBar({
   const loose = Math.min(hoursRatio, visitsRatio);
   const label =
     hoursRatio < visitsRatio
-      ? t("dayColumn.gauge.hours", { percent: Math.round(hoursRatio * 100) })
-      : t("dayColumn.gauge.visits", { percent: Math.round(visitsRatio * 100) });
+      ? t('dayColumn.gauge.hours', { percent: Math.round(hoursRatio * 100) })
+      : t('dayColumn.gauge.visits', { percent: Math.round(visitsRatio * 100) });
   return (
     <div className="mt-1.5 flex items-center gap-2">
       <div className="flex-1 h-1 rounded-full bg-gray-100 overflow-hidden">
         <div
-          className={cn("h-full rounded-full", gaugeColor(loose), "opacity-50")}
+          className={cn('h-full rounded-full', gaugeColor(loose), 'opacity-50')}
           style={{ width: `${Math.min(loose, 1) * 100}%` }}
         />
       </div>

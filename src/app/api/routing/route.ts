@@ -7,7 +7,7 @@
  * Response: { coordinates: [[lng,lat],...], distance: km, time: s, legs: [{from,to,distance,time}] }
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -20,7 +20,7 @@ interface RouteLeg {
   from: number;
   to: number;
   distance: number; // km
-  time: number;     // seconds
+  time: number; // seconds
 }
 
 interface RouteResponse {
@@ -28,24 +28,25 @@ interface RouteResponse {
   distance: number;
   time: number;
   legs: RouteLeg[];
-  source: "geoapify" | "ors" | "osrm" | "haversine";
+  source: 'geoapify' | 'ors' | 'osrm' | 'haversine';
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
 
 async function tryOSRM(stops: RouteStop[]): Promise<RouteResponse | null> {
   if (stops.length < 2) return null;
-  const coords = stops.map(s => `${s.lng},${s.lat}`).join(";");
+  const coords = stops.map((s) => `${s.lng},${s.lat}`).join(';');
   const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false&alternatives=false`;
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return null;
     const data = await res.json();
-    if (data.code !== "Ok" || !data.routes?.length) return null;
+    if (data.code !== 'Ok' || !data.routes?.length) return null;
 
     const route = data.routes[0];
-    const coordinates: [number, number][] = route.geometry?.coordinates?.map((c: number[]) => [c[0], c[1] as number]) || [];
+    const coordinates: [number, number][] =
+      route.geometry?.coordinates?.map((c: number[]) => [c[0], c[1] as number]) || [];
     const totalDist = route.distance / 1000; // meters → km
     const totalTime = route.duration; // seconds
 
@@ -54,7 +55,12 @@ async function tryOSRM(stops: RouteStop[]): Promise<RouteResponse | null> {
     const legTime = totalTime / numLegs;
     const legs: RouteLeg[] = [];
     for (let i = 1; i <= numLegs; i++) {
-      legs.push({ from: i - 1, to: i, distance: Math.round(legDist * 100) / 100, time: Math.round(legTime) });
+      legs.push({
+        from: i - 1,
+        to: i,
+        distance: Math.round(legDist * 100) / 100,
+        time: Math.round(legTime),
+      });
     }
 
     return {
@@ -62,7 +68,7 @@ async function tryOSRM(stops: RouteStop[]): Promise<RouteResponse | null> {
       distance: Math.round(totalDist * 100) / 100,
       time: Math.round(totalTime),
       legs,
-      source: "osrm",
+      source: 'osrm',
     };
   } catch {
     return null;
@@ -71,7 +77,7 @@ async function tryOSRM(stops: RouteStop[]): Promise<RouteResponse | null> {
 
 async function tryGeoapify(stops: RouteStop[], apiKey: string): Promise<RouteResponse | null> {
   if (stops.length < 2) return null;
-  const waypoints = stops.map(s => `${s.lat},${s.lng}`).join("|");
+  const waypoints = stops.map((s) => `${s.lat},${s.lng}`).join('|');
   const url = `https://api.geoapify.com/v1/routing?waypoints=${waypoints}&mode=drive&type=short&apiKey=${apiKey}`;
 
   try {
@@ -95,15 +101,20 @@ async function tryGeoapify(stops: RouteStop[], apiKey: string): Promise<RouteRes
       }
     }
     // Geoapify returns distance as a plain number in meters (not {value, unit}).
-    const totalDist = (typeof props.distance === "number" ? props.distance : 0) / 1000;
-    const totalTime = typeof props.time === "number" ? props.time : 0;
+    const totalDist = (typeof props.distance === 'number' ? props.distance : 0) / 1000;
+    const totalTime = typeof props.time === 'number' ? props.time : 0;
 
     const numLegs = stops.length - 1;
     const legDist = totalDist / numLegs;
     const legTime = totalTime / numLegs;
     const legs: RouteLeg[] = [];
     for (let i = 1; i <= numLegs; i++) {
-      legs.push({ from: i - 1, to: i, distance: Math.round(legDist * 100) / 100, time: Math.round(legTime) });
+      legs.push({
+        from: i - 1,
+        to: i,
+        distance: Math.round(legDist * 100) / 100,
+        time: Math.round(legTime),
+      });
     }
 
     return {
@@ -111,7 +122,7 @@ async function tryGeoapify(stops: RouteStop[], apiKey: string): Promise<RouteRes
       distance: Math.round(totalDist * 100) / 100,
       time: Math.round(totalTime),
       legs,
-      source: "geoapify",
+      source: 'geoapify',
     };
   } catch {
     return null;
@@ -124,22 +135,19 @@ async function tryORS(stops: RouteStop[], apiKey: string): Promise<RouteResponse
 
   try {
     // ORS directions GeoJSON endpoint: /geojson suffix returns FeatureCollection
-    const res = await fetch(
-      "https://api.openrouteservice.org/v2/directions/driving-car/geojson",
-      {
-        method: "POST",
-        headers: {
-          Authorization: apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          coordinates: coords,
-          instructions: false,
-          geometry_simplify: true,
-        }),
-        signal: AbortSignal.timeout(15000),
+    const res = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+      method: 'POST',
+      headers: {
+        Authorization: apiKey,
+        'Content-Type': 'application/json',
       },
-    );
+      body: JSON.stringify({
+        coordinates: coords,
+        instructions: false,
+        geometry_simplify: true,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
     if (!res.ok) return null;
     const data = await res.json();
 
@@ -175,7 +183,7 @@ async function tryORS(stops: RouteStop[], apiKey: string): Promise<RouteResponse
       distance: Math.round(totalDist * 100) / 100,
       time: Math.round(totalTime),
       legs,
-      source: "ors",
+      source: 'ors',
     };
   } catch {
     return null;
@@ -194,12 +202,12 @@ export async function POST(request: NextRequest) {
     };
 
     if (!stops || stops.length < 2) {
-      return NextResponse.json({ error: "Se requieren al menos 2 paradas." }, { status: 400 });
+      return NextResponse.json({ error: 'Se requieren al menos 2 paradas.' }, { status: 400 });
     }
 
     // When a preferred provider is given (from consensus), try it first.
     // This ensures map geometry uses the same provider that won the consensus.
-    if (preferredSource === "ors" || preferredSource === "ors-matrix") {
+    if (preferredSource === 'ors' || preferredSource === 'ors-matrix') {
       const orsKey = process.env.ORS_API_KEY;
       if (orsKey) {
         const result = await tryORS(stops, orsKey);
@@ -238,10 +246,10 @@ export async function POST(request: NextRequest) {
       distance: 0,
       time: 0,
       legs: [],
-      source: "haversine" as const,
+      source: 'haversine' as const,
     });
   } catch (error) {
-    console.error("[Routing] Error:", error);
-    return NextResponse.json({ error: "Error interno del servidor." }, { status: 500 });
+    console.error('[Routing] Error:', error);
+    return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });
   }
 }

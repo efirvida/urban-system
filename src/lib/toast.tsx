@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
 /** Visual style + semantic of a single toast. */
-export type ToastKind = "error" | "info";
+export type ToastKind = 'error' | 'info';
 
 export interface ToastOpts {
   kind?: ToastKind;
@@ -12,7 +12,7 @@ export interface ToastOpts {
 }
 
 /** Internal record kept by the provider. */
-export interface ToastItem extends Required<Omit<ToastOpts, "durationMs">> {
+export interface ToastItem extends Required<Omit<ToastOpts, 'durationMs'>> {
   id: string;
   msg: string;
   durationMs: number;
@@ -49,7 +49,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     const item: ToastItem = {
       id,
       msg,
-      kind: opts.kind ?? "info",
+      kind: opts.kind ?? 'info',
       durationMs: opts.durationMs ?? DEFAULT_DURATION_MS,
     };
     setItems((prev) => [...prev, item]);
@@ -64,18 +64,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return <ToastContext.Provider value={value}>{children}</ToastContext.Provider>;
 }
 
-export function useToast(): { show: ToastContextValue["show"] } {
+export function useToast(): { show: ToastContextValue['show'] } {
   const ctx = useContext(ToastContext);
   if (!ctx) {
     // Outside a provider — degrade gracefully so non-wrapped parts of
     // the app (e.g. tests, server-rendered children) don't throw.
-    return { show: () => "" };
+    return { show: () => '' };
   }
   return { show: ctx.show };
 }
 
 /** Read-only access to the toast list + dismiss — used by `<ToastHost>`. */
-export function useToastHost(): { items: ToastItem[]; dismiss: ToastContextValue["dismiss"] } {
+export function useToastHost(): { items: ToastItem[]; dismiss: ToastContextValue['dismiss'] } {
   const ctx = useContext(ToastContext);
   if (!ctx) {
     return { items: [], dismiss: () => {} };

@@ -1,6 +1,6 @@
-import { Location, Config, DayRoute, Stop, DistanceMatrix } from "@/types";
-import { improveWithGA } from "./geneticOptimizer";
-import { haversineDistance } from "./haversine";
+import { Location, Config, DayRoute, Stop, DistanceMatrix } from '@/types';
+import { improveWithGA } from './geneticOptimizer';
+import { haversineDistance } from './haversine';
 
 /**
  * Look up distance from the precomputed matrix.
@@ -18,7 +18,7 @@ export function matGet(
   a: number,
   b: number,
   matrix: Record<string, number> | undefined,
-  strictMatrix: DistanceMatrix
+  strictMatrix: DistanceMatrix,
 ): number {
   const ka = a === -1 ? 0 : a + 1;
   const kb = b === -1 ? 0 : b + 1;
@@ -43,7 +43,7 @@ export async function optimizeRoutes(
   locations: Location[],
   config: Config,
   precomputedMatrix: Record<string, number> | undefined,
-  strictMatrix: DistanceMatrix
+  strictMatrix: DistanceMatrix,
 ): Promise<{
   days: DayRoute[];
   totalDistance: number;
@@ -54,28 +54,44 @@ export async function optimizeRoutes(
     return { days: [], totalDistance: 0, osrmPairs: 0, totalPairs: 0 };
   }
 
-  const FLOW = "[FLOW]";
+  const FLOW = '[FLOW]';
   const tStart = Date.now();
 
   const home: Location = {
-    name: "Casa",
+    name: 'Casa',
     lat: config.homeLat,
     lng: config.homeLng,
   };
 
-  console.log(`${FLOW}   routerOptimizer: ${locations.length} locations${strictMatrix ? " (strict matrix)" : ""}`);
+  console.log(
+    `${FLOW}   routerOptimizer: ${locations.length} locations${strictMatrix ? ' (strict matrix)' : ''}`,
+  );
   // ── Step 1: Build a giant TSP tour ──
   // Nearest Neighbor + 2-opt improvement
   const tour = await buildGiantTour(locations, home, config, strictMatrix, precomputedMatrix);
 
   // ── Step 2: Slice the tour into daily segments ──
-  let solution = sliceTourToSolution(tour, locations, home, config, strictMatrix, precomputedMatrix);
+  let solution = sliceTourToSolution(
+    tour,
+    locations,
+    home,
+    config,
+    strictMatrix,
+    precomputedMatrix,
+  );
 
   // ── Step 3: Local Search improvement (OR-Tools style) ──
   solution = localSearch(solution, locations, home, config, strictMatrix, precomputedMatrix);
 
   // ── Convert deterministic result ──
-  const detDays = solutionToDays(solution, locations, home, config, strictMatrix, precomputedMatrix);
+  const detDays = solutionToDays(
+    solution,
+    locations,
+    home,
+    config,
+    strictMatrix,
+    precomputedMatrix,
+  );
   const detDistance = detDays.reduce((sum, d) => sum + d.totalDistance, 0);
   console.log(`${FLOW}   deterministic: ${detDays.length} days, ${detDistance.toFixed(1)}km`);
 
@@ -86,10 +102,22 @@ export async function optimizeRoutes(
   if (locations.length >= 3) {
     const t4 = Date.now();
     try {
-      const gaResult = await improveWithGA(tour, locations, home, config, precomputedMatrix, strictMatrix);
+      const gaResult = await improveWithGA(
+        tour,
+        locations,
+        home,
+        config,
+        precomputedMatrix,
+        strictMatrix,
+      );
       const gaMs = Date.now() - t4;
-      const impr = gaResult.totalDistance < bestDistance ? (bestDistance - gaResult.totalDistance).toFixed(2) : "0";
-      console.log(`${FLOW}   improveWithGA: ${gaResult.totalDays}d, ${gaResult.totalDistance}km, improvement: ${impr}km in ${gaMs}ms`);
+      const impr =
+        gaResult.totalDistance < bestDistance
+          ? (bestDistance - gaResult.totalDistance).toFixed(2)
+          : '0';
+      console.log(
+        `${FLOW}   improveWithGA: ${gaResult.totalDays}d, ${gaResult.totalDistance}km, improvement: ${impr}km in ${gaMs}ms`,
+      );
       if (gaResult.totalDistance < bestDistance) {
         bestDays = gaResult.days;
         bestDistance = gaResult.totalDistance;
@@ -98,13 +126,15 @@ export async function optimizeRoutes(
         console.log(`${FLOW}   → Deterministic solution was better, keeping it`);
       }
     } catch (err) {
-      console.warn("[GA] Post-optimization failed, using deterministic result:", err);
+      console.warn('[GA] Post-optimization failed, using deterministic result:', err);
     }
   } else {
     console.log(`${FLOW}   improveWithGA: skipped (< 3 locations)`);
   }
 
-  console.log(`${FLOW}   routerOptimizer total: ${Date.now() - tStart}ms, det=${detDistance.toFixed(1)}km, best=${bestDistance.toFixed(1)}km, ${bestDays.length} days`);
+  console.log(
+    `${FLOW}   routerOptimizer total: ${Date.now() - tStart}ms, det=${detDistance.toFixed(1)}km, best=${bestDistance.toFixed(1)}km, ${bestDays.length} days`,
+  );
 
   return {
     days: bestDays,
@@ -122,7 +152,6 @@ async function buildGiantTour(
   config: Config,
   strictMatrix: DistanceMatrix,
   precomputed?: Record<string, number>,
-
 ): Promise<number[]> {
   // Nearest Neighbor
   const n = locations.length;
@@ -153,9 +182,11 @@ async function buildGiantTour(
         // Safety: if stuck in a loop (all remaining POIs unreachable
         // even from home), force-include the first unvisited POI so
         // the tour doesn't abort prematurely.
-        const firstUnvisited = Array.from({ length: n }, (_, i) => i).find(i => !visited.has(i));
+        const firstUnvisited = Array.from({ length: n }, (_, i) => i).find((i) => !visited.has(i));
         if (firstUnvisited === undefined) break;
-        console.warn(`[Tour] Forcing POI ${firstUnvisited} into tour (stuck after ${stuckCount} attempts)`);
+        console.warn(
+          `[Tour] Forcing POI ${firstUnvisited} into tour (stuck after ${stuckCount} attempts)`,
+        );
         tour.push(firstUnvisited);
         visited.add(firstUnvisited);
         prevLocIdx = firstUnvisited;
@@ -199,7 +230,7 @@ function pd(
   a: number,
   b: number,
   matrix: Record<string, number> | undefined,
-  strictMatrix: DistanceMatrix
+  strictMatrix: DistanceMatrix,
 ): number {
   return matGet(a, b, matrix, strictMatrix);
 }
@@ -269,13 +300,24 @@ function sliceTourToSolution(
     while (ptr < tour.length) {
       const proposed = [...dayIndices, tour[ptr]];
       const km = estimateRouteKm(proposed, locations, home, strictMatrix, precomputed);
-      const hours = km / config.avgSpeed + proposed.length * config.visitTime / 60;
+      const hours = km / config.avgSpeed + (proposed.length * config.visitTime) / 60;
 
       let violation = false;
       switch (config.constraintType) {
-        case "hours": if (hours > config.constraintValue) violation = true; break;
-        case "visits": if (proposed.length > config.constraintValue || km / config.avgSpeed > 8) violation = true; break;
-        case "hours+visits": if (km / config.avgSpeed > config.constraintValue || proposed.length > (config.maxVisits ?? 10)) violation = true; break;
+        case 'hours':
+          if (hours > config.constraintValue) violation = true;
+          break;
+        case 'visits':
+          if (proposed.length > config.constraintValue || km / config.avgSpeed > 8)
+            violation = true;
+          break;
+        case 'hours+visits':
+          if (
+            km / config.avgSpeed > config.constraintValue ||
+            proposed.length > (config.maxVisits ?? 10)
+          )
+            violation = true;
+          break;
       }
       if (violation) break;
       dayIndices.push(tour[ptr]);
@@ -288,7 +330,9 @@ function sliceTourToSolution(
     }
     if (dayIndices.length > 0) {
       // Re-order within day using NN from home
-      solution.push(nearestNeighborWithinDay(dayIndices, locations, home, strictMatrix, precomputed));
+      solution.push(
+        nearestNeighborWithinDay(dayIndices, locations, home, strictMatrix, precomputed),
+      );
     }
   }
 
@@ -347,10 +391,14 @@ function nearestNeighborWithinDay(
   let current = -1;
   let stuck = 0;
   while (unvisited.size > 0) {
-    let nearest = -1; let minD = Infinity;
+    let nearest = -1;
+    let minD = Infinity;
     for (const idx of unvisited) {
       const d = pd(current, idx, precomputed, strictMatrix);
-      if (d < minD) { minD = d; nearest = idx; }
+      if (d < minD) {
+        minD = d;
+        nearest = idx;
+      }
     }
     if (nearest === -1) {
       stuck++;
@@ -401,11 +449,16 @@ function dayViolates(
 ): boolean {
   if (indices.length === 0) return false;
   const km = solutionDistance([indices], locations, strictMatrix, precomputed);
-  const hours = km / config.avgSpeed + indices.length * config.visitTime / 60;
+  const hours = km / config.avgSpeed + (indices.length * config.visitTime) / 60;
   switch (config.constraintType) {
-    case "hours": return hours > config.constraintValue;
-    case "visits": return indices.length > config.constraintValue || km / config.avgSpeed > 8;
-    case "hours+visits": return km / config.avgSpeed > config.constraintValue || indices.length > (config.maxVisits ?? 10);
+    case 'hours':
+      return hours > config.constraintValue;
+    case 'visits':
+      return indices.length > config.constraintValue || km / config.avgSpeed > 8;
+    case 'hours+visits':
+      return (
+        km / config.avgSpeed > config.constraintValue || indices.length > (config.maxVisits ?? 10)
+      );
   }
 }
 
@@ -421,7 +474,7 @@ function localSearch(
   strictMatrix: DistanceMatrix,
   precomputed?: Record<string, number>,
 ): Solution {
-  let best = sol.map(d => [...d]); // deep clone
+  let best = sol.map((d) => [...d]); // deep clone
   let bestDist = solutionDistance(best, locations, strictMatrix, precomputed);
   let improved = true;
   const MAX_ITER = 50;
@@ -442,17 +495,31 @@ function localSearch(
           // Try inserting at every position in toDay
           for (let toPos = 0; toPos <= best[toDay].length; toPos++) {
             // Clone and apply
-            const candidate = best.map(d => [...d]);
+            const candidate = best.map((d) => [...d]);
             candidate[fromDay].splice(fromPos, 1);
             candidate[toDay].splice(toPos, 0, loc);
 
             // Re-order both affected days with NN
-            candidate[fromDay] = nearestNeighborWithinDay(candidate[fromDay], locations, home, strictMatrix, precomputed);
-            candidate[toDay] = nearestNeighborWithinDay(candidate[toDay], locations, home, strictMatrix, precomputed);
+            candidate[fromDay] = nearestNeighborWithinDay(
+              candidate[fromDay],
+              locations,
+              home,
+              strictMatrix,
+              precomputed,
+            );
+            candidate[toDay] = nearestNeighborWithinDay(
+              candidate[toDay],
+              locations,
+              home,
+              strictMatrix,
+              precomputed,
+            );
 
             // Check constraints
-            if (dayViolates(candidate[fromDay], locations, home, config, strictMatrix, precomputed)) continue;
-            if (dayViolates(candidate[toDay], locations, home, config, strictMatrix, precomputed)) continue;
+            if (dayViolates(candidate[fromDay], locations, home, config, strictMatrix, precomputed))
+              continue;
+            if (dayViolates(candidate[toDay], locations, home, config, strictMatrix, precomputed))
+              continue;
 
             const dist = solutionDistance(candidate, locations, strictMatrix, precomputed);
             if (dist < bestDist - 0.01) {
@@ -476,17 +543,31 @@ function localSearch(
       for (let posA = 0; posA < best[dayA].length; posA++) {
         for (let dayB = dayA + 1; dayB < best.length; dayB++) {
           for (let posB = 0; posB < best[dayB].length; posB++) {
-            const candidate = best.map(d => [...d]);
+            const candidate = best.map((d) => [...d]);
             const tmpA = candidate[dayA][posA];
             const tmpB = candidate[dayB][posB];
             candidate[dayA][posA] = tmpB;
             candidate[dayB][posB] = tmpA;
 
-            candidate[dayA] = nearestNeighborWithinDay(candidate[dayA], locations, home, strictMatrix, precomputed);
-            candidate[dayB] = nearestNeighborWithinDay(candidate[dayB], locations, home, strictMatrix, precomputed);
+            candidate[dayA] = nearestNeighborWithinDay(
+              candidate[dayA],
+              locations,
+              home,
+              strictMatrix,
+              precomputed,
+            );
+            candidate[dayB] = nearestNeighborWithinDay(
+              candidate[dayB],
+              locations,
+              home,
+              strictMatrix,
+              precomputed,
+            );
 
-            if (dayViolates(candidate[dayA], locations, home, config, strictMatrix, precomputed)) continue;
-            if (dayViolates(candidate[dayB], locations, home, config, strictMatrix, precomputed)) continue;
+            if (dayViolates(candidate[dayA], locations, home, config, strictMatrix, precomputed))
+              continue;
+            if (dayViolates(candidate[dayB], locations, home, config, strictMatrix, precomputed))
+              continue;
 
             const dist = solutionDistance(candidate, locations, strictMatrix, precomputed);
             if (dist < bestDist - 0.01) {
@@ -522,8 +603,16 @@ function solutionToDays(
     let cumulativeDist = 0;
     let cumulativeTime = 0;
 
-    stops.push({ sequence: 0, name: home.name, lat: home.lat, lng: home.lng,
-      distanceFromPrev: 0, cumulativeDistance: 0, cumulativeTime: 0, isHome: true });
+    stops.push({
+      sequence: 0,
+      name: home.name,
+      lat: home.lat,
+      lng: home.lng,
+      distanceFromPrev: 0,
+      cumulativeDistance: 0,
+      cumulativeTime: 0,
+      isHome: true,
+    });
 
     for (let i = 0; i < ordered.length; i++) {
       const idx = ordered[i];
@@ -531,20 +620,39 @@ function solutionToDays(
       const t = d / config.avgSpeed;
       cumulativeDist += d;
       cumulativeTime += t + config.visitTime / 60;
-      stops.push({ sequence: i + 1, name: locations[idx].name, lat: locations[idx].lat,
-        lng: locations[idx].lng, distanceFromPrev: d, cumulativeDistance: cumulativeDist,
-        cumulativeTime: cumulativeTime, isHome: false });
+      stops.push({
+        sequence: i + 1,
+        name: locations[idx].name,
+        lat: locations[idx].lat,
+        lng: locations[idx].lng,
+        distanceFromPrev: d,
+        cumulativeDistance: cumulativeDist,
+        cumulativeTime: cumulativeTime,
+        isHome: false,
+      });
     }
 
     const returnDist = pd(ordered[ordered.length - 1], -1, precomputed, strictMatrix);
     cumulativeDist += returnDist;
     cumulativeTime += returnDist / config.avgSpeed;
-    stops.push({ sequence: ordered.length + 1, name: home.name, lat: home.lat, lng: home.lng,
-      distanceFromPrev: returnDist, cumulativeDistance: cumulativeDist,
-      cumulativeTime: cumulativeTime, isHome: true });
+    stops.push({
+      sequence: ordered.length + 1,
+      name: home.name,
+      lat: home.lat,
+      lng: home.lng,
+      distanceFromPrev: returnDist,
+      cumulativeDistance: cumulativeDist,
+      cumulativeTime: cumulativeTime,
+      isHome: true,
+    });
 
-    return { day: dayIdx + 1, stops, totalDistance: cumulativeDist,
-      totalTime: cumulativeTime, totalStops: ordered.length };
+    return {
+      day: dayIdx + 1,
+      stops,
+      totalDistance: cumulativeDist,
+      totalTime: cumulativeTime,
+      totalStops: ordered.length,
+    };
   });
 }
 
@@ -595,7 +703,7 @@ export function reoptimizeDay(
   matrix: Record<string, number> | undefined,
   dayNumber: number,
   nameToIndex?: Record<string, number>,
-  strictMatrix?: DistanceMatrix
+  strictMatrix?: DistanceMatrix,
 ): DayRoute {
   // Empty day — just home at start and end.
   if (locations.length === 0) {

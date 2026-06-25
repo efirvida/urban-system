@@ -20,15 +20,11 @@
  * caught → `null` (so the registry slot is empty, not poisoned).
  */
 
-import type { DayRoute, Stop } from "@/types";
-import {
-  getCachedOptimizerResult,
-  setCachedOptimizerResult,
-  optimizerCacheKey,
-} from "../cache";
-import type { Optimizer, OptimizeParams, OptimizerResult } from "../types";
+import type { DayRoute, Stop } from '@/types';
+import { getCachedOptimizerResult, setCachedOptimizerResult, optimizerCacheKey } from '../cache';
+import type { Optimizer, OptimizeParams, OptimizerResult } from '../types';
 
-const GEOAPIFY_BASE = "https://api.geoapify.com/v1/routeplanner";
+const GEOAPIFY_BASE = 'https://api.geoapify.com/v1/routeplanner';
 const REQUEST_TIMEOUT_MS = 30_000;
 
 interface VisitOrderEntry {
@@ -38,8 +34,8 @@ interface VisitOrderEntry {
 }
 
 export class GeoapifyOptimizer implements Optimizer {
-  readonly name = "geoapify";
-  readonly label = "Geoapify Route Planner";
+  readonly name = 'geoapify';
+  readonly label = 'Geoapify Route Planner';
 
   async optimize(params: OptimizeParams): Promise<OptimizerResult | null> {
     const apiKey = process.env.GEOAPIFY_API_KEY;
@@ -62,8 +58,8 @@ export class GeoapifyOptimizer implements Optimizer {
     try {
       const body = this.buildRequestBody(params);
       const res = await fetch(`${GEOAPIFY_BASE}?apiKey=${apiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
@@ -99,10 +95,7 @@ export class GeoapifyOptimizer implements Optimizer {
       setCachedOptimizerResult(cacheKey, result);
       return result;
     } catch (err) {
-      console.warn(
-        `[Geoapify] Route Planner failed:`,
-        err instanceof Error ? err.message : err,
-      );
+      console.warn(`[Geoapify] Route Planner failed:`, err instanceof Error ? err.message : err);
       return null;
     }
   }
@@ -112,13 +105,12 @@ export class GeoapifyOptimizer implements Optimizer {
   private buildRequestBody(params: OptimizeParams) {
     const homeLngLat: [number, number] = [params.home.lng, params.home.lat];
     const maxTime =
-      params.config.constraintType === "hours" ||
-      params.config.constraintType === "hours+visits"
+      params.config.constraintType === 'hours' || params.config.constraintType === 'hours+visits'
         ? params.config.constraintValue * 3600
         : 28800; // default 8h for visits-only
 
     return {
-      mode: "drive",
+      mode: 'drive',
       agents: [
         {
           start_location: homeLngLat,
@@ -131,16 +123,13 @@ export class GeoapifyOptimizer implements Optimizer {
         duration: (params.config.visitTime || 30) * 60,
         id: `loc_${i}`,
       })),
-      type: "short",
+      type: 'short',
     };
   }
 
   // ─── Response parsing ──────────────────────────────────────
 
-  private parseResponse(
-    data: GeoapifyResponse,
-    params: OptimizeParams,
-  ): VisitOrderEntry[] | null {
+  private parseResponse(data: GeoapifyResponse, params: OptimizeParams): VisitOrderEntry[] | null {
     if (!data.features?.length) return null;
     const feature = data.features[0];
     const props = feature.properties || {};
@@ -151,9 +140,9 @@ export class GeoapifyOptimizer implements Optimizer {
     // `i` is the original POI index in our request body.
     const visitOrder: VisitOrderEntry[] = [];
     for (const a of actions) {
-      if (a.type === "start" || a.type === "end") continue;
-      const jobId = a.job_id || "";
-      const idx = Number.parseInt(jobId.replace("loc_", ""), 10);
+      if (a.type === 'start' || a.type === 'end') continue;
+      const jobId = a.job_id || '';
+      const idx = Number.parseInt(jobId.replace('loc_', ''), 10);
       if (Number.isNaN(idx)) continue;
       const loc = params.locations[idx];
       if (!loc) continue; // index out of range — skip defensively
@@ -171,20 +160,15 @@ export class GeoapifyOptimizer implements Optimizer {
    * `DayRoute` shaped exactly like `routerOptimizer.ts` emits: home
    * start (sequence 0) → POIs → home return (last sequence).
    */
-  private splitIntoDays(
-    ordered: VisitOrderEntry[],
-    params: OptimizeParams,
-  ): DayRoute[] {
+  private splitIntoDays(ordered: VisitOrderEntry[], params: OptimizeParams): DayRoute[] {
     const { home, config, matrix } = params;
 
     const maxHours =
-      config.constraintType === "hours" ||
-      config.constraintType === "hours+visits"
+      config.constraintType === 'hours' || config.constraintType === 'hours+visits'
         ? config.constraintValue
         : 99;
     const maxVisits =
-      config.constraintType === "visits" ||
-      config.constraintType === "hours+visits"
+      config.constraintType === 'visits' || config.constraintType === 'hours+visits'
         ? config.maxVisits || Infinity
         : Infinity;
     const avgSpeed = config.avgSpeed || 60;
@@ -209,18 +193,10 @@ export class GeoapifyOptimizer implements Optimizer {
       const estDist = dayDist + legDist + returnFromCurrent;
       const estTime = estDist / avgSpeed + (dayStops + 1) * visitTimeH;
 
-      const wouldExceed =
-        dayStops >= maxVisits || (dayStops > 0 && estTime > maxHours);
+      const wouldExceed = dayStops >= maxVisits || (dayStops > 0 && estTime > maxHours);
       if (wouldExceed && currentStops.length > 0) {
         days.push(
-          this.finalizeDay(
-            currentStops,
-            days.length,
-            home,
-            prevMatrixIdx,
-            matrix,
-            avgSpeed,
-          ),
+          this.finalizeDay(currentStops, days.length, home, prevMatrixIdx, matrix, avgSpeed),
         );
         currentStops = [];
         dayDist = 0;
@@ -261,16 +237,7 @@ export class GeoapifyOptimizer implements Optimizer {
     }
 
     if (currentStops.length > 0) {
-      days.push(
-        this.finalizeDay(
-          currentStops,
-          days.length,
-          home,
-          prevMatrixIdx,
-          matrix,
-          avgSpeed,
-        ),
-      );
+      days.push(this.finalizeDay(currentStops, days.length, home, prevMatrixIdx, matrix, avgSpeed));
     }
 
     return days;
@@ -286,10 +253,8 @@ export class GeoapifyOptimizer implements Optimizer {
     avgSpeed: number,
   ): DayRoute {
     const returnDist = this.matGet(matrix, prevMatrixIdx, 0);
-    const lastCum =
-      stops.length > 0 ? stops[stops.length - 1]!.cumulativeDistance : 0;
-    const lastTime =
-      stops.length > 0 ? stops[stops.length - 1]!.cumulativeTime : 0;
+    const lastCum = stops.length > 0 ? stops[stops.length - 1]!.cumulativeDistance : 0;
+    const lastTime = stops.length > 0 ? stops[stops.length - 1]!.cumulativeTime : 0;
 
     const totalDist = lastCum + returnDist;
     const totalTime = lastTime + returnDist / avgSpeed;

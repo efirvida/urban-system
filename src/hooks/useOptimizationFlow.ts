@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { useCallback, useEffect, useState } from "react";
-import type { TFunction } from "i18next";
+import { useCallback, useEffect, useState } from 'react';
+import type { TFunction } from 'i18next';
 import {
   isDayRouteArray,
   isOptimizeMeta,
@@ -10,23 +10,28 @@ import {
   type Location,
   type OptimizeResponse,
   type OptimizerResult,
-} from "@/types";
-import { buildDistanceMatrices, fetchAllRouteGeometries, MatrixProgress, RouteSource } from "@/utils/clientRouting";
+} from '@/types';
+import {
+  buildDistanceMatrices,
+  fetchAllRouteGeometries,
+  MatrixProgress,
+  RouteSource,
+} from '@/utils/clientRouting';
 
 /** Sub-phase of the optimization pipeline surfaced to the progress UI. */
-export type OptimizePhase = "idle" | "matrix" | "algorithm" | "done" | "error";
+export type OptimizePhase = 'idle' | 'matrix' | 'algorithm' | 'done' | 'error';
 
 interface UseOptimizationFlowParams {
   locations: Location[];
   config: Config;
-  algorithm: "auto" | "nsga2";
+  algorithm: 'auto' | 'nsga2';
   /** i18n function used for fallback error messages. */
   t: TFunction;
   /**
    * Toast callback — `(msg, { kind }) => void`. When omitted, errors
    * only land on the in-page `error` state and a console.error line.
    */
-  notify?: (msg: string, kind: "error" | "info") => void;
+  notify?: (msg: string, kind: 'error' | 'info') => void;
   /**
    * Called when the optimization completes successfully. Used by the
    * page to transition the wizard to the `results` phase and open
@@ -43,7 +48,7 @@ export interface OptimizationFlow {
   result: OptimizeResponse | null;
   optimizerResults: (OptimizerResult | null)[] | null;
   activeAlgorithm: string | null;
-  routingMode: RouteSource | "haversine";
+  routingMode: RouteSource | 'haversine';
   routeGeometry: Map<number, [number, number][]> | null;
   routeSource: Map<number, RouteSource> | null;
   distanceMatrix: Record<string, number> | null;
@@ -74,12 +79,12 @@ interface CachedMatrix {
   home?: { lat: number; lng: number };
 }
 
-const MC_PREFIX = "vrp_matrix_";
+const MC_PREFIX = 'vrp_matrix_';
 
 function locationsHash(locs: Location[]): string {
   const coords = locs.map((l) => `${l.lat.toFixed(6)},${l.lng.toFixed(6)}`).sort();
   let h = 5381;
-  for (const s of coords.join("|")) h = ((h << 5) + h + s.charCodeAt(0)) | 0;
+  for (const s of coords.join('|')) h = ((h << 5) + h + s.charCodeAt(0)) | 0;
   return Math.abs(h).toString(36);
 }
 
@@ -95,7 +100,8 @@ function loadCachedMatrix(
     const parsed = JSON.parse(raw) as CachedMatrix;
     let homeMatches = false;
     if (parsed.home && currentHomeLat !== undefined && currentHomeLng !== undefined) {
-      const d = Math.abs(currentHomeLat - parsed.home.lat) + Math.abs(currentHomeLng - parsed.home.lng);
+      const d =
+        Math.abs(currentHomeLat - parsed.home.lat) + Math.abs(currentHomeLng - parsed.home.lng);
       homeMatches = d <= 0.005;
     }
     const distances: Record<string, number> = {};
@@ -103,7 +109,7 @@ function loadCachedMatrix(
       for (const k of Object.keys(parsed.d)) distances[k] = parsed.d[k]!;
     } else {
       for (const k of Object.keys(parsed.d)) {
-        if (k.startsWith("0,")) continue;
+        if (k.startsWith('0,')) continue;
         distances[k] = parsed.d[k]!;
       }
     }
@@ -134,7 +140,7 @@ function saveCachedMatrix(
     }
     localStorage.setItem(key, JSON.stringify(toStore));
   } catch (err) {
-    console.warn("[Cache] Failed to save:", err);
+    console.warn('[Cache] Failed to save:', err);
   }
 }
 
@@ -153,11 +159,11 @@ export function useOptimizationFlow({
   const [result, setResult] = useState<OptimizeResponse | null>(null);
   const [optimizerResults, setOptimizerResults] = useState<(OptimizerResult | null)[] | null>(null);
   const [activeAlgorithm, setActiveAlgorithm] = useState<string | null>(null);
-  const [routingMode, setRoutingMode] = useState<RouteSource | "haversine">("osrm");
+  const [routingMode, setRoutingMode] = useState<RouteSource | 'haversine'>('osrm');
   const [routeGeometry, setRouteGeometry] = useState<Map<number, [number, number][]> | null>(null);
   const [routeSource, setRouteSource] = useState<Map<number, RouteSource> | null>(null);
   const [distanceMatrix, setDistanceMatrix] = useState<Record<string, number> | null>(null);
-  const [optimizePhase, setOptimizePhase] = useState<OptimizePhase>("idle");
+  const [optimizePhase, setOptimizePhase] = useState<OptimizePhase>('idle');
   const [matrixProgress, setMatrixProgress] = useState<MatrixProgress | null>(null);
   const [useConsensus, setUseConsensus] = useState(false);
   const [hiddenDays, setHiddenDays] = useState<Set<number>>(new Set());
@@ -171,33 +177,33 @@ export function useOptimizationFlow({
   }, [error]);
 
   const handleOptimize = useCallback(async () => {
-    const FLOW = "[FLOW]";
+    const FLOW = '[FLOW]';
     const t0 = Date.now();
     console.log(`${FLOW} ══════ OPTIMIZE START ══════`);
     console.log(`${FLOW} Locations: ${locations.length}, Algorithm: ${algorithm}`);
 
     if (locations.length === 0) {
-      const msg = t("wizard.errors.noValidLocations");
+      const msg = t('wizard.errors.noValidLocations');
       setError(msg);
-      notify?.(msg, "error");
+      notify?.(msg, 'error');
       return;
     }
     if (!config.homeLat || !config.homeLng) {
-      const msg = t("wizard.errors.configureHome");
+      const msg = t('wizard.errors.configureHome');
       setError(msg);
-      notify?.(msg, "error");
+      notify?.(msg, 'error');
       return;
     }
 
     setLoading(true);
     setError(null);
     setMatrixProgress(null);
-    setOptimizePhase("matrix");
+    setOptimizePhase('matrix');
     await new Promise((r) => setTimeout(r, 100));
 
     try {
       // ── Step 1: Distance matrix ──
-      const USE_CONSENSUS_MATRIX = process.env.NEXT_PUBLIC_USE_CONSENSUS !== "false";
+      const USE_CONSENSUS_MATRIX = process.env.NEXT_PUBLIC_USE_CONSENSUS !== 'false';
       let distances: Record<string, number> = {};
 
       if (!USE_CONSENSUS_MATRIX) {
@@ -211,7 +217,7 @@ export function useOptimizationFlow({
         if (cachedHasFullMatrix) {
           distances = cached.distances;
         } else {
-          setOptimizePhase("matrix");
+          setOptimizePhase('matrix');
           await new Promise((r) => setTimeout(r, 50));
           const { osrmMatrix } = await buildDistanceMatrices(
             config.homeLat,
@@ -224,12 +230,12 @@ export function useOptimizationFlow({
           void totalPairs;
         }
       } else {
-        setOptimizePhase("matrix");
+        setOptimizePhase('matrix');
         await new Promise((r) => setTimeout(r, 50));
       }
 
       if (!USE_CONSENSUS_MATRIX) {
-        setOptimizePhase("algorithm");
+        setOptimizePhase('algorithm');
         await new Promise((r) => setTimeout(r, 100));
       }
 
@@ -244,28 +250,28 @@ export function useOptimizationFlow({
         useConsensus: USE_CONSENSUS_MATRIX,
       };
 
-      const apiRes = await fetch("/api/optimize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const apiRes = await fetch('/api/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(apiPayload),
       });
 
       let apiData: Record<string, unknown> = {};
 
       if (USE_CONSENSUS_MATRIX) {
-        const contentType = apiRes.headers.get("content-type") || "";
-        if (contentType.includes("x-ndjson")) {
+        const contentType = apiRes.headers.get('content-type') || '';
+        if (contentType.includes('x-ndjson')) {
           const reader = apiRes.body?.getReader();
-          if (!reader) throw new Error("No response body");
+          if (!reader) throw new Error('No response body');
           const decoder = new TextDecoder();
-          let buffer = "";
+          let buffer = '';
           const processLine = (line: string) => {
             if (!line.trim()) return;
             try {
               const event = JSON.parse(line);
-              if (event.type === "progress") {
+              if (event.type === 'progress') {
                 setMatrixProgress({
-                  phase: "matrix",
+                  phase: 'matrix',
                   stage: event.detail || event.stage,
                   current: event.current,
                   total: event.total,
@@ -275,10 +281,10 @@ export function useOptimizationFlow({
                   osrmCount: event.osrmCount ?? 0,
                   unreachableCount: 0,
                 });
-              } else if (event.type === "result") {
+              } else if (event.type === 'result') {
                 apiData = event.data;
-              } else if (event.type === "error") {
-                throw new Error(event.error || "Server error during consensus");
+              } else if (event.type === 'error') {
+                throw new Error(event.error || 'Server error during consensus');
               }
             } catch (e) {
               if (e instanceof SyntaxError) return;
@@ -289,12 +295,12 @@ export function useOptimizationFlow({
             const { done, value } = await reader.read();
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
             for (const line of lines) processLine(line);
           }
           if (buffer.trim()) processLine(buffer);
-          if (!apiData) throw new Error("No result event in stream");
+          if (!apiData) throw new Error('No result event in stream');
         } else {
           if (!apiRes.ok) {
             const errData = await apiRes.json().catch(() => ({ error: `HTTP ${apiRes.status}` }));
@@ -302,7 +308,7 @@ export function useOptimizationFlow({
           }
           apiData = await apiRes.json();
         }
-        setOptimizePhase("algorithm");
+        setOptimizePhase('algorithm');
         await new Promise((r) => setTimeout(r, 50));
       } else {
         if (!apiRes.ok) {
@@ -332,7 +338,7 @@ export function useOptimizationFlow({
           winner = r;
         }
       }
-      if (!winner) throw new Error(t("wizard.errors.noResult"));
+      if (!winner) throw new Error(t('wizard.errors.noResult'));
 
       setOptimizerResults(allResults);
       setActiveAlgorithm(winner.algorithm);
@@ -361,29 +367,29 @@ export function useOptimizationFlow({
             }
           })
           .catch((err: unknown) => {
-            const msg = t("wizard.errors.routeGeometry");
-            notify?.(msg, "error");
+            const msg = t('wizard.errors.routeGeometry');
+            notify?.(msg, 'error');
             setError(msg);
-            console.error("[FLOW] Route geometry error:", err);
+            console.error('[FLOW] Route geometry error:', err);
           });
       }
 
-      const bestSource: RouteSource | "haversine" = (() => {
-        if (!routeSource || routeSource.size === 0) return "osrm";
+      const bestSource: RouteSource | 'haversine' = (() => {
+        if (!routeSource || routeSource.size === 0) return 'osrm';
         for (const s of routeSource.values()) {
-          if (s !== "haversine") return s;
+          if (s !== 'haversine') return s;
         }
-        return "haversine";
+        return 'haversine';
       })();
       setRoutingMode(bestSource);
-      setOptimizePhase("done");
+      setOptimizePhase('done');
       console.log(`${FLOW} Total elapsed: ${Date.now() - t0}ms`);
       onSuccess?.();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : t("wizard.errors.unexpectedError");
-      notify?.(msg, "error");
+      const msg = err instanceof Error ? err.message : t('wizard.errors.unexpectedError');
+      notify?.(msg, 'error');
       setError(msg);
-      setOptimizePhase("error");
+      setOptimizePhase('error');
       console.error(`${FLOW} ERROR:`, err);
     } finally {
       setLoading(false);
@@ -404,10 +410,10 @@ export function useOptimizationFlow({
           }
         })
         .catch((err) => {
-          const msg = t("wizard.errors.routeGeometry");
-          notify?.(msg, "error");
+          const msg = t('wizard.errors.routeGeometry');
+          notify?.(msg, 'error');
           setError(msg);
-          console.error("[FLOW] Post-Apply geometry fetch error:", err);
+          console.error('[FLOW] Post-Apply geometry fetch error:', err);
         });
     },
     [t, notify],
@@ -456,7 +462,7 @@ export function useOptimizationFlow({
         };
       });
       setHiddenDays(new Set());
-      setRoutingMode("osrm");
+      setRoutingMode('osrm');
       refetchGeometries(newDays);
     },
     [refetchGeometries],
@@ -489,11 +495,11 @@ export function useOptimizationFlow({
     setRouteGeometry(null);
     setRouteSource(null);
     setDistanceMatrix(null);
-    setOptimizePhase("idle");
+    setOptimizePhase('idle');
     setMatrixProgress(null);
     setUseConsensus(false);
     setHiddenDays(new Set());
-    setRoutingMode("osrm");
+    setRoutingMode('osrm');
   }, []);
 
   const winnerAlgorithm = (() => {

@@ -14,21 +14,18 @@
  * the per-pair `OSRMProvider` as a tie-break when all batches fail.
  */
 
-import type { BatchRouteProvider, RouteProvider } from "../types";
-import { GeoapifyProvider } from "./geoapify";
-import { GeoapifyMatrixProvider } from "./geoapifyMatrix";
-import { OrsMatrixProvider } from "./orsMatrix";
-import { OSRMProvider } from "./osrm";
+import type { BatchRouteProvider, RouteProvider } from '../types';
+import { GeoapifyProvider } from './geoapify';
+import { GeoapifyMatrixProvider } from './geoapifyMatrix';
+import { OrsMatrixProvider } from './orsMatrix';
+import { OSRMProvider } from './osrm';
 
-export { GeoapifyProvider } from "./geoapify";
-export { GeoapifyMatrixProvider } from "./geoapifyMatrix";
-export { OrsMatrixProvider } from "./orsMatrix";
-export { OSRMProvider } from "./osrm";
+export { GeoapifyProvider } from './geoapify';
+export { GeoapifyMatrixProvider } from './geoapifyMatrix';
+export { OrsMatrixProvider } from './orsMatrix';
+export { OSRMProvider } from './osrm';
 
-export const defaultProviders: RouteProvider[] = [
-  new GeoapifyProvider(),
-  new OSRMProvider(),
-];
+export const defaultProviders: RouteProvider[] = [new GeoapifyProvider(), new OSRMProvider()];
 
 /**
  * Batch matrix providers used by `ConsensusBuilder`.

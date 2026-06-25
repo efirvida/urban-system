@@ -15,13 +15,13 @@
  * `routing/types.ts` for `MapView.tsx` and `useLeafletRoutes.ts`.
  */
 
-import { RoutingService } from "./routing/service";
-import { defaultProviders } from "./routing/providers";
-import { geometryCache } from "./routing/geometryCache";
-import type { Point, RouteSource } from "./routing/types";
+import { RoutingService } from './routing/service';
+import { defaultProviders } from './routing/providers';
+import { geometryCache } from './routing/geometryCache';
+import type { Point, RouteSource } from './routing/types';
 
-export type { MatrixProgress, ProgressCallback } from "./routing/service";
-export type { RouteSource } from "./routing/types";
+export type { MatrixProgress, ProgressCallback } from './routing/service';
+export type { RouteSource } from './routing/types';
 
 // ─── Public API ─────────────────────────────────────────────
 
@@ -38,11 +38,11 @@ export async function fetchRouteGeometry(
   stops: Array<{ lat: number; lng: number; provider?: string }>,
 ): Promise<[number, number][] | null> {
   if (stops.length < 2) return null;
-  const preferredProvider = stops.find(s => s.provider)?.provider;
+  const preferredProvider = stops.find((s) => s.provider)?.provider;
   try {
-    const res = await fetch("/api/routing", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    const res = await fetch('/api/routing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         stops,
         ...(preferredProvider ? { preferredSource: preferredProvider } : {}),
@@ -66,7 +66,10 @@ export async function fetchRouteGeometry(
  * stores the result in the cache, and returns.
  */
 export async function fetchAllRouteGeometries(
-  days: Array<{ day: number; stops: Array<{ lat: number; lng: number; isHome?: boolean; provider?: string }> }>,
+  days: Array<{
+    day: number;
+    stops: Array<{ lat: number; lng: number; isHome?: boolean; provider?: string }>;
+  }>,
 ): Promise<{
   geometries: Map<number, [number, number][]>;
   sources: Map<number, RouteSource>;
@@ -75,7 +78,7 @@ export async function fetchAllRouteGeometries(
   const sources = new Map<number, RouteSource>();
 
   for (const day of days) {
-    const fullStops = [day.stops[0], ...day.stops.filter(s => !s.isHome), day.stops[0]];
+    const fullStops = [day.stops[0], ...day.stops.filter((s) => !s.isHome), day.stops[0]];
     if (fullStops.length < 2) continue;
 
     // Cache-first: avoid the API call when geometry is already stored.
@@ -87,15 +90,15 @@ export async function fetchAllRouteGeometries(
     }
 
     // Cache miss → fetch from API. Pass preferred provider from consensus.
-    const preferredProvider = day.stops.find(s => !s.isHome && s.provider)?.provider;
+    const preferredProvider = day.stops.find((s) => !s.isHome && s.provider)?.provider;
 
     let routeCoords: [number, number][] | null = null;
-    let apiSource: RouteSource = "haversine";
+    let apiSource: RouteSource = 'haversine';
 
     try {
-      const res = await fetch("/api/routing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/routing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           stops: fullStops,
           ...(preferredProvider ? { preferredSource: preferredProvider } : {}),
@@ -108,7 +111,12 @@ export async function fetchAllRouteGeometries(
           source?: RouteSource;
         };
         routeCoords = data.coordinates || null;
-        if (data.source === "geoapify" || data.source === "ors" || data.source === "osrm" || data.source === "haversine") {
+        if (
+          data.source === 'geoapify' ||
+          data.source === 'ors' ||
+          data.source === 'osrm' ||
+          data.source === 'haversine'
+        ) {
           apiSource = data.source;
         }
       }
@@ -143,7 +151,7 @@ export async function buildDistanceMatrices(
   homeLat: number,
   homeLng: number,
   locations: Array<{ lat: number; lng: number }>,
-  onProgress: (p: import("./routing/service").MatrixProgress) => void,
+  onProgress: (p: import('./routing/service').MatrixProgress) => void,
 ): Promise<{
   osrmMatrix: Map<string, number>;
   durationMatrix?: Map<string, number>;
@@ -158,5 +166,3 @@ export async function buildDistanceMatrices(
   }
   return { osrmMatrix };
 }
-
-

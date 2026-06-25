@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import { useDroppable, useDraggable } from "@dnd-kit/core";
-import { MapPin } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { Location } from "@/types";
-import { cn } from "@/lib/utils";
+import { useDroppable, useDraggable } from '@dnd-kit/core';
+import { MapPin } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Location } from '@/types';
+import { cn } from '@/lib/utils';
 
 interface UnassignedPoolProps {
   pois: Location[];
@@ -19,8 +19,8 @@ interface UnassignedPoolProps {
 export default function UnassignedPool({ pois }: UnassignedPoolProps) {
   const { t } = useTranslation();
   const { isOver, setNodeRef } = useDroppable({
-    id: "pool-unassigned",
-    data: { kind: "pool" },
+    id: 'pool-unassigned',
+    data: { kind: 'pool' },
   });
 
   if (pois.length === 0) return null;
@@ -29,16 +29,14 @@ export default function UnassignedPool({ pois }: UnassignedPoolProps) {
     <div
       ref={setNodeRef}
       className={cn(
-        "rounded-lg p-3 border-2 border-dashed transition-colors",
-        isOver
-          ? "border-amber-400 bg-amber-50"
-          : "border-gray-300 bg-amber-50/40"
+        'rounded-lg p-3 border-2 border-dashed transition-colors',
+        isOver ? 'border-amber-400 bg-amber-50' : 'border-gray-300 bg-amber-50/40',
       )}
     >
       <div className="flex items-center gap-2 mb-2">
         <MapPin className="w-3.5 h-3.5 text-amber-600" />
         <span className="text-xs font-semibold text-amber-700">
-          {t("unassignedPool.title", { count: pois.length })}
+          {t('unassignedPool.title', { count: pois.length })}
         </span>
       </div>
 
@@ -54,21 +52,18 @@ export default function UnassignedPool({ pois }: UnassignedPoolProps) {
 /** A single draggable POI chip in the unassigned pool. */
 function UnassignedChip({ poi }: { poi: Location }) {
   const { t } = useTranslation();
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: `pool-${poi.lat.toFixed(5)}-${poi.lng.toFixed(5)}-${poi.name}`,
-      data: {
-        kind: "pool-item",
-        name: poi.name,
-        lat: poi.lat,
-        lng: poi.lng,
-      },
-    });
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `pool-${poi.lat.toFixed(5)}-${poi.lng.toFixed(5)}-${poi.name}`,
+    data: {
+      kind: 'pool-item',
+      name: poi.name,
+      lat: poi.lat,
+      lng: poi.lng,
+    },
+  });
 
   const style: React.CSSProperties = {
-    transform: transform
-      ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
-      : undefined,
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 50 : undefined,
   };
@@ -79,15 +74,15 @@ function UnassignedChip({ poi }: { poi: Location }) {
       type="button"
       style={style}
       className={cn(
-        "text-[10px] px-2 py-0.5 rounded-full border touch-none cursor-grab active:cursor-grabbing transition-colors",
-        "bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200",
-        isDragging && "shadow-md ring-2 ring-amber-300"
+        'text-[10px] px-2 py-0.5 rounded-full border touch-none cursor-grab active:cursor-grabbing transition-colors',
+        'bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200',
+        isDragging && 'shadow-md ring-2 ring-amber-300',
       )}
-      title={`${poi.name} — ${t("unassignedPool.dragHint")}`}
+      title={`${poi.name} — ${t('unassignedPool.dragHint')}`}
       {...listeners}
       {...attributes}
     >
-      + {poi.name.length > 18 ? poi.name.slice(0, 18) + "…" : poi.name}
+      + {poi.name.length > 18 ? poi.name.slice(0, 18) + '…' : poi.name}
     </button>
   );
 }
