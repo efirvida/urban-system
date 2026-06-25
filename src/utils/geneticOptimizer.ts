@@ -12,40 +12,30 @@ import { Location, Config, DayRoute, Stop, DistanceMatrix } from "@/types";
 
 // ─── Distance helpers ────────────────────────────────────────
 
+/**
+ * Pair-distance lookup. Always uses the strict `DistanceMatrix` —
+ * the legacy flat-matrix code path is gone. Missing or
+ * `unreachable` entries propagate `Infinity` so the optimizer
+ * rejects the candidate (no Haversine fallback when we promised a
+ * real-road matrix).
+ */
 function pd(
   a: number, b: number,
   locs: Location[],
   home: Location,
-  pre?: Record<string, number>,
-  strict?: DistanceMatrix
+  pre: Record<string, number> | undefined,
+  strict: DistanceMatrix
 ): number {
-  // PR 6: prefer the strict matrix when supplied. Falls back to the
-  // legacy `Record<string, number>` path for back-compat.
-  if (strict) {
-    const ka = a === -1 ? 0 : a + 1;
-    const kb = b === -1 ? 0 : b + 1;
-    const k = ka < kb ? `${ka},${kb}` : `${kb},${ka}`;
-    if (strict[k] !== undefined) return strict[k].distance;
-    // Strict matrix was provided but this key is missing — propagate
-    // Infinity so the optimizer naturally rejects the candidate (no
-    // Haversine fallback when we promised a real-road matrix).
-    return Infinity;
-  }
-  if (pre) {
-    const ka = a === -1 ? 0 : a + 1;
-    const kb = b === -1 ? 0 : b + 1;
-    const k = ka < kb ? `${ka},${kb}` : `${kb},${ka}`;
-    if (pre[k] !== undefined) return pre[k];
-    // Matrix was provided but this key is missing — propagate Infinity
-    // so the optimizer naturally rejects the candidate (no Haversine
-    // fallback when we promised a real-road matrix).
-    return Infinity;
-  }
-  // No matrix supplied — treat as unreachable.
-  return Infinity;
+  void locs; void home; void pre;
+  const ka = a === -1 ? 0 : a + 1;
+  const kb = b === -1 ? 0 : b + 1;
+  const k = ka < kb ? `${ka},${kb}` : `${kb},${ka}`;
+  const entry = strict[k];
+  if (entry === undefined) return Infinity;
+  return entry.distance;
 }
 
-function routeDist(route: number[], locs: Location[], home: Location, pre?: Record<string, number>, strict?: DistanceMatrix): number {
+function routeDist(route: number[], locs: Location[], home: Location, pre: Record<string, number> | undefined, strict: DistanceMatrix): number {
   if (!route.length) return 0;
   let d = pd(-1, route[0], locs, home, pre, strict);
   for (let i = 1; i < route.length; i++) d += pd(route[i - 1], route[i], locs, home, pre, strict);
@@ -53,7 +43,7 @@ function routeDist(route: number[], locs: Location[], home: Location, pre?: Reco
   return d;
 }
 
-function decode(perm: number[], locs: Location[], home: Location, cfg: Config, pre?: Record<string, number>, strict?: DistanceMatrix): number[][] {
+function decode(perm: number[], locs: Location[], home: Location, cfg: Config, pre: Record<string, number> | undefined, strict: DistanceMatrix): number[][] {
   const routes: number[][] = [];
   let i = 0;
   while (i < perm.length) {
@@ -95,7 +85,7 @@ function decode(perm: number[], locs: Location[], home: Location, cfg: Config, p
   return routes;
 }
 
-function totalDist(routes: number[][], locs: Location[], home: Location, pre?: Record<string, number>, strict?: DistanceMatrix): number {
+function totalDist(routes: number[][], locs: Location[], home: Location, pre: Record<string, number> | undefined, strict: DistanceMatrix): number {
   return routes.reduce((s, r) => s + routeDist(r, locs, home, pre, strict), 0);
 }
 
@@ -158,8 +148,8 @@ export async function improveWithGA(
   locations: Location[],
   home: Location,
   config: Config,
-  precomputed?: Record<string, number>,
-  strictMatrix?: DistanceMatrix
+  precomputed: Record<string, number> | undefined,
+  strictMatrix: DistanceMatrix
 ): Promise<GAResult> {
   const n = locations.length;
   if (n < 3) {
@@ -266,8 +256,8 @@ function routesToDays(
   locs: Location[],
   home: Location,
   cfg: Config,
-  pre?: Record<string, number>,
-  strict?: DistanceMatrix
+  pre: Record<string, number> | undefined,
+  strict: DistanceMatrix
 ): DayRoute[] {
   return routes.map((indices, di) => {
     const stops: Stop[] = [];

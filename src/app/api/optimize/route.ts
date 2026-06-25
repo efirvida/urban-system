@@ -34,21 +34,16 @@ async function optimize(
     locations,
     config,
     distanceMatrix: frontendMatrix,
-    useStrictMatrix: useStrictMatrixTopLevel,
     useConsensus: useConsensusTopLevel,
   } = body as {
     locations: Location[];
     config: Config;
     algorithm?: string;
     distanceMatrix?: Record<string, number>;
-    useStrictMatrix?: boolean;
     useConsensus?: boolean;
   };
-
-  const useStrictMatrix: boolean =
-    typeof useStrictMatrixTopLevel === "boolean"
-      ? useStrictMatrixTopLevel
-      : Boolean(config?.useStrictMatrix);
+  // `useStrictMatrix` from older clients is silently accepted and
+  // ignored — `DistanceMatrix` is the standard contract now.
 
   const useConsensus: boolean =
     typeof useConsensusTopLevel === "boolean" ? useConsensusTopLevel : false;
@@ -69,29 +64,27 @@ async function optimize(
   const home = { name: "Casa", lat: normConfig.homeLat, lng: normConfig.homeLng };
   const totalPairs = (locations.length * (locations.length + 1)) / 2;
 
-  // ── Matrix ──
+  // ── Matrix (flat) ──
+  // Kept for optimizers that haven't migrated to per-pair entries yet
+  // (e.g. Geoapify). Always derived from the strict matrix below.
   let matrix: Record<string, number> = frontendMatrix ? { ...frontendMatrix } : {};
 
-  // ── Strict matrix ──
-  let strictMatrix: DistanceMatrix | undefined;
-  if (useStrictMatrix) {
-    strictMatrix = {};
-    for (const key of Object.keys(matrix)) {
-      const d = matrix[key];
-      strictMatrix[key] = {
-        distance: d,
-        source: d === undefined || !Number.isFinite(d) ? "unreachable" : "real",
-      };
-    }
+  // ── Strict matrix (per-pair MatrixEntry) — ALWAYS built ──
+  // `DistanceMatrix` is the standard contract; the legacy flat-matrix
+  // code path is removed in this change.
+  const strictMatrix: DistanceMatrix = {};
+  for (const key of Object.keys(matrix)) {
+    const d = matrix[key];
+    strictMatrix[key] = {
+      distance: d,
+      source: d === undefined || !Number.isFinite(d) ? "unreachable" : "real",
+    };
   }
 
   // ── Pre-filter + consensus ──
   let consensusMatrix: ConsensusMatrix | undefined;
   let consensusElapsedMs = 0;
-  let { reachable, unreachable } =
-    useStrictMatrix && strictMatrix
-      ? filterUnreachable(locations, home, strictMatrix)
-      : filterUnreachable(locations, home, matrix);
+  let { reachable, unreachable } = filterUnreachable(locations, home, strictMatrix);
 
   if (useConsensus) {
     const tConsensus = Date.now();
@@ -186,7 +179,7 @@ async function optimize(
     home,
     config: normConfig,
     matrix,
-    strictMatrix: useStrictMatrix ? strictMatrix : undefined,
+    strictMatrix,
     consensusMatrix,
   });
 
@@ -244,8 +237,9 @@ async function optimize(
   // ── Routing mode + source counts ──
   // Priority: geoapify > osrm > api > haversine.
   // When consensus is on, we trust consensusMatrix.source per entry.
-  // When strict matrix is on, we trust strictMatrix.source per entry.
-  // Legacy flat matrix → "api" (client-side matrix builder) or "haversine".
+  // Otherwise we trust strictMatrix.source per entry. The flat
+  // `matrix` is no longer used for source detection — every entry
+  // now flows through the strict matrix contract.
   let routingMode: "geoapify" | "osrm" | "api" | "haversine" = "haversine";
   let realCount = 0;
   let estimatedCount = 0;
@@ -269,7 +263,7 @@ async function optimize(
     if (geoapifyHits > 0) routingMode = "geoapify";
     else if (osrmHits > 0) routingMode = "osrm";
     else routingMode = "haversine";
-  } else if (useStrictMatrix && strictMatrix) {
+  } else {
     for (const entry of Object.values(strictMatrix)) {
       if (entry.source === "unreachable" || !Number.isFinite(entry.distance)) {
         unreachableInMatrixCount++;
@@ -280,12 +274,6 @@ async function optimize(
       }
     }
     routingMode = realCount > 0 ? "osrm" : "haversine";
-  } else {
-    for (const v of Object.values(matrix)) {
-      if (Number.isFinite(v)) realCount++;
-      else unreachableInMatrixCount++;
-    }
-    routingMode = realCount > 0 ? "api" : "haversine";
   }
 
   return {
@@ -295,7 +283,7 @@ async function optimize(
     totalLocations: locations.length,
     results: allResults,
     unreachable: unreachableForResponse,
-    ...(useStrictMatrix && strictMatrix ? { strictMatrix } : {}),
+    strictMatrix,
     _meta: {
       elapsedMs: Date.now() - startTime,
       osrmPairs: Object.keys(matrix).length,
@@ -305,7 +293,6 @@ async function optimize(
       realCount,
       estimatedCount,
       unreachableInMatrixCount,
-      ...(useStrictMatrix ? { useStrictMatrix: true } : {}),
       ...(useConsensus
         ? {
             useConsensus: true,

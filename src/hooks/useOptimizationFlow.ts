@@ -238,7 +238,9 @@ export function useOptimizationFlow({
         config,
         algorithm,
         distanceMatrix: distances,
-        useStrictMatrix: config?.useStrictMatrix ?? false,
+        // `useStrictMatrix` was removed from the request contract — the
+        // server always builds a `DistanceMatrix` now. The field is
+        // silently ignored when sent for back-compat.
         useConsensus: USE_CONSENSUS_MATRIX,
       };
 

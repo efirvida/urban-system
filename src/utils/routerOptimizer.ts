@@ -5,39 +5,36 @@ import { haversineDistance } from "./haversine";
 /**
  * Look up distance from the precomputed matrix.
  * a, b: location indices (-1 = home, 0..n-1 = locations)
- * matrix: precomputed distance matrix "i,j" → km (0 = home, 1..n = locations)
- * strictMatrix: optional PR 6 `DistanceMatrix` (per-pair `MatrixEntry`).
- *               When provided, used in preference to the legacy matrix
- *               and the per-pair `source` is visible to the caller.
- *               When absent, behavior is bit-identical to pre-PR-6.
+ * matrix: optional flat `Record<"i,j", km>` view (1.x legacy). Used
+ *         as a fallback by the edit-mode `reoptimizeDay` helper
+ *         when a pair isn't in the strict matrix.
+ * strictMatrix: PR 6 `DistanceMatrix` (per-pair `MatrixEntry`).
+ *               Always provided in the optimize pipeline; the legacy
+ *               strict-vs-flat branch is gone.
+ *
+ * Exported for tests — see `routerOptimizer.test.ts`.
  */
-function matGet(
+export function matGet(
   a: number,
   b: number,
   matrix: Record<string, number> | undefined,
-  strictMatrix?: DistanceMatrix
+  strictMatrix: DistanceMatrix
 ): number {
   const ka = a === -1 ? 0 : a + 1;
   const kb = b === -1 ? 0 : b + 1;
   const key = ka < kb ? `${ka},${kb}` : `${kb},${ka}`;
 
-  // Strict path (PR 6) — prefer the per-pair entry when supplied.
-  if (strictMatrix) {
-    const entry = strictMatrix[key];
-    if (entry === undefined) {
-      console.warn(`[matGet] Missing strict key "${key}" (a=${a}, b=${b}), returning Infinity`);
-      return Infinity;
-    }
-    return entry.distance;
-  }
-
-  // Legacy path — Record<string, number>. Behavior unchanged.
-  const val = matrix?.[key];
-  if (val === undefined) {
-    console.warn(`[matGet] Missing key "${key}" (a=${a}, b=${b}), returning Infinity`);
+  const entry = strictMatrix[key];
+  if (entry === undefined) {
+    // Fall back to the flat view if it has the pair. This matches
+    // the edit-mode behaviour where the strict matrix only covers
+    // reachable pairs and Haversine is used otherwise.
+    const flat = matrix?.[key];
+    if (flat !== undefined && Number.isFinite(flat)) return flat;
+    console.warn(`[matGet] Missing strict key "${key}" (a=${a}, b=${b}), returning Infinity`);
     return Infinity;
   }
-  return val;
+  return entry.distance;
 }
 
 // ─── Main entry point ────────────────────────────────────────
@@ -45,8 +42,8 @@ function matGet(
 export async function optimizeRoutes(
   locations: Location[],
   config: Config,
-  precomputedMatrix?: Record<string, number>,
-  strictMatrix?: DistanceMatrix
+  precomputedMatrix: Record<string, number> | undefined,
+  strictMatrix: DistanceMatrix
 ): Promise<{
   days: DayRoute[];
   totalDistance: number;
@@ -69,16 +66,16 @@ export async function optimizeRoutes(
   console.log(`${FLOW}   routerOptimizer: ${locations.length} locations${strictMatrix ? " (strict matrix)" : ""}`);
   // ── Step 1: Build a giant TSP tour ──
   // Nearest Neighbor + 2-opt improvement
-  const tour = await buildGiantTour(locations, home, config, precomputedMatrix, strictMatrix);
+  const tour = await buildGiantTour(locations, home, config, strictMatrix, precomputedMatrix);
 
   // ── Step 2: Slice the tour into daily segments ──
-  let solution = sliceTourToSolution(tour, locations, home, config, precomputedMatrix, strictMatrix);
+  let solution = sliceTourToSolution(tour, locations, home, config, strictMatrix, precomputedMatrix);
 
   // ── Step 3: Local Search improvement (OR-Tools style) ──
-  solution = localSearch(solution, locations, home, config, precomputedMatrix, strictMatrix);
+  solution = localSearch(solution, locations, home, config, strictMatrix, precomputedMatrix);
 
   // ── Convert deterministic result ──
-  const detDays = solutionToDays(solution, locations, home, config, precomputedMatrix, strictMatrix);
+  const detDays = solutionToDays(solution, locations, home, config, strictMatrix, precomputedMatrix);
   const detDistance = detDays.reduce((sum, d) => sum + d.totalDistance, 0);
   console.log(`${FLOW}   deterministic: ${detDays.length} days, ${detDistance.toFixed(1)}km`);
 
@@ -123,8 +120,9 @@ async function buildGiantTour(
   locations: Location[],
   home: Location,
   config: Config,
+  strictMatrix: DistanceMatrix,
   precomputed?: Record<string, number>,
-  strictMatrix?: DistanceMatrix
+
 ): Promise<number[]> {
   // Nearest Neighbor
   const n = locations.length;
@@ -176,7 +174,7 @@ async function buildGiantTour(
   }
 
   // 2-opt improvement
-  improveTour2Opt(tour, locations, precomputed, strictMatrix);
+  improveTour2Opt(tour, locations, strictMatrix, precomputed);
 
   return tour;
 }
@@ -186,8 +184,8 @@ async function buildGiantTour(
 function tourDist(
   tour: number[],
   locations: Location[],
+  strictMatrix: DistanceMatrix,
   precomputed?: Record<string, number>,
-  strictMatrix?: DistanceMatrix
 ): number {
   if (tour.length <= 1) return 0;
   let total = 0;
@@ -201,7 +199,7 @@ function pd(
   a: number,
   b: number,
   matrix: Record<string, number> | undefined,
-  strictMatrix?: DistanceMatrix
+  strictMatrix: DistanceMatrix
 ): number {
   return matGet(a, b, matrix, strictMatrix);
 }
@@ -209,8 +207,8 @@ function pd(
 function improveTour2Opt(
   tour: number[],
   locations: Location[],
+  strictMatrix: DistanceMatrix,
   precomputed?: Record<string, number>,
-  strictMatrix?: DistanceMatrix
 ): void {
   if (tour.length < 3) return;
 
@@ -259,8 +257,8 @@ function sliceTourToSolution(
   locations: Location[],
   home: Location,
   config: Config,
+  strictMatrix: DistanceMatrix,
   precomputed?: Record<string, number>,
-  strictMatrix?: DistanceMatrix
 ): Solution {
   const solution: Solution = [];
   let ptr = 0;
@@ -270,7 +268,7 @@ function sliceTourToSolution(
 
     while (ptr < tour.length) {
       const proposed = [...dayIndices, tour[ptr]];
-      const km = estimateRouteKm(proposed, locations, home, precomputed, strictMatrix);
+      const km = estimateRouteKm(proposed, locations, home, strictMatrix, precomputed);
       const hours = km / config.avgSpeed + proposed.length * config.visitTime / 60;
 
       let violation = false;
@@ -290,7 +288,7 @@ function sliceTourToSolution(
     }
     if (dayIndices.length > 0) {
       // Re-order within day using NN from home
-      solution.push(nearestNeighborWithinDay(dayIndices, locations, home, precomputed, strictMatrix));
+      solution.push(nearestNeighborWithinDay(dayIndices, locations, home, strictMatrix, precomputed));
     }
   }
 
@@ -302,8 +300,8 @@ function estimateRouteKm(
   indices: number[],
   locations: Location[],
   home: Location,
+  strictMatrix: DistanceMatrix,
   precomputed?: Record<string, number>,
-  strictMatrix?: DistanceMatrix
 ): number {
   if (indices.length === 0) return 0;
   if (indices.length === 1) {
@@ -340,8 +338,8 @@ function nearestNeighborWithinDay(
   indices: number[],
   locations: Location[],
   home: Location,
+  strictMatrix: DistanceMatrix,
   precomputed?: Record<string, number>,
-  strictMatrix?: DistanceMatrix
 ): number[] {
   if (indices.length <= 1) return indices;
   const unvisited = new Set(indices);
@@ -374,8 +372,8 @@ function nearestNeighborWithinDay(
 function solutionDistance(
   sol: Solution,
   locations: Location[],
+  strictMatrix: DistanceMatrix,
   precomputed?: Record<string, number>,
-  strictMatrix?: DistanceMatrix
 ): number {
   let total = 0;
   for (const day of sol) {
@@ -398,11 +396,11 @@ function dayViolates(
   locations: Location[],
   home: Location,
   config: Config,
+  strictMatrix: DistanceMatrix,
   precomputed?: Record<string, number>,
-  strictMatrix?: DistanceMatrix
 ): boolean {
   if (indices.length === 0) return false;
-  const km = solutionDistance([indices], locations, precomputed, strictMatrix);
+  const km = solutionDistance([indices], locations, strictMatrix, precomputed);
   const hours = km / config.avgSpeed + indices.length * config.visitTime / 60;
   switch (config.constraintType) {
     case "hours": return hours > config.constraintValue;
@@ -420,11 +418,11 @@ function localSearch(
   locations: Location[],
   home: Location,
   config: Config,
+  strictMatrix: DistanceMatrix,
   precomputed?: Record<string, number>,
-  strictMatrix?: DistanceMatrix
 ): Solution {
   let best = sol.map(d => [...d]); // deep clone
-  let bestDist = solutionDistance(best, locations, precomputed, strictMatrix);
+  let bestDist = solutionDistance(best, locations, strictMatrix, precomputed);
   let improved = true;
   const MAX_ITER = 50;
   let iter = 0;
@@ -449,14 +447,14 @@ function localSearch(
             candidate[toDay].splice(toPos, 0, loc);
 
             // Re-order both affected days with NN
-            candidate[fromDay] = nearestNeighborWithinDay(candidate[fromDay], locations, home, precomputed, strictMatrix);
-            candidate[toDay] = nearestNeighborWithinDay(candidate[toDay], locations, home, precomputed, strictMatrix);
+            candidate[fromDay] = nearestNeighborWithinDay(candidate[fromDay], locations, home, strictMatrix, precomputed);
+            candidate[toDay] = nearestNeighborWithinDay(candidate[toDay], locations, home, strictMatrix, precomputed);
 
             // Check constraints
-            if (dayViolates(candidate[fromDay], locations, home, config, precomputed, strictMatrix)) continue;
-            if (dayViolates(candidate[toDay], locations, home, config, precomputed, strictMatrix)) continue;
+            if (dayViolates(candidate[fromDay], locations, home, config, strictMatrix, precomputed)) continue;
+            if (dayViolates(candidate[toDay], locations, home, config, strictMatrix, precomputed)) continue;
 
-            const dist = solutionDistance(candidate, locations, precomputed, strictMatrix);
+            const dist = solutionDistance(candidate, locations, strictMatrix, precomputed);
             if (dist < bestDist - 0.01) {
               best = candidate;
               bestDist = dist;
@@ -484,13 +482,13 @@ function localSearch(
             candidate[dayA][posA] = tmpB;
             candidate[dayB][posB] = tmpA;
 
-            candidate[dayA] = nearestNeighborWithinDay(candidate[dayA], locations, home, precomputed, strictMatrix);
-            candidate[dayB] = nearestNeighborWithinDay(candidate[dayB], locations, home, precomputed, strictMatrix);
+            candidate[dayA] = nearestNeighborWithinDay(candidate[dayA], locations, home, strictMatrix, precomputed);
+            candidate[dayB] = nearestNeighborWithinDay(candidate[dayB], locations, home, strictMatrix, precomputed);
 
-            if (dayViolates(candidate[dayA], locations, home, config, precomputed, strictMatrix)) continue;
-            if (dayViolates(candidate[dayB], locations, home, config, precomputed, strictMatrix)) continue;
+            if (dayViolates(candidate[dayA], locations, home, config, strictMatrix, precomputed)) continue;
+            if (dayViolates(candidate[dayB], locations, home, config, strictMatrix, precomputed)) continue;
 
-            const dist = solutionDistance(candidate, locations, precomputed, strictMatrix);
+            const dist = solutionDistance(candidate, locations, strictMatrix, precomputed);
             if (dist < bestDist - 0.01) {
               best = candidate;
               bestDist = dist;
@@ -516,8 +514,8 @@ function solutionToDays(
   locations: Location[],
   home: Location,
   config: Config,
+  strictMatrix: DistanceMatrix,
   precomputed?: Record<string, number>,
-  strictMatrix?: DistanceMatrix
 ): DayRoute[] {
   return sol.map((ordered, dayIdx) => {
     const stops: Stop[] = [];

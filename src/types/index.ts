@@ -100,13 +100,6 @@ export interface Config {
   maxVisits?: number; // used when constraintType is "visits" or "hours+visits"
   avgSpeed: number; // km/h, default 60
   visitTime: number; // minutes per stop, default 30
-  /**
-   * PR 6 (real-roads-only): when true, the API builds and propagates a
-   * `DistanceMatrix` (per-pair `MatrixEntry`) end-to-end. When false
-   * (default) the API and optimizers fall back to the legacy
-   * `Record<string, number>` shape — behavior is bit-identical to pre-PR-6.
-   */
-  useStrictMatrix?: boolean;
 }
 
 // ─── Distance matrix (PR 6) ──────────────────────────────────
@@ -216,11 +209,8 @@ export interface OptimizeResponse {
    */
   unreachable?: UnreachablePoi[];
   /**
-   * PR 6 (real-roads-only): when `useStrictMatrix` is true, the API
-   * builds a `DistanceMatrix` with per-pair source metadata and
-   * surfaces it here for consumers that want type-safe access. Each
-   * entry is a `MatrixEntry` with `{ distance, source }`. Legacy
-   * callers that ignore this field see no behavior change.
+   * Per-pair `DistanceMatrix` (always present — this is the standard
+   * contract). Legacy `Record<string, number>` paths have been removed.
    */
   strictMatrix?: DistanceMatrix;
   _meta?: {
@@ -236,12 +226,6 @@ export interface OptimizeResponse {
     estimatedCount?: number;
     /** Per-pair matrix entries tagged `unreachable` inside the matrix itself. */
     unreachableInMatrixCount?: number;
-    /**
-     * PR 6 (real-roads-only): when the request set `useStrictMatrix`,
-     * the API echoes it back here so the frontend can correlate the
-     * response shape with the requested mode.
-     */
-    useStrictMatrix?: boolean;
     /** Consensus-matrix change: when true, the server built a cross-validated matrix. */
     useConsensus?: boolean;
     /** Consensus-matrix change: elapsed ms for the consensus build phase. */
