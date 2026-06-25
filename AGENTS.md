@@ -86,6 +86,7 @@ Priority: **Geoapify** (real roads, API key) → **OSRM** (free, public `router.
 ## Workflow
 
 Active change tracked via SDD (Spec-Driven Development):
+
 - `openspec/changes/` — specs, designs, tasks
 - `sdd/` — exploration artifacts
 - Use `sdd-continue` via OpenCode's native dispatcher when available
