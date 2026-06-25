@@ -230,6 +230,12 @@ export interface OptimizeResponse {
     routingMode: "osrm" | "haversine" | "api" | "geoapify";
     /** Number of POIs excluded by the unreachable pre-filter. */
     unreachableCount?: number;
+    /** Per-pair matrix entries tagged `real` (OSRM/Geoapify). */
+    realCount?: number;
+    /** Per-pair matrix entries tagged `estimated` (Haversine or tiny < 50 m). */
+    estimatedCount?: number;
+    /** Per-pair matrix entries tagged `unreachable` inside the matrix itself. */
+    unreachableInMatrixCount?: number;
     /**
      * PR 6 (real-roads-only): when the request set `useStrictMatrix`,
      * the API echoes it back here so the frontend can correlate the

@@ -241,6 +241,53 @@ async function optimize(
     };
   }
 
+  // ── Routing mode + source counts ──
+  // Priority: geoapify > osrm > api > haversine.
+  // When consensus is on, we trust consensusMatrix.source per entry.
+  // When strict matrix is on, we trust strictMatrix.source per entry.
+  // Legacy flat matrix → "api" (client-side matrix builder) or "haversine".
+  let routingMode: "geoapify" | "osrm" | "api" | "haversine" = "haversine";
+  let realCount = 0;
+  let estimatedCount = 0;
+  let unreachableInMatrixCount = 0;
+  if (useConsensus && consensusMatrix) {
+    let geoapifyHits = 0;
+    let osrmHits = 0;
+    for (const entry of Object.values(consensusMatrix)) {
+      if (
+        entry.source === "unreachable" ||
+        !Number.isFinite(entry.distance) ||
+        entry.reliability < RELIABILITY_FLOOR
+      ) {
+        unreachableInMatrixCount++;
+      } else {
+        realCount++;
+        if (entry.source === "geoapify-matrix") geoapifyHits++;
+        else if (entry.source === "osrm") osrmHits++;
+      }
+    }
+    if (geoapifyHits > 0) routingMode = "geoapify";
+    else if (osrmHits > 0) routingMode = "osrm";
+    else routingMode = "haversine";
+  } else if (useStrictMatrix && strictMatrix) {
+    for (const entry of Object.values(strictMatrix)) {
+      if (entry.source === "unreachable" || !Number.isFinite(entry.distance)) {
+        unreachableInMatrixCount++;
+      } else if (entry.source === "real") {
+        realCount++;
+      } else {
+        estimatedCount++;
+      }
+    }
+    routingMode = realCount > 0 ? "osrm" : "haversine";
+  } else {
+    for (const v of Object.values(matrix)) {
+      if (Number.isFinite(v)) realCount++;
+      else unreachableInMatrixCount++;
+    }
+    routingMode = realCount > 0 ? "api" : "haversine";
+  }
+
   return {
     days: best.days,
     totalDistance: best.totalDistance,
@@ -254,6 +301,10 @@ async function optimize(
       osrmPairs: Object.keys(matrix).length,
       totalPairs,
       unreachableCount: unreachableForResponse.length,
+      routingMode,
+      realCount,
+      estimatedCount,
+      unreachableInMatrixCount,
       ...(useStrictMatrix ? { useStrictMatrix: true } : {}),
       ...(useConsensus
         ? {
