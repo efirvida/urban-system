@@ -24,9 +24,9 @@
  * See: https://apidocs.geoapify.com/docs/route-matrix/
  */
 
-import type { BatchRouteProvider, Point } from "../types";
+import type { BatchRouteProvider, Point } from '../types';
 
-const GEOAPIFY_MATRIX_URL = "https://api.geoapify.com/v1/routematrix";
+const GEOAPIFY_MATRIX_URL = 'https://api.geoapify.com/v1/routematrix';
 const MAX_BATCH_SIZE = 15;
 const REQUEST_TIMEOUT_MS = 30000;
 const CACHE_TTL_MS = 300_000; // 5 minutes
@@ -52,7 +52,7 @@ interface GeoapifyMatrixResponse {
 }
 
 export class GeoapifyMatrixProvider implements BatchRouteProvider {
-  readonly name = "geoapify-matrix";
+  readonly name = 'geoapify-matrix';
   /** Below OSRM (1) and ORS (0.5) — highest tier in the consensus. */
   readonly priority = -1;
 
@@ -99,7 +99,7 @@ export class GeoapifyMatrixProvider implements BatchRouteProvider {
     const str = points
       .map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`)
       .sort()
-      .join("|");
+      .join('|');
     let hash = 5381;
     for (let i = 0; i < str.length; i++) hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
     return `gm_${Math.abs(hash).toString(36)}`;
@@ -109,9 +109,12 @@ export class GeoapifyMatrixProvider implements BatchRouteProvider {
     // Evict oldest when over 20 entries.
     if (matrixCache.size >= 20) {
       let oldest = Number.POSITIVE_INFINITY;
-      let oldestKey = "";
+      let oldestKey = '';
       for (const [k, v] of matrixCache) {
-        if (v.timestamp < oldest) { oldest = v.timestamp; oldestKey = k; }
+        if (v.timestamp < oldest) {
+          oldest = v.timestamp;
+          oldestKey = k;
+        }
       }
       if (oldestKey) matrixCache.delete(oldestKey);
     }
@@ -133,12 +136,12 @@ export class GeoapifyMatrixProvider implements BatchRouteProvider {
     try {
       const url = `${GEOAPIFY_MATRIX_URL}?apiKey=${apiKey}`;
       const res = await fetch(url, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          mode: "drive",
+          mode: 'drive',
           sources: window.map((p) => [p.lng, p.lat]),
           targets: allPoints.map((p) => [p.lng, p.lat]),
         }),
@@ -177,7 +180,7 @@ export class GeoapifyMatrixProvider implements BatchRouteProvider {
         const j = c;
         if (j <= i) continue;
         const cell = row[c];
-        if (!cell || typeof cell.distance !== "number" || !Number.isFinite(cell.distance)) {
+        if (!cell || typeof cell.distance !== 'number' || !Number.isFinite(cell.distance)) {
           target.set(`${i},${j}`, null);
         } else {
           target.set(`${i},${j}`, cell.distance / 1000);

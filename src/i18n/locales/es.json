@@ -14,7 +14,8 @@
       "unexpectedError": "Error inesperado",
       "noResult": "Ningún optimizador pudo resolver el problema. Probá reducir las ubicaciones o revisar las conexiones de ruta.",
       "serverError": "Error del servidor",
-      "noResponseBody": "Sin cuerpo de respuesta"
+      "noResponseBody": "Sin cuerpo de respuesta",
+      "routeGeometry": "Error al obtener la geometría de las rutas"
     },
     "status": {
       "preparingOptimization": "Preparando optimización...",
@@ -128,7 +129,19 @@
       "hideDayInMap": "Ocultar día {{day}} en mapa"
     },
     "averageReliability": "Fiabilidad media: {{percent}}%",
-    "viewInGoogleMaps": "Ver ruta en Google Maps"
+    "viewInGoogleMaps": "Ver ruta en Google Maps",
+    "routingModes": {
+      "geoapify": "Geoapify",
+      "osrm": "OSRM",
+      "api": "Cliente",
+      "haversine": "Haversine"
+    },
+    "routingModeTitle": "Modo de ruteo: {{mode}}",
+    "unreachableCountLabel_one": "{{count}} inaccesible",
+    "unreachableCountLabel_other": "{{count}} inaccesibles",
+    "unreachableCountTitle_one": "{{count}} POI inaccesible",
+    "unreachableCountTitle_other": "{{count}} POIs inaccesibles",
+    "routingSourceBreakdown": "{{real}} reales · {{estimated}} estimados"
   },
   "dayColumn": {
     "day": "Día {{day}}",

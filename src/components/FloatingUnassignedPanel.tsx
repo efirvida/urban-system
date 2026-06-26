@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { MapPin, Crosshair } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { Location } from "@/types";
-import { cn } from "@/lib/utils";
+import { MapPin, Crosshair } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Location } from '@/types';
+import { cn } from '@/lib/utils';
 
 interface FloatingUnassignedPanelProps {
   pois: Location[];
@@ -27,10 +27,10 @@ export default function FloatingUnassignedPanel({
           </div>
           <div className="min-w-0">
             <div className="text-xs font-semibold text-red-800 leading-tight">
-              {t("floatingPOI.title")}
+              {t('floatingPOI.title')}
             </div>
             <div className="text-[10px] text-red-500 font-medium">
-              {t("floatingPOI.pending", { count: pois.length })}
+              {t('floatingPOI.pending', { count: pois.length })}
             </div>
           </div>
         </div>
@@ -57,9 +57,7 @@ export default function FloatingUnassignedPanel({
         {/* Footer hint */}
         {pois.length > 0 && (
           <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100">
-            <p className="text-[9px] text-gray-400 text-center">
-              {t("floatingPOI.clickToAssign")}
-            </p>
+            <p className="text-[9px] text-gray-400 text-center">{t('floatingPOI.clickToAssign')}</p>
           </div>
         )}
       </div>

@@ -9,27 +9,27 @@
  * to the UI inside `OptimizeResponse.results`.
  */
 
-import type {
-  ConsensusMatrix,
-  DayRoute,
-  Location,
-  Config,
-  DistanceMatrix,
-} from "@/types";
+import type { ConsensusMatrix, DayRoute, Location, Config, DistanceMatrix } from '@/types';
 
 /** Inputs every optimizer receives. */
 export interface OptimizeParams {
   locations: Location[];
   home: Location;
   config: Config;
-  /** Legacy `Record<"i,j", km>` matrix — always provided by the route. */
-  matrix: Record<string, number>;
   /**
-   * PR 6 strict matrix (per-pair `MatrixEntry`). When present, optimizers
-   * MUST prefer it over the legacy `matrix` to honor the real-roads-only
-   * contract.
+   * Per-pair `DistanceMatrix` (always present — required by the
+   * standard contract). Optimizers read `entry.distance` and
+   * `entry.source`; a missing or `unreachable` entry propagates
+   * `Infinity` so the candidate is rejected naturally.
    */
-  strictMatrix?: DistanceMatrix;
+  strictMatrix: DistanceMatrix;
+  /**
+   * Flat `Record<"i,j", km>` view of the matrix — kept for
+   * optimizers that haven't migrated to per-pair entries yet
+   * (e.g. the Geoapify optimizer). Always derived from the
+   * `strictMatrix` by the API.
+   */
+  matrix: Record<string, number>;
   /**
    * Consensus matrix (per-pair cross-validated entry with reliability).
    * Additive — when absent, the optimizer behaves bit-identically to

@@ -12,8 +12,8 @@
  * crossings only — steady-state cost is zero.
  */
 
-import { encode, decode } from "@mapbox/polyline";
-import type { RouteSource, Point } from "./types";
+import { encode, decode } from '@mapbox/polyline';
+import type { RouteSource, Point } from './types';
 
 /** [lng, lat] coordinate tuple, matching GeoJSON/Leaflet conventions. */
 export type LngLat = [number, number];
@@ -37,7 +37,7 @@ export interface RouteGeometryCache {
   clear(): Promise<void>;
 }
 
-const GEO_PREFIX = "geo_";
+const GEO_PREFIX = 'geo_';
 const CACHE_CAP = 200;
 
 /**
@@ -49,7 +49,7 @@ const CACHE_CAP = 200;
  */
 export function routeGeometryKey(stops: Point[]): string {
   const sorted = [...stops].sort((a, b) => a.lat - b.lat || a.lng - b.lng);
-  const str = sorted.map((s) => `${s.lat.toFixed(5)},${s.lng.toFixed(5)}`).join("|");
+  const str = sorted.map((s) => `${s.lat.toFixed(5)},${s.lng.toFixed(5)}`).join('|');
   let hash = 5381;
   for (let i = 0; i < str.length; i++) hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
   return GEO_PREFIX + Math.abs(hash).toString(36);
@@ -77,9 +77,7 @@ class LocalStorageGeometryCache implements RouteGeometryCache {
   async set(stops: Point[], geometry: LngLat[], source: RouteSource): Promise<void> {
     try {
       const entry: GeometryCacheEntry = {
-        encoded: encode(
-          geometry.map(([lng, lat]) => [lat, lng] as [number, number]),
-        ), // polyline uses [lat, lng]
+        encoded: encode(geometry.map(([lng, lat]) => [lat, lng] as [number, number])), // polyline uses [lat, lng]
         source,
         timestamp: Date.now(),
       };

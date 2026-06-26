@@ -116,6 +116,29 @@ Every icon-only `<button>` MUST have an `aria-label`. Every interactive element 
 - WHEN ResultsPanel renders it
 - THEN className is built with `cn()` and no template-literal pattern appears
 
+### Requirement: Hook extraction from `page.tsx`
+
+The orchestration state in `page.tsx` MUST be lifted into three custom hooks under `src/hooks/`: `useOptimizationFlow`, `useRouteEditor`, `useHomePlacement`. `page.tsx` MUST be at most 900 lines after extraction. The hooks MUST return the same API surface as the inlined state they replace (no behavior change), and a barrel re-export MUST live at `src/hooks/index.ts`. The hooks MUST be the single owner of their respective concerns (no cross-leakage of phase/result state into editor or home-placement hooks, and vice versa).
+(Previously: `page.tsx` was 1364 lines with all flow / editing / home-placement state inlined. The `system-improvements` change decomposed it into 3 hooks and brought the file down to 556 lines.)
+
+#### Scenario: Hooks folder exists and page shrinks
+
+- GIVEN the refactor commits land
+- WHEN `wc -l src/app/page.tsx` runs
+- THEN the count is ≤ 900 AND `src/hooks/{useOptimizationFlow,useRouteEditor,useHomePlacement}.ts` exist AND `src/hooks/index.ts` re-exports them
+
+#### Scenario: Hook return values match the inlined behavior
+
+- GIVEN the refactor is complete
+- WHEN a hook is invoked from `page.tsx`
+- THEN the returned state + callbacks match the pre-refactor behavior (verified by `build` + existing lint gates + vitest smoke coverage)
+
+#### Scenario: One hook per concern
+
+- GIVEN a hook file
+- WHEN its exports are inspected
+- THEN `useOptimizationFlow` owns phase + result + errors, `useRouteEditor` owns edit-mode state, `useHomePlacement` owns the placement mode flag (no cross-leakage)
+
 ## Success Criteria
 
 `tsc --noEmit`, `next lint`, `next build` all pass; zero emoji in `src/components/*.tsx` and `src/app/page.tsx`; no `any` in `page.tsx`; `useConsensusFeature` removed; all icon-only `<button>`s have `aria-label`; focus-visible ring on every interactive; error toast animates in/out and auto-dismisses after ~4s with no timer leak; DataEditor unselected rows at full opacity; all 5 wizard screens visually consistent.

@@ -19,15 +19,11 @@
  * Throws are caught → `null` (so the registry slot is empty).
  */
 
-import type { DayRoute, Stop } from "@/types";
-import {
-  getCachedOptimizerResult,
-  setCachedOptimizerResult,
-  optimizerCacheKey,
-} from "../cache";
-import type { Optimizer, OptimizeParams, OptimizerResult } from "../types";
+import type { DayRoute, Stop } from '@/types';
+import { getCachedOptimizerResult, setCachedOptimizerResult, optimizerCacheKey } from '../cache';
+import type { Optimizer, OptimizeParams, OptimizerResult } from '../types';
 
-const ORS_OPT_BASE = "https://api.openrouteservice.org/v2/optimization";
+const ORS_OPT_BASE = 'https://api.openrouteservice.org/v2/optimization';
 const REQUEST_TIMEOUT_MS = 30_000;
 
 interface VisitOrderEntry {
@@ -36,8 +32,8 @@ interface VisitOrderEntry {
 }
 
 export class OrsOptimizer implements Optimizer {
-  readonly name = "ors";
-  readonly label = "ORS Route Planner";
+  readonly name = 'ors';
+  readonly label = 'ORS Route Planner';
 
   async optimize(params: OptimizeParams): Promise<OptimizerResult | null> {
     const apiKey = process.env.ORS_API_KEY;
@@ -55,10 +51,10 @@ export class OrsOptimizer implements Optimizer {
     try {
       const body = this.buildRequestBody(params);
       const res = await fetch(ORS_OPT_BASE, {
-        method: "POST",
+        method: 'POST',
         headers: {
           Authorization: apiKey,
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -68,7 +64,9 @@ export class OrsOptimizer implements Optimizer {
         // 404 = endpoint not available on public API (only self-hosted).
         // Log once, then bail silently so the registry slot is null.
         if (res.status === 404) {
-          console.warn("[ORS] Optimization endpoint not available on public API (needs self-hosted ORS).");
+          console.warn(
+            '[ORS] Optimization endpoint not available on public API (needs self-hosted ORS).',
+          );
         } else {
           console.warn(`[ORS] HTTP ${res.status} ${res.statusText}`);
         }
@@ -95,7 +93,7 @@ export class OrsOptimizer implements Optimizer {
       setCachedOptimizerResult(cacheKey, result);
       return result;
     } catch (err) {
-      console.warn("[ORS] Optimization failed:", err instanceof Error ? err.message : err);
+      console.warn('[ORS] Optimization failed:', err instanceof Error ? err.message : err);
       return null;
     }
   }
@@ -103,8 +101,7 @@ export class OrsOptimizer implements Optimizer {
   private buildRequestBody(params: OptimizeParams) {
     const homeLngLat: [number, number] = [params.home.lng, params.home.lat];
     const maxTime =
-      params.config.constraintType === "hours" ||
-      params.config.constraintType === "hours+visits"
+      params.config.constraintType === 'hours' || params.config.constraintType === 'hours+visits'
         ? params.config.constraintValue * 3600
         : 28800;
 
@@ -116,7 +113,7 @@ export class OrsOptimizer implements Optimizer {
       })),
       vehicles: [
         {
-          id: "vehicle_1",
+          id: 'vehicle_1',
           start: homeLngLat,
           end: homeLngLat,
           time_window: [0, maxTime],
@@ -139,7 +136,7 @@ export class OrsOptimizer implements Optimizer {
 
     const visitOrder: VisitOrderEntry[] = [];
     for (const jobId of jobIds) {
-      const idx = Number.parseInt(String(jobId).replace("loc_", ""), 10);
+      const idx = Number.parseInt(String(jobId).replace('loc_', ''), 10);
       if (Number.isNaN(idx)) continue;
       const loc = params.locations[idx];
       if (!loc) continue;
@@ -148,19 +145,14 @@ export class OrsOptimizer implements Optimizer {
     return visitOrder;
   }
 
-  private splitIntoDays(
-    ordered: VisitOrderEntry[],
-    params: OptimizeParams,
-  ): DayRoute[] {
+  private splitIntoDays(ordered: VisitOrderEntry[], params: OptimizeParams): DayRoute[] {
     const { home, config, matrix } = params;
     const maxHours =
-      config.constraintType === "hours" ||
-      config.constraintType === "hours+visits"
+      config.constraintType === 'hours' || config.constraintType === 'hours+visits'
         ? config.constraintValue
         : 99;
     const maxVisits =
-      config.constraintType === "visits" ||
-      config.constraintType === "hours+visits"
+      config.constraintType === 'visits' || config.constraintType === 'hours+visits'
         ? config.maxVisits || Infinity
         : Infinity;
     const avgSpeed = config.avgSpeed || 60;
@@ -179,11 +171,12 @@ export class OrsOptimizer implements Optimizer {
       const returnFromCurrent = this.matGet(matrix, matrixIdx, 0);
       const estDist = dayDist + legDist + returnFromCurrent;
       const estTime = estDist / avgSpeed + (dayStops + 1) * visitTimeH;
-      const wouldExceed =
-        dayStops >= maxVisits || (dayStops > 0 && estTime > maxHours);
+      const wouldExceed = dayStops >= maxVisits || (dayStops > 0 && estTime > maxHours);
 
       if (wouldExceed && currentStops.length > 0) {
-        days.push(this.finalizeDay(currentStops, days.length, home, prevMatrixIdx, matrix, avgSpeed));
+        days.push(
+          this.finalizeDay(currentStops, days.length, home, prevMatrixIdx, matrix, avgSpeed),
+        );
         currentStops = [];
         dayDist = 0;
         dayStops = 0;
@@ -192,17 +185,28 @@ export class OrsOptimizer implements Optimizer {
 
       if (dayStops === 0) {
         currentStops.push({
-          sequence: 0, name: home.name, lat: home.lat, lng: home.lng,
-          distanceFromPrev: 0, cumulativeDistance: 0, cumulativeTime: 0, isHome: true,
+          sequence: 0,
+          name: home.name,
+          lat: home.lat,
+          lng: home.lng,
+          distanceFromPrev: 0,
+          cumulativeDistance: 0,
+          cumulativeTime: 0,
+          isHome: true,
         });
       }
 
       dayDist += legDist;
       dayStops += 1;
       currentStops.push({
-        sequence: dayStops, name: loc.name, lat: loc.lat, lng: loc.lng,
-        distanceFromPrev: legDist, cumulativeDistance: dayDist,
-        cumulativeTime: dayDist / avgSpeed + dayStops * visitTimeH, isHome: false,
+        sequence: dayStops,
+        name: loc.name,
+        lat: loc.lat,
+        lng: loc.lng,
+        distanceFromPrev: legDist,
+        cumulativeDistance: dayDist,
+        cumulativeTime: dayDist / avgSpeed + dayStops * visitTimeH,
+        isHome: false,
       });
       prevMatrixIdx = matrixIdx;
     }
@@ -214,9 +218,12 @@ export class OrsOptimizer implements Optimizer {
   }
 
   private finalizeDay(
-    stops: Stop[], dayNum: number,
+    stops: Stop[],
+    dayNum: number,
     home: { lat: number; lng: number; name: string },
-    prevMatrixIdx: number, matrix: Record<string, number>, avgSpeed: number,
+    prevMatrixIdx: number,
+    matrix: Record<string, number>,
+    avgSpeed: number,
   ): DayRoute {
     const returnDist = this.matGet(matrix, prevMatrixIdx, 0);
     const lastCum = stops.length > 0 ? stops[stops.length - 1]!.cumulativeDistance : 0;
@@ -224,12 +231,18 @@ export class OrsOptimizer implements Optimizer {
     const totalDist = lastCum + returnDist;
     const totalTime = lastTime + returnDist / avgSpeed;
     stops.push({
-      sequence: stops.length, name: home.name, lat: home.lat, lng: home.lng,
-      distanceFromPrev: returnDist, cumulativeDistance: totalDist,
-      cumulativeTime: totalTime, isHome: true,
+      sequence: stops.length,
+      name: home.name,
+      lat: home.lat,
+      lng: home.lng,
+      distanceFromPrev: returnDist,
+      cumulativeDistance: totalDist,
+      cumulativeTime: totalTime,
+      isHome: true,
     });
     return {
-      day: dayNum + 1, stops,
+      day: dayNum + 1,
+      stops,
       totalDistance: Math.round(totalDist * 100) / 100,
       totalTime: Math.round(totalTime * 100) / 100,
       totalStops: stops.filter((s) => !s.isHome).length,

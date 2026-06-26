@@ -18,14 +18,14 @@
  * `routing-reliability` spec.
  */
 
-import { RELIABILITY_FLOOR } from "@/utils/constants";
-import { runNSGA2 } from "@/utils/nsga2";
-import type { ConsensusMatrix, DayRoute, Location } from "@/types";
-import type { Optimizer, OptimizeParams, OptimizerResult } from "../types";
+import { RELIABILITY_FLOOR } from '@/utils/constants';
+import { runNSGA2 } from '@/utils/nsga2';
+import type { ConsensusMatrix, DayRoute, Location } from '@/types';
+import type { Optimizer, OptimizeParams, OptimizerResult } from '../types';
 
 export class Nsga2Optimizer implements Optimizer {
-  readonly name = "nsga2";
-  readonly label = "NSGA-II";
+  readonly name = 'nsga2';
+  readonly label = 'NSGA-II';
 
   async optimize(params: OptimizeParams): Promise<OptimizerResult | null> {
     try {
@@ -35,9 +35,7 @@ export class Nsga2Optimizer implements Optimizer {
         params.consensusMatrix,
       );
 
-      const timeoutPromise = new Promise<null>((r) =>
-        setTimeout(() => r(null), 30000),
-      );
+      const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 30000));
       const result = await Promise.race([
         runNSGA2(
           params.locations,
@@ -56,11 +54,7 @@ export class Nsga2Optimizer implements Optimizer {
 
       const avgReliability =
         hasConsensus && params.consensusMatrix
-          ? computeSolutionReliability(
-              best.dayRoutes,
-              params.consensusMatrix,
-              nameToIndex,
-            )
+          ? computeSolutionReliability(best.dayRoutes, params.consensusMatrix, nameToIndex)
           : undefined;
 
       return {
@@ -69,26 +63,17 @@ export class Nsga2Optimizer implements Optimizer {
         days: best.dayRoutes,
         totalDistance: best.totalDistance,
         totalDays: best.days,
-        totalTime: best.dayRoutes.reduce(
-          (s: number, d) => s + d.totalTime,
-          0,
-        ),
+        totalTime: best.dayRoutes.reduce((s: number, d) => s + d.totalTime, 0),
         avgReliability,
       };
     } catch (err) {
-      console.warn(
-        `[Nsga2Optimizer] failed:`,
-        err instanceof Error ? err.message : err,
-      );
+      console.warn(`[Nsga2Optimizer] failed:`, err instanceof Error ? err.message : err);
       return null;
     }
   }
 }
 
-function buildNameToIndex(
-  home: Location,
-  locations: Location[],
-): Record<string, number> {
+function buildNameToIndex(home: Location, locations: Location[]): Record<string, number> {
   const nameToIndex: Record<string, number> = { [home.name]: 0 };
   locations.forEach((loc, idx) => {
     nameToIndex[loc.name] = idx + 1;

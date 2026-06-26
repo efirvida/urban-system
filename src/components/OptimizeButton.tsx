@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { Rocket } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Rocket } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface OptimizeButtonProps {
   onClick: () => void;
@@ -9,19 +9,12 @@ interface OptimizeButtonProps {
   disabled?: boolean;
 }
 
-export default function OptimizeButton({
-  onClick,
-  loading,
-  disabled,
-}: OptimizeButtonProps) {
+export default function OptimizeButton({ onClick, loading, disabled }: OptimizeButtonProps) {
   return (
     <button
       onClick={onClick}
       disabled={disabled || loading}
-      className={cn(
-        "btn-primary w-full text-base py-3",
-        loading && "opacity-75"
-      )}
+      className={cn('btn-primary w-full text-base py-3', loading && 'opacity-75')}
     >
       {loading ? (
         <span className="flex items-center justify-center gap-2">

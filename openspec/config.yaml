@@ -11,14 +11,14 @@ context: |
   Existing components: FileUpload, ConfigPanel, DataEditor, ColumnMapper, LocationMapEditor, MapView, RouteMap, ResultsPanel, OptimizeProgress, Sidebar, OptimizeButton.
   Existing API routes: /api/optimize (POST), /api/optimize/config, /api/routing (POST).
   Solver modules: haversine, routerOptimizer, nsga2, geneticOptimizer, parser, routing, googleRouting, geoapifyMatrix, clientRouting.
-  Testing: none detected (no test runner, no test files). strict_tdd disabled.
-  Tooling: ESLint (next lint), TypeScript strict (tsc --noEmit), no Prettier.
+  Testing: vitest + jsdom + vite-tsconfig-paths. Test command: `npm run test:run`. Smoke coverage for filterUnreachable, matGet, runNSGA2. strict_tdd disabled.
+  Tooling: ESLint (next lint), TypeScript strict (tsc --noEmit), Prettier (prettier --check).
   Git: initialized, remote = https://github.com/efirvida/urban-system.git.
   Existing changes: openspec/changes/vrp-solver (proposal + spec + design + tasks) — preserved as-is.
   Language (artifacts): English (default).
 
 # Project-wide SDD conventions. Per-phase knobs are below.
-strict_tdd: false  # disabled: no test runner present; enable when one is added.
+strict_tdd: false  # disabled: test runner is now present, but the project is still in coverage-on-demand mode.
 
 rules:
   proposal:
@@ -38,10 +38,10 @@ rules:
     - Pair every implementation task with a test task when strict_tdd is on
   apply:
     tdd: false
-    test_command: ""           # populate when a test runner is added
+    test_command: "npm run test:run"
     follow_existing_patterns: true
   verify:
-    test_command: ""           # populate when a test runner is added
+    test_command: "npm run test:run"
     build_command: "next build"
     lint_command: "next lint"
     typecheck_command: "tsc --noEmit"
@@ -53,12 +53,12 @@ rules:
 # Source of truth: same field under `testing:` plus the .atl/ cache when present.
 testing:
   strict_tdd: false
-  detected_at: "2026-06-17"
+  detected_at: "2026-06-25"
   runner:
-    command: ""
-    framework: ""
+    command: "npm run test:run"
+    framework: "vitest"
   layers:
-    unit:        { available: false, tool: "" }
+    unit:        { available: true, tool: "vitest" }
     integration: { available: false, tool: "" }
     e2e:         { available: false, tool: "" }
   coverage:
@@ -67,12 +67,13 @@ testing:
   quality:
     linter:       { available: true,  command: "next lint" }
     type_checker: { available: true,  command: "tsc --noEmit" }
-    formatter:    { available: false, command: "" }
+    formatter:    { available: true,  command: "prettier --check" }
   notes: |
     Next.js 14.2 SPA, TypeScript strict, Tailwind 3.4, MapLibre GL 4.5.
-    No test runner installed (no vitest, jest, playwright as direct deps).
-    `@playwright/test` appears in package-lock as an OPTIONAL peer of @next/swc-* — not used.
-    `.gitignore` includes `/coverage` but no coverage tool is configured.
+    vitest + jsdom + vite-tsconfig-paths are installed; test files
+    live next to the source under src/utils/{*,}.test.ts. Run with
+    `npm run test:run` (CI) or `npm run test` (watch).
     Linter: ESLint via next lint (eslint-config-next).
     Type checker: tsc --noEmit (strict mode, "@/*" path alias to ./src/*).
-    No Prettier — consider adding it in a future bootstrap change.
+    Formatter: Prettier (single quotes, trailing commas, 2 spaces).
+    See system-improvements change for the rationale.

@@ -1,12 +1,12 @@
-"use client";
+'use client';
 
-import { useDraggable } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
-import { X, GripVertical } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { Stop } from "@/types";
-import { formatDistance } from "@/lib/utils";
-import { cn } from "@/lib/utils";
+import { useDraggable } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
+import { X, GripVertical } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Stop } from '@/types';
+import { formatDistance } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
 interface StopItemProps {
   stop: Stop;
@@ -40,17 +40,16 @@ export default function StopItem({
   const { t, i18n } = useTranslation();
   const { isHome } = stop;
   const dragId = `stop-${dayIndex}-${stop.sequence}-${stop.lat.toFixed(5)}-${stop.lng.toFixed(5)}`;
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: dragId,
-      data: {
-        kind: "stop",
-        dayIndex,
-        name: stop.name,
-        lat: stop.lat,
-        lng: stop.lng,
-      },
-    });
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: dragId,
+    data: {
+      kind: 'stop',
+      dayIndex,
+      name: stop.name,
+      lat: stop.lat,
+      lng: stop.lng,
+    },
+  });
 
   const style: React.CSSProperties = {
     transform: CSS.Translate.toString(transform),
@@ -63,19 +62,17 @@ export default function StopItem({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex items-center gap-2 px-2 py-1.5 text-xs rounded transition-colors",
-        isHome
-          ? "bg-blue-50/60 border border-blue-100"
-          : "bg-gray-50 hover:bg-gray-100",
-        selected && !isHome && "ring-2 ring-blue-400 bg-blue-50",
-        isDragging && "shadow-lg ring-2 ring-blue-300"
+        'flex items-center gap-2 px-2 py-1.5 text-xs rounded transition-colors',
+        isHome ? 'bg-blue-50/60 border border-blue-100' : 'bg-gray-50 hover:bg-gray-100',
+        selected && !isHome && 'ring-2 ring-blue-400 bg-blue-50',
+        isDragging && 'shadow-lg ring-2 ring-blue-300',
       )}
     >
       {/* Drag handle */}
       <button
         type="button"
         className="touch-none text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing"
-        aria-label={t("stopItem.ariaLabels.dragStop")}
+        aria-label={t('stopItem.ariaLabels.dragStop')}
         {...listeners}
         {...attributes}
       >
@@ -85,12 +82,12 @@ export default function StopItem({
       {/* Sequence badge */}
       <span
         className={cn(
-          "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
-          isHome ? "bg-blue-200 text-blue-700" : "text-white"
+          'w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0',
+          isHome ? 'bg-blue-200 text-blue-700' : 'text-white',
         )}
         style={!isHome ? { backgroundColor: color } : undefined}
       >
-        {isHome ? "H" : stop.sequence}
+        {isHome ? 'H' : stop.sequence}
       </span>
 
       {/* Info — clickable for highlight */}
@@ -98,14 +95,12 @@ export default function StopItem({
         type="button"
         onClick={onClick}
         className="flex-1 min-w-0 text-left"
-        title={isHome ? t("stopItem.home") : stop.name}
+        title={isHome ? t('stopItem.home') : stop.name}
       >
-        <div className="font-medium text-gray-800 truncate text-left">
-          {stop.name}
-        </div>
+        <div className="font-medium text-gray-800 truncate text-left">{stop.name}</div>
         {!isHome && stop.distanceFromPrev > 0 && (
           <div className="text-[10px] text-gray-400 truncate text-left">
-            {`${formatDistance(stop.distanceFromPrev, i18n.language)} ${t("units.distanceFromPrev")}`}
+            {`${formatDistance(stop.distanceFromPrev, i18n.language)} ${t('units.distanceFromPrev')}`}
           </div>
         )}
       </button>
@@ -115,7 +110,7 @@ export default function StopItem({
         <button
           type="button"
           onClick={onRemove}
-          aria-label={t("stopItem.ariaLabels.removeStop")}
+          aria-label={t('stopItem.ariaLabels.removeStop')}
           className="text-gray-300 hover:text-red-500 transition-colors"
         >
           <X className="w-3.5 h-3.5" aria-hidden="true" />

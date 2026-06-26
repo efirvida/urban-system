@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { type LucideIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { type LucideIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 /** A single wizard step in the 5-phase progress bar. */
 export interface WizardPhase {
@@ -33,11 +33,7 @@ interface WizardStepsProps {
  * are clickable when `onStepClick` is provided — useful when the user
  * wants to navigate back without resetting the whole flow.
  */
-export default function WizardSteps({
-  phases,
-  currentIdx,
-  onStepClick,
-}: WizardStepsProps) {
+export default function WizardSteps({ phases, currentIdx, onStepClick }: WizardStepsProps) {
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
       {phases.map((p, i) => {
@@ -51,15 +47,15 @@ export default function WizardSteps({
             type="button"
             disabled={!isClickable}
             onClick={isClickable ? () => onStepClick!(i) : undefined}
-            aria-current={isActive ? "step" : undefined}
+            aria-current={isActive ? 'step' : undefined}
             className={cn(
-              "inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full transition-colors",
+              'inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full transition-colors',
               isActive
-                ? "bg-blue-600 text-white font-medium"
+                ? 'bg-blue-600 text-white font-medium'
                 : isPast
-                  ? "bg-green-100 text-green-700 hover:bg-green-200"
-                  : "bg-gray-100 text-gray-400",
-              isClickable ? "cursor-pointer" : "cursor-default"
+                  ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                  : 'bg-gray-100 text-gray-400',
+              isClickable ? 'cursor-pointer' : 'cursor-default',
             )}
           >
             <Icon className="w-3.5 h-3.5" aria-hidden="true" />

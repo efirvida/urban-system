@@ -39,7 +39,7 @@ export const TINY_DISTANCE_KM = 0.05;
  *
  * See: openspec/changes/consensus-matrix/specs/consensus-matrix/spec.md
  */
-export const CONSENSUS_TOLERANCE = 0.10;
+export const CONSENSUS_TOLERANCE = 0.1;
 
 /**
  * Consensus matrix: minimum reliability (fraction of providers that

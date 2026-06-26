@@ -17,7 +17,7 @@
  * already align with the `real`/`estimated` source tags.
  */
 
-const ROUTES_URL = "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix";
+const ROUTES_URL = 'https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix';
 
 interface RouteMatrixElement {
   originIndex: number;
@@ -33,7 +33,7 @@ interface RouteMatrixElement {
  */
 export async function buildGoogleMatrix(
   locations: Array<{ lat: number; lng: number }>,
-  apiKey: string
+  apiKey: string,
 ): Promise<{ matrix: Record<string, number>; realCount: number; fallbackCount: number }> {
   const n = locations.length;
   const matrix: Record<string, number> = {};
@@ -73,27 +73,31 @@ export async function buildGoogleMatrix(
 
     if (needOrigins.length === 0) continue;
 
-    const origins = needOrigins.map(i => ({
-      waypoint: { location: { latLng: { latitude: locations[i].lat, longitude: locations[i].lng } } },
+    const origins = needOrigins.map((i) => ({
+      waypoint: {
+        location: { latLng: { latitude: locations[i].lat, longitude: locations[i].lng } },
+      },
     }));
     const destArray = [...needDests];
-    const destinations = destArray.map(j => ({
-      waypoint: { location: { latLng: { latitude: locations[j].lat, longitude: locations[j].lng } } },
+    const destinations = destArray.map((j) => ({
+      waypoint: {
+        location: { latLng: { latitude: locations[j].lat, longitude: locations[j].lng } },
+      },
     }));
 
     try {
       const res = await fetch(ROUTES_URL, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": apiKey,
-          "X-Goog-FieldMask": "originIndex,destinationIndex,distanceMeters",
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': 'originIndex,destinationIndex,distanceMeters',
         },
         body: JSON.stringify({
           origins,
           destinations,
-          travelMode: "DRIVE",
-          routingPreference: "TRAFFIC_AWARE",
+          travelMode: 'DRIVE',
+          routingPreference: 'TRAFFIC_AWARE',
         }),
         signal: AbortSignal.timeout(15000),
       });
@@ -111,15 +115,15 @@ export async function buildGoogleMatrix(
           }
         }
       } else {
-        const errText = await res.text().catch(() => "");
-        if (errText.includes("billing")) {
-          console.warn("[GoogleMatrix] Billing not enabled. Falling back to Haversine.");
-        } else if (errText.includes("not enabled")) {
-          console.warn("[GoogleMatrix] Routes API not enabled for this key.");
+        const errText = await res.text().catch(() => '');
+        if (errText.includes('billing')) {
+          console.warn('[GoogleMatrix] Billing not enabled. Falling back to Haversine.');
+        } else if (errText.includes('not enabled')) {
+          console.warn('[GoogleMatrix] Routes API not enabled for this key.');
         }
       }
     } catch (err) {
-      console.warn("[GoogleMatrix] Request failed:", err);
+      console.warn('[GoogleMatrix] Request failed:', err);
     }
 
     // Fill remaining as unreachable

@@ -19,18 +19,14 @@
  * modified, satisfying the "solver core unchanged" constraint.
  */
 
-import { RELIABILITY_FLOOR } from "@/utils/constants";
-import { optimizeRoutes } from "@/utils/routerOptimizer";
-import type {
-  ConsensusMatrix,
-  DayRoute,
-  Location,
-} from "@/types";
-import type { Optimizer, OptimizeParams, OptimizerResult } from "../types";
+import { RELIABILITY_FLOOR } from '@/utils/constants';
+import { optimizeRoutes } from '@/utils/routerOptimizer';
+import type { ConsensusMatrix, DayRoute, Location } from '@/types';
+import type { Optimizer, OptimizeParams, OptimizerResult } from '../types';
 
 export class CwOptimizer implements Optimizer {
-  readonly name = "cw";
-  readonly label = "Clarke & Wright";
+  readonly name = 'cw';
+  readonly label = 'Clarke & Wright';
 
   async optimize(params: OptimizeParams): Promise<OptimizerResult | null> {
     try {
@@ -49,11 +45,7 @@ export class CwOptimizer implements Optimizer {
 
       const avgReliability =
         hasConsensus && params.consensusMatrix
-          ? computeSolutionReliability(
-              result.days,
-              params.consensusMatrix,
-              nameToIndex,
-            )
+          ? computeSolutionReliability(result.days, params.consensusMatrix, nameToIndex)
           : undefined;
 
       return {
@@ -66,20 +58,14 @@ export class CwOptimizer implements Optimizer {
         avgReliability,
       };
     } catch (err) {
-      console.warn(
-        `[CwOptimizer] failed:`,
-        err instanceof Error ? err.message : err,
-      );
+      console.warn(`[CwOptimizer] failed:`, err instanceof Error ? err.message : err);
       return null;
     }
   }
 }
 
 /** Build the home + locations → matrix-index map. */
-function buildNameToIndex(
-  home: Location,
-  locations: Location[],
-): Record<string, number> {
+function buildNameToIndex(home: Location, locations: Location[]): Record<string, number> {
   const nameToIndex: Record<string, number> = { [home.name]: 0 };
   locations.forEach((loc, idx) => {
     nameToIndex[loc.name] = idx + 1;
@@ -148,4 +134,3 @@ function computeSolutionReliability(
   const sum = reliabilities.reduce((s, r) => s + r, 0);
   return sum / reliabilities.length;
 }
-

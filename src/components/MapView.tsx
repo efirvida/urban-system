@@ -1,21 +1,19 @@
-"use client";
+'use client';
 
-import { useRef, useEffect } from "react";
-import L from "leaflet";
-import { Car, Home, Ruler } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { useLeafletMap } from "./map/useLeafletMap";
-import { useLeafletMarkers } from "./map/useLeafletMarkers";
-import { useLeafletRoutes } from "./map/useLeafletRoutes";
-import type { ValidatedRow, Location, DayRoute } from "@/types";
-import type { RouteSource } from "@/utils/clientRouting";
+import { useRef, useEffect } from 'react';
+import L from 'leaflet';
+import { Car, Home, Ruler } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useLeafletMap } from './map/useLeafletMap';
+import { useLeafletMarkers } from './map/useLeafletMarkers';
+import { useLeafletRoutes } from './map/useLeafletRoutes';
+import type { ValidatedRow, Location, DayRoute } from '@/types';
+import type { RouteSource } from '@/utils/clientRouting';
 
 // ─── Types (preserved 1:1 for backwards compat) ───────────────
 
 /** Real-road sources — anything that isn't Haversine or undefined. */
-const REAL_ROAD_SOURCES = new Set([
-  "geoapify", "geoapify-matrix", "ors", "ors-matrix", "osrm",
-]);
+const REAL_ROAD_SOURCES = new Set(['geoapify', 'geoapify-matrix', 'ors', 'ors-matrix', 'osrm']);
 
 export interface MapViewData {
   markers?: ValidatedRow[];
@@ -23,14 +21,14 @@ export interface MapViewData {
   routes?: DayRoute[];
   home?: { lat: number; lng: number } | null;
   hiddenDays?: Set<number>;
-  routingMode?: RouteSource | "haversine";
+  routingMode?: RouteSource | 'haversine';
   routeGeometry?: Map<number, [number, number][]>;
   routeSource?: Map<number, RouteSource>;
 }
 
 interface MapViewProps {
   data: MapViewData;
-  placementMode?: "home" | null;
+  placementMode?: 'home' | null;
   onPlaceHome?: (lat: number, lng: number) => void;
   onDragHome?: (lat: number, lng: number) => void;
   homeDraggable?: boolean;
@@ -97,7 +95,7 @@ export default function MapView({
         if (row.lat === null || row.lng === null) continue;
         keepIds.add(row.id);
         const style = {
-          fillColor: row.selected ? "#3b82f6" : "#9ca3af",
+          fillColor: row.selected ? '#3b82f6' : '#9ca3af',
           fillOpacity: row.selected ? 1 : 0.4,
         };
         const existing = markers.get(row.id);
@@ -107,7 +105,7 @@ export default function MapView({
         } else {
           const m = L.circleMarker([row.lat, row.lng], {
             radius: 6,
-            color: "white",
+            color: 'white',
             weight: 2,
             ...style,
           }).addTo(map);
@@ -124,7 +122,13 @@ export default function MapView({
       }
     }
 
-    if (data.markers && data.markers.length > 0 && !data.routes && !data.locations && allPoints.length > 0) {
+    if (
+      data.markers &&
+      data.markers.length > 0 &&
+      !data.routes &&
+      !data.locations &&
+      allPoints.length > 0
+    ) {
       try {
         const bounds = L.latLngBounds(allPoints.map((p) => [p[1], p[0]] as [number, number]));
         map.fitBounds(bounds, { padding: [80, 80], maxZoom: 16 });
@@ -133,31 +137,31 @@ export default function MapView({
   }, [mapRef, data.markers]);
 
   return (
-    <div className="absolute inset-0 z-0" style={{ width: "100%", height: "100%" }}>
+    <div className="absolute inset-0 z-0" style={{ width: '100%', height: '100%' }}>
       {data.routingMode && (
         <div className="absolute bottom-4 left-4 z-10 px-2.5 py-1 bg-white/90 backdrop-blur-sm rounded-full shadow text-xs text-gray-500 border flex items-center gap-1.5">
           {REAL_ROAD_SOURCES.has(data.routingMode) ? (
             <>
               <Car className="w-3.5 h-3.5" />
-              {t("mapView.realRoute")}
+              {t('mapView.realRoute')}
             </>
           ) : (
             <>
               <Ruler className="w-3.5 h-3.5" aria-hidden="true" />
-              {t("mapView.straightLine")}
+              {t('mapView.straightLine')}
             </>
           )}
         </div>
       )}
 
-      {placementMode === "home" && (
+      {placementMode === 'home' && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-4 py-2 bg-blue-600 text-white rounded-full shadow-lg text-sm font-medium whitespace-nowrap inline-flex items-center gap-1.5">
           <Home className="w-4 h-4" aria-hidden="true" />
-          {t("mapView.placeHome")}
+          {t('mapView.placeHome')}
         </div>
       )}
 
-      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
     </div>
   );
 }

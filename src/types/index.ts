@@ -1,6 +1,6 @@
 // ─── Locations ───────────────────────────────────────────────
 
-import type { RoutingSourceExtended } from "@/utils/routing/types";
+import type { RoutingSourceExtended } from '@/utils/routing/types';
 
 // Re-export so consumers can `import { RoutingSourceExtended } from "@/types"`.
 export type { RoutingSourceExtended };
@@ -21,10 +21,10 @@ export function isDayRouteArray(value: unknown): value is DayRoute[] {
   return (
     Array.isArray(value) &&
     value.length > 0 &&
-    typeof value[0] === "object" &&
+    typeof value[0] === 'object' &&
     value[0] !== null &&
-    "day" in value[0] &&
-    "stops" in value[0]
+    'day' in value[0] &&
+    'stops' in value[0]
   );
 }
 
@@ -35,16 +35,14 @@ export function isDayRouteArray(value: unknown): value is DayRoute[] {
  * for telemetry. The shape is small and well-defined, so we use a guard
  * instead of an `any` cast in the consumer.
  */
-export function isOptimizeMeta(
-  value: unknown,
-): value is NonNullable<OptimizeResponse["_meta"]> {
-  if (typeof value !== "object" || value === null) return false;
+export function isOptimizeMeta(value: unknown): value is NonNullable<OptimizeResponse['_meta']> {
+  if (typeof value !== 'object' || value === null) return false;
   const m = value as Record<string, unknown>;
   return (
-    typeof m.elapsedMs === "number" &&
-    typeof m.osrmPairs === "number" &&
-    typeof m.totalPairs === "number" &&
-    typeof m.routingMode === "string"
+    typeof m.elapsedMs === 'number' &&
+    typeof m.osrmPairs === 'number' &&
+    typeof m.totalPairs === 'number' &&
+    typeof m.routingMode === 'string'
   );
 }
 
@@ -95,24 +93,17 @@ export interface ValidatedRow {
 export interface Config {
   homeLat: number;
   homeLng: number;
-  constraintType: "hours" | "visits" | "hours+visits";
+  constraintType: 'hours' | 'visits' | 'hours+visits';
   constraintValue: number;
   maxVisits?: number; // used when constraintType is "visits" or "hours+visits"
   avgSpeed: number; // km/h, default 60
   visitTime: number; // minutes per stop, default 30
-  /**
-   * PR 6 (real-roads-only): when true, the API builds and propagates a
-   * `DistanceMatrix` (per-pair `MatrixEntry`) end-to-end. When false
-   * (default) the API and optimizers fall back to the legacy
-   * `Record<string, number>` shape — behavior is bit-identical to pre-PR-6.
-   */
-  useStrictMatrix?: boolean;
 }
 
 // ─── Distance matrix (PR 6) ──────────────────────────────────
 
 /** Source of a single distance matrix entry. */
-export type RoutingSource = "real" | "estimated" | "unreachable";
+export type RoutingSource = 'real' | 'estimated' | 'unreachable';
 
 /**
  * Per-pair distance record. `distance` is in km; when `source` is
@@ -188,7 +179,7 @@ export interface UnreachablePoi {
    * Future values may distinguish island parcels, unmapped service
    * roads, or provider timeouts once PR 6 adds intra-day reachability.
    */
-  reason: "no_road_connection" | string;
+  reason: 'no_road_connection' | string;
 }
 
 /** Response from the optimization API */
@@ -216,26 +207,23 @@ export interface OptimizeResponse {
    */
   unreachable?: UnreachablePoi[];
   /**
-   * PR 6 (real-roads-only): when `useStrictMatrix` is true, the API
-   * builds a `DistanceMatrix` with per-pair source metadata and
-   * surfaces it here for consumers that want type-safe access. Each
-   * entry is a `MatrixEntry` with `{ distance, source }`. Legacy
-   * callers that ignore this field see no behavior change.
+   * Per-pair `DistanceMatrix` (always present — this is the standard
+   * contract). Legacy `Record<string, number>` paths have been removed.
    */
   strictMatrix?: DistanceMatrix;
   _meta?: {
     elapsedMs: number;
     osrmPairs: number;
     totalPairs: number;
-    routingMode: "osrm" | "haversine" | "api" | "geoapify";
+    routingMode: 'osrm' | 'haversine' | 'api' | 'geoapify';
     /** Number of POIs excluded by the unreachable pre-filter. */
     unreachableCount?: number;
-    /**
-     * PR 6 (real-roads-only): when the request set `useStrictMatrix`,
-     * the API echoes it back here so the frontend can correlate the
-     * response shape with the requested mode.
-     */
-    useStrictMatrix?: boolean;
+    /** Per-pair matrix entries tagged `real` (OSRM/Geoapify). */
+    realCount?: number;
+    /** Per-pair matrix entries tagged `estimated` (Haversine or tiny < 50 m). */
+    estimatedCount?: number;
+    /** Per-pair matrix entries tagged `unreachable` inside the matrix itself. */
+    unreachableInMatrixCount?: number;
     /** Consensus-matrix change: when true, the server built a cross-validated matrix. */
     useConsensus?: boolean;
     /** Consensus-matrix change: elapsed ms for the consensus build phase. */
@@ -291,7 +279,7 @@ export interface ParetoSolution {
 
 /** Response when algorithm=nsga2 */
 export interface NSGAResponse {
-  algorithm: "nsga2";
+  algorithm: 'nsga2';
   balanced: ParetoSolution;
   minDistance: ParetoSolution;
   minDuration: ParetoSolution;
@@ -301,7 +289,7 @@ export interface NSGAResponse {
     elapsedMs: number;
     osrmPairs: number;
     totalPairs: number;
-    routingMode: "osrm" | "haversine" | "api" | "geoapify";
+    routingMode: 'osrm' | 'haversine' | 'api' | 'geoapify';
   };
   _debug?: {
     frontSize: number;
@@ -366,7 +354,7 @@ export type ConsensusMatrix = Record<string, ConsensusEntry>;
 
 /** A single edit action captured for undo. */
 export interface EditMutation {
-  type: "move" | "remove" | "add";
+  type: 'move' | 'remove' | 'add';
   /** Display name of the POI this mutation acts on. */
   poiName: string;
   /** Day the POI was in BEFORE the mutation. 0 = unassigned pool. */

@@ -1,14 +1,18 @@
-"use client";
+'use client';
 
-import { useEffect, useRef } from "react";
-import L from "leaflet";
-import i18n from "@/i18n/config";
+import { useEffect, useRef } from 'react';
+import L from 'leaflet';
+import i18n from '@/i18n/config';
 
 export interface MarkerData {
   routes?: Array<{
     day: number;
     stops: Array<{
-      sequence: number; name: string; lat: number; lng: number; isHome?: boolean;
+      sequence: number;
+      name: string;
+      lat: number;
+      lng: number;
+      isHome?: boolean;
     }>;
   }>;
   locations?: Array<{ name: string; lat: number; lng: number }>;
@@ -25,11 +29,11 @@ interface UseLeafletMarkersOptions {
 
 export function useLeafletMarkers(
   mapRef: React.RefObject<L.Map | null>,
-  options: UseLeafletMarkersOptions
+  options: UseLeafletMarkersOptions,
 ) {
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const onDragHomeRef = useRef(options.onDragHome);
-  const dataKeyRef = useRef("");
+  const dataKeyRef = useRef('');
 
   useEffect(() => {
     onDragHomeRef.current = options.onDragHome;
@@ -46,8 +50,9 @@ export function useLeafletMarkers(
     // Compute a stable key for the actual spatial data (not visibility state)
     const spatialKey = JSON.stringify([
       locations?.length ?? 0,
-      routes?.map(d => `${d.day}:${d.stops.length}`).join(","),
-      home?.lat, home?.lng,
+      routes?.map((d) => `${d.day}:${d.stops.length}`).join(','),
+      home?.lat,
+      home?.lng,
     ]);
     const dataChanged = spatialKey !== dataKeyRef.current;
     if (dataChanged) dataKeyRef.current = spatialKey;
@@ -62,12 +67,14 @@ export function useLeafletMarkers(
     if (home && home.lat && home.lng) {
       const circle = L.circleMarker([home.lat, home.lng], {
         radius: 12,
-        color: "white",
+        color: 'white',
         weight: 3,
-        fillColor: "#f59e0b",
+        fillColor: '#f59e0b',
         fillOpacity: 0.9,
       }).addTo(map);
-      circle.bindPopup(`<strong>${i18n.t("markerPopup.home")}</strong><br/>${home.lat.toFixed(4)}, ${home.lng.toFixed(4)}`);
+      circle.bindPopup(
+        `<strong>${i18n.t('markerPopup.home')}</strong><br/>${home.lat.toFixed(4)}, ${home.lng.toFixed(4)}`,
+      );
       allPoints.push([home.lng, home.lat]);
     }
 
@@ -92,12 +99,14 @@ export function useLeafletMarkers(
         }
         const circle = L.circleMarker([loc.lat, loc.lng], {
           radius: 8,
-          color: "white",
+          color: 'white',
           weight: 2,
-          fillColor: "#ef4444",
+          fillColor: '#ef4444',
           fillOpacity: 1,
         }).addTo(map);
-        circle.bindPopup(`<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}<br/>📍 ${i18n.t("markerPopup.withoutRoute")}`);
+        circle.bindPopup(
+          `<strong>${loc.name}</strong><br/>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}<br/>📍 ${i18n.t('markerPopup.withoutRoute')}`,
+        );
         (circle as any)._poiData = { lat: loc.lat, lng: loc.lng, day: -1, name: loc.name };
         markersRef.current.set(`pin-${i}`, circle as any);
         allPoints.push([loc.lng, loc.lat]);
@@ -119,21 +128,24 @@ export function useLeafletMarkers(
   useEffect(() => {
     const sel = options.selectedPOI;
     for (const [, marker] of markersRef.current) {
-      const poiData = (marker as any)._poiData as { lat: number; lng: number; day: number } | undefined;
+      const poiData = (marker as any)._poiData as
+        | { lat: number; lng: number; day: number }
+        | undefined;
       if (!poiData) continue;
-      const isMatch = sel &&
+      const isMatch =
+        sel &&
         poiData.day === sel.day &&
         Math.abs(poiData.lat - sel.lat) < 0.000001 &&
         Math.abs(poiData.lng - sel.lng) < 0.000001;
       if (isMatch) {
-        (marker as any).setStyle?.({ radius: 18, color: "white", weight: 4, fillOpacity: 1 });
+        (marker as any).setStyle?.({ radius: 18, color: 'white', weight: 4, fillOpacity: 1 });
       } else {
-        (marker as any).setStyle?.({ radius: 8, color: "white", weight: 2, fillOpacity: 1 });
+        (marker as any).setStyle?.({ radius: 8, color: 'white', weight: 2, fillOpacity: 1 });
       }
       const el = marker.getElement();
       if (el) {
-        (el as HTMLElement).style.transform = "";
-        (el as HTMLElement).style.boxShadow = "";
+        (el as HTMLElement).style.transform = '';
+        (el as HTMLElement).style.boxShadow = '';
       }
     }
   }, [options.selectedPOI, options.data]);

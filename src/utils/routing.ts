@@ -1,4 +1,4 @@
-import { RoutingSource } from "@/types";
+import { RoutingSource } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -18,8 +18,8 @@ class LRUCache {
   }
 
   private key(lat1: number, lng1: number, lat2: number, lng2: number): string {
-    const a = [lat1.toFixed(6), lng1.toFixed(6)].join(",");
-    const b = [lat2.toFixed(6), lng2.toFixed(6)].join(",");
+    const a = [lat1.toFixed(6), lng1.toFixed(6)].join(',');
+    const b = [lat2.toFixed(6), lng2.toFixed(6)].join(',');
     return a < b ? `${a}|${b}` : `${b}|${a}`;
   }
 
@@ -49,13 +49,13 @@ class LRUCache {
 
 // ─── OSRM Provider ───────────────────────────────────────────
 
-const OSRM_BASE = "https://router.project-osrm.org";
+const OSRM_BASE = 'https://router.project-osrm.org';
 
 async function osrmRaw(
   lat1: number,
   lng1: number,
   lat2: number,
-  lng2: number
+  lng2: number,
 ): Promise<number | null> {
   const url =
     `${OSRM_BASE}/route/v1/driving/${lng1},${lat1};${lng2},${lat2}` +
@@ -64,12 +64,12 @@ async function osrmRaw(
   try {
     const res = await fetch(url, {
       signal: AbortSignal.timeout(8000),
-      headers: { "User-Agent": "vrp-optimizer/1.0" },
+      headers: { 'User-Agent': 'vrp-optimizer/1.0' },
     });
     if (!res.ok) return null;
 
     const data = await res.json();
-    if (data.code !== "Ok" || !data.routes?.length) return null;
+    if (data.code !== 'Ok' || !data.routes?.length) return null;
 
     return data.routes[0].distance / 1000; // meters → km
   } catch {
@@ -111,7 +111,7 @@ export async function osrmDistance(
   lat1: number,
   lng1: number,
   lat2: number,
-  lng2: number
+  lng2: number,
 ): Promise<number> {
   // Same point → distance 0
   if (lat1 === lat2 && lng1 === lng2) return 0;
@@ -142,7 +142,7 @@ export async function osrmDistance(
  * Returns counts of real (finite) vs unreachable (Infinity) pairs.
  */
 export async function precomputeDistanceMatrix(
-  coords: Array<{ lat: number; lng: number }>
+  coords: Array<{ lat: number; lng: number }>,
 ): Promise<{ pairs: number; osrm: number; haversine: number }> {
   let osrmCount = 0;
   let unreachableCount = 0;
@@ -151,12 +151,7 @@ export async function precomputeDistanceMatrix(
   for (let i = 0; i < coords.length; i++) {
     for (let j = i + 1; j < coords.length; j++) {
       pairs++;
-      const d = await osrmDistance(
-        coords[i].lat,
-        coords[i].lng,
-        coords[j].lat,
-        coords[j].lng
-      );
+      const d = await osrmDistance(coords[i].lat, coords[i].lng, coords[j].lat, coords[j].lng);
       if (Number.isFinite(d)) osrmCount++;
       else unreachableCount++;
     }
@@ -171,7 +166,7 @@ export async function drivingDistance(
   lat1: number,
   lng1: number,
   lat2: number,
-  lng2: number
+  lng2: number,
 ): Promise<number> {
   return osrmDistance(lat1, lng1, lat2, lng2);
 }
@@ -191,7 +186,7 @@ export function isRealDistance(
   _lng1: number,
   _lat2: number,
   _lng2: number,
-  distance: number
+  distance: number,
 ): boolean {
   return Number.isFinite(distance);
 }
@@ -204,8 +199,8 @@ export function classifyPair(
   _lng1: number,
   _lat2: number,
   _lng2: number,
-  distance: number
+  distance: number,
 ): RoutingSource {
-  if (!Number.isFinite(distance)) return "unreachable";
-  return "real";
+  if (!Number.isFinite(distance)) return 'unreachable';
+  return 'real';
 }

@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest } from 'next/server';
 import {
   Location,
   Config,
@@ -8,14 +8,14 @@ import {
   DistanceMatrix,
   MatrixEntry,
   ConsensusMatrix,
-} from "@/types";
-import { RELIABILITY_FLOOR } from "@/utils/constants";
-import { filterUnreachable } from "@/utils/unreachableFilter";
-import { OptimizerRegistry } from "@/utils/optimizer/registry";
-import { defaultOptimizers } from "@/utils/optimizer/optimizers";
-import { RoutingService } from "@/utils/routing/service";
-import { defaultProviders, batchProviders } from "@/utils/routing/providers";
-import type { OnConsensusProgress } from "@/utils/routing/consensusBuilder";
+} from '@/types';
+import { RELIABILITY_FLOOR } from '@/utils/constants';
+import { filterUnreachable } from '@/utils/unreachableFilter';
+import { OptimizerRegistry } from '@/utils/optimizer/registry';
+import { defaultOptimizers } from '@/utils/optimizer/optimizers';
+import { RoutingService } from '@/utils/routing/service';
+import { defaultProviders, batchProviders } from '@/utils/routing/providers';
+import type { OnConsensusProgress } from '@/utils/routing/consensusBuilder';
 
 // ─── Core optimization logic ──────────────────────────────────
 
@@ -34,30 +34,25 @@ async function optimize(
     locations,
     config,
     distanceMatrix: frontendMatrix,
-    useStrictMatrix: useStrictMatrixTopLevel,
     useConsensus: useConsensusTopLevel,
   } = body as {
     locations: Location[];
     config: Config;
     algorithm?: string;
     distanceMatrix?: Record<string, number>;
-    useStrictMatrix?: boolean;
     useConsensus?: boolean;
   };
-
-  const useStrictMatrix: boolean =
-    typeof useStrictMatrixTopLevel === "boolean"
-      ? useStrictMatrixTopLevel
-      : Boolean(config?.useStrictMatrix);
+  // `useStrictMatrix` from older clients is silently accepted and
+  // ignored — `DistanceMatrix` is the standard contract now.
 
   const useConsensus: boolean =
-    typeof useConsensusTopLevel === "boolean" ? useConsensusTopLevel : false;
+    typeof useConsensusTopLevel === 'boolean' ? useConsensusTopLevel : false;
 
   if (!locations?.length) {
-    return { error: "Se requiere al menos una ubicación." };
+    return { error: 'Se requiere al menos una ubicación.' };
   }
-  if (typeof config.homeLat !== "number" || typeof config.homeLng !== "number") {
-    return { error: "Coordenadas de casa inválidas." };
+  if (typeof config.homeLat !== 'number' || typeof config.homeLng !== 'number') {
+    return { error: 'Coordenadas de casa inválidas.' };
   }
 
   const normConfig: Config = {
@@ -66,32 +61,30 @@ async function optimize(
     visitTime: config.visitTime || 30,
   };
 
-  const home = { name: "Casa", lat: normConfig.homeLat, lng: normConfig.homeLng };
+  const home = { name: 'Casa', lat: normConfig.homeLat, lng: normConfig.homeLng };
   const totalPairs = (locations.length * (locations.length + 1)) / 2;
 
-  // ── Matrix ──
+  // ── Matrix (flat) ──
+  // Kept for optimizers that haven't migrated to per-pair entries yet
+  // (e.g. Geoapify). Always derived from the strict matrix below.
   let matrix: Record<string, number> = frontendMatrix ? { ...frontendMatrix } : {};
 
-  // ── Strict matrix ──
-  let strictMatrix: DistanceMatrix | undefined;
-  if (useStrictMatrix) {
-    strictMatrix = {};
-    for (const key of Object.keys(matrix)) {
-      const d = matrix[key];
-      strictMatrix[key] = {
-        distance: d,
-        source: d === undefined || !Number.isFinite(d) ? "unreachable" : "real",
-      };
-    }
+  // ── Strict matrix (per-pair MatrixEntry) — ALWAYS built ──
+  // `DistanceMatrix` is the standard contract; the legacy flat-matrix
+  // code path is removed in this change.
+  const strictMatrix: DistanceMatrix = {};
+  for (const key of Object.keys(matrix)) {
+    const d = matrix[key];
+    strictMatrix[key] = {
+      distance: d,
+      source: d === undefined || !Number.isFinite(d) ? 'unreachable' : 'real',
+    };
   }
 
   // ── Pre-filter + consensus ──
   let consensusMatrix: ConsensusMatrix | undefined;
   let consensusElapsedMs = 0;
-  let { reachable, unreachable } =
-    useStrictMatrix && strictMatrix
-      ? filterUnreachable(locations, home, strictMatrix)
-      : filterUnreachable(locations, home, matrix);
+  let { reachable, unreachable } = filterUnreachable(locations, home, strictMatrix);
 
   if (useConsensus) {
     const tConsensus = Date.now();
@@ -118,15 +111,11 @@ async function optimize(
       for (let i = 0; i < locations.length; i++) {
         const key = `0,${i + 1}`;
         const entry = fullConsensus[key];
-        if (
-          entry &&
-          Number.isFinite(entry.distance) &&
-          entry.reliability >= RELIABILITY_FLOOR
-        ) {
+        if (entry && Number.isFinite(entry.distance) && entry.reliability >= RELIABILITY_FLOOR) {
           origToNew.set(i, newReachable.length);
           newReachable.push(locations[i]);
         } else {
-          newUnreachable.push({ ...locations[i], reason: "no_road_connection" });
+          newUnreachable.push({ ...locations[i], reason: 'no_road_connection' });
         }
       }
       reachable = newReachable;
@@ -170,7 +159,7 @@ async function optimize(
         consensusMatrix = undefined;
       }
     } catch (err) {
-      console.warn("[API] Consensus build failed:", err);
+      console.warn('[API] Consensus build failed:', err);
       consensusMatrix = undefined;
       consensusElapsedMs = Date.now() - tConsensus;
     }
@@ -186,7 +175,7 @@ async function optimize(
     home,
     config: normConfig,
     matrix,
-    strictMatrix: useStrictMatrix ? strictMatrix : undefined,
+    strictMatrix,
     consensusMatrix,
   });
 
@@ -211,7 +200,7 @@ async function optimize(
 
           const key = idxA < idxB ? `${idxA},${idxB}` : `${idxB},${idxA}`;
           const entry = consensusMatrix[key];
-          if (entry && entry.source !== "unreachable") {
+          if (entry && entry.source !== 'unreachable') {
             stopB.provider = entry.source;
           }
         }
@@ -226,8 +215,7 @@ async function optimize(
     if (
       best === null ||
       r.totalDistance < best.totalDistance - 1 ||
-      (Math.abs(r.totalDistance - best.totalDistance) <= 1 &&
-        r.totalDays < best.totalDays)
+      (Math.abs(r.totalDistance - best.totalDistance) <= 1 && r.totalDays < best.totalDays)
     ) {
       best = r;
     }
@@ -236,9 +224,51 @@ async function optimize(
   if (best === null) {
     return {
       error:
-        "Ningún optimizador pudo resolver el problema. Probá reducir el número de ubicaciones o revisar las conexiones de ruta.",
+        'Ningún optimizador pudo resolver el problema. Probá reducir el número de ubicaciones o revisar las conexiones de ruta.',
       status: 500,
     };
+  }
+
+  // ── Routing mode + source counts ──
+  // Priority: geoapify > osrm > api > haversine.
+  // When consensus is on, we trust consensusMatrix.source per entry.
+  // Otherwise we trust strictMatrix.source per entry. The flat
+  // `matrix` is no longer used for source detection — every entry
+  // now flows through the strict matrix contract.
+  let routingMode: 'geoapify' | 'osrm' | 'api' | 'haversine' = 'haversine';
+  let realCount = 0;
+  let estimatedCount = 0;
+  let unreachableInMatrixCount = 0;
+  if (useConsensus && consensusMatrix) {
+    let geoapifyHits = 0;
+    let osrmHits = 0;
+    for (const entry of Object.values(consensusMatrix)) {
+      if (
+        entry.source === 'unreachable' ||
+        !Number.isFinite(entry.distance) ||
+        entry.reliability < RELIABILITY_FLOOR
+      ) {
+        unreachableInMatrixCount++;
+      } else {
+        realCount++;
+        if (entry.source === 'geoapify-matrix') geoapifyHits++;
+        else if (entry.source === 'osrm') osrmHits++;
+      }
+    }
+    if (geoapifyHits > 0) routingMode = 'geoapify';
+    else if (osrmHits > 0) routingMode = 'osrm';
+    else routingMode = 'haversine';
+  } else {
+    for (const entry of Object.values(strictMatrix)) {
+      if (entry.source === 'unreachable' || !Number.isFinite(entry.distance)) {
+        unreachableInMatrixCount++;
+      } else if (entry.source === 'real') {
+        realCount++;
+      } else {
+        estimatedCount++;
+      }
+    }
+    routingMode = realCount > 0 ? 'osrm' : 'haversine';
   }
 
   return {
@@ -248,20 +278,21 @@ async function optimize(
     totalLocations: locations.length,
     results: allResults,
     unreachable: unreachableForResponse,
-    ...(useStrictMatrix && strictMatrix ? { strictMatrix } : {}),
+    strictMatrix,
     _meta: {
       elapsedMs: Date.now() - startTime,
       osrmPairs: Object.keys(matrix).length,
       totalPairs,
       unreachableCount: unreachableForResponse.length,
-      ...(useStrictMatrix ? { useStrictMatrix: true } : {}),
+      routingMode,
+      realCount,
+      estimatedCount,
+      unreachableInMatrixCount,
       ...(useConsensus
         ? {
             useConsensus: true,
             consensusElapsedMs,
-            consensusEntries: consensusMatrix
-              ? Object.keys(consensusMatrix).length
-              : 0,
+            consensusEntries: consensusMatrix ? Object.keys(consensusMatrix).length : 0,
           }
         : {}),
       winnerAlgorithm: best.algorithm,
@@ -273,12 +304,11 @@ async function optimize(
 // ─── POST handler ────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
-  console.log("[API] /api/optimize called");
+  console.log('[API] /api/optimize called');
 
   try {
     const body = await request.clone().json();
-    const useConsensus =
-      typeof body.useConsensus === "boolean" ? body.useConsensus : false;
+    const useConsensus = typeof body.useConsensus === 'boolean' ? body.useConsensus : false;
 
     if (!useConsensus) {
       // Normal JSON response — no streaming.
@@ -297,44 +327,54 @@ export async function POST(request: NextRequest) {
       async start(controller) {
         const send = (data: unknown) => {
           try {
-            controller.enqueue(encoder.encode(JSON.stringify(data) + "\n"));
+            controller.enqueue(encoder.encode(JSON.stringify(data) + '\n'));
           } catch {
             // Stream closed — ignore.
           }
         };
 
         const progressCb: OnConsensusProgress = (p) => {
-          send({ type: "progress", stage: p.stage, current: p.current, total: p.total, detail: p.detail });
+          send({
+            type: 'progress',
+            stage: p.stage,
+            current: p.current,
+            total: p.total,
+            detail: p.detail,
+          });
         };
 
         try {
           const result = await optimize(request, progressCb);
           if (result.error) {
-            send({ type: "error", error: result.error });
+            send({ type: 'error', error: result.error });
           } else {
-            send({ type: "result", data: result });
+            send({ type: 'result', data: result });
           }
         } catch (err) {
-          console.error("Streaming error:", err);
+          console.error('Streaming error:', err);
           send({
-            type: "error",
-            error: err instanceof Error ? err.message : "Unknown error",
+            type: 'error',
+            error: err instanceof Error ? err.message : 'Unknown error',
           });
         } finally {
-          try { controller.close(); } catch { /* ignore */ }
+          try {
+            controller.close();
+          } catch {
+            /* ignore */
+          }
         }
       },
     });
 
     return new Response(stream, {
-      headers: { "Content-Type": "application/x-ndjson" },
+      headers: { 'Content-Type': 'application/x-ndjson' },
     });
   } catch (error) {
-    console.error("Optimization error:", error);
+    console.error('Optimization error:', error);
     return Response.json(
       {
-        error: "Error interno del servidor.",
-        details: error instanceof Error ? error.message : "Unknown error",
+        error: 'Error interno del servidor.',
+        details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 },
     );

@@ -1,16 +1,11 @@
-"use client";
+'use client';
 
-import { useState, useMemo, useCallback } from "react";
-import { Tag, MapPin, Search, Ruler, Check, X, type LucideIcon } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { RawFileData, ColumnMapping } from "@/types";
-import {
-  autoDetectMapping,
-  applyMapping,
-  detectHeaderRow,
-  reheader,
-} from "@/utils/parser";
-import { cn } from "@/lib/utils";
+import { useState, useMemo, useCallback } from 'react';
+import { Tag, MapPin, Search, Ruler, Check, X, type LucideIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { RawFileData, ColumnMapping } from '@/types';
+import { autoDetectMapping, applyMapping, detectHeaderRow, reheader } from '@/utils/parser';
+import { cn } from '@/lib/utils';
 
 interface ColumnMapperProps {
   data: RawFileData;
@@ -19,7 +14,7 @@ interface ColumnMapperProps {
   onBack: () => void;
 }
 
-type FieldKey = "nameColumn" | "latColumn" | "lngColumn";
+type FieldKey = 'nameColumn' | 'latColumn' | 'lngColumn';
 
 const FIELD_ICONS: Record<FieldKey, LucideIcon> = {
   nameColumn: Tag,
@@ -27,24 +22,18 @@ const FIELD_ICONS: Record<FieldKey, LucideIcon> = {
   lngColumn: MapPin,
 };
 
-export default function ColumnMapper({
-  data,
-  onConfirm,
-  onBack,
-}: ColumnMapperProps) {
+export default function ColumnMapper({ data, onConfirm, onBack }: ColumnMapperProps) {
   const { t } = useTranslation();
   const FIELD_LABELS: Record<FieldKey, string> = {
-    nameColumn: t("columnMapper.defaults.name"),
-    latColumn: t("columnMapper.defaults.lat"),
-    lngColumn: t("columnMapper.defaults.lng"),
+    nameColumn: t('columnMapper.defaults.name'),
+    latColumn: t('columnMapper.defaults.lat'),
+    lngColumn: t('columnMapper.defaults.lng'),
   };
 
   // Detect header row issue
   const headerCheck = useMemo(() => detectHeaderRow(data.rows), [data.rows]);
 
-  const [useFirstRowAsHeaders, setUseFirstRowAsHeaders] = useState(
-    headerCheck.isHeader
-  );
+  const [useFirstRowAsHeaders, setUseFirstRowAsHeaders] = useState(headerCheck.isHeader);
   const [touched, setTouched] = useState(false);
 
   // Compute effective data (re-headed or original)
@@ -58,15 +47,15 @@ export default function ColumnMapper({
   // Auto-detect on effective columns
   const suggested = useMemo(
     () => autoDetectMapping(effectiveData.columns),
-    [effectiveData.columns]
+    [effectiveData.columns],
   );
 
   const [mapping, setMapping] = useState<ColumnMapping>(() => {
     if (suggested) return suggested;
     return {
-      nameColumn: effectiveData.columns[0] ?? "",
-      latColumn: effectiveData.columns[1] ?? "",
-      lngColumn: effectiveData.columns[2] ?? "",
+      nameColumn: effectiveData.columns[0] ?? '',
+      latColumn: effectiveData.columns[1] ?? '',
+      lngColumn: effectiveData.columns[2] ?? '',
     };
   });
 
@@ -84,7 +73,7 @@ export default function ColumnMapper({
         if (auto) setMapping(auto);
       }
     },
-    [data, headerCheck]
+    [data, headerCheck],
   );
 
   const previewRows = useMemo(() => {
@@ -97,15 +86,13 @@ export default function ColumnMapper({
 
   const validCount = useMemo(() => {
     try {
-      return applyMapping(effectiveData.rows, mapping).filter((r) => r.isValid)
-        .length;
+      return applyMapping(effectiveData.rows, mapping).filter((r) => r.isValid).length;
     } catch {
       return 0;
     }
   }, [effectiveData.rows, mapping]);
 
-  const allSelected =
-    mapping.nameColumn && mapping.latColumn && mapping.lngColumn;
+  const allSelected = mapping.nameColumn && mapping.latColumn && mapping.lngColumn;
 
   const setField = (field: FieldKey, value: string) => {
     setTouched(true);
@@ -117,8 +104,7 @@ export default function ColumnMapper({
       <div>
         <p className="text-sm text-gray-500">
           Archivo: <span className="font-medium">{data.fileName}</span>
-          &nbsp;·&nbsp; {effectiveData.columns.length} col,{" "}
-          {effectiveData.rows.length} filas
+          &nbsp;·&nbsp; {effectiveData.columns.length} col, {effectiveData.rows.length} filas
         </p>
       </div>
 
@@ -138,14 +124,12 @@ export default function ColumnMapper({
                   onChange={(e) => handleReheader(e.target.checked)}
                   className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
                 />
-                <span className="text-xs text-amber-700">
-                  Usar como nombres de columna
-                </span>
+                <span className="text-xs text-amber-700">Usar como nombres de columna</span>
               </label>
               {useFirstRowAsHeaders && (
                 <p className="text-xs text-green-600 mt-1 truncate inline-flex items-center gap-1">
                   <Check className="w-3 h-3" />
-                  {headerCheck.suggestedNames.filter((n) => n).join(", ")}
+                  {headerCheck.suggestedNames.filter((n) => n).join(', ')}
                 </p>
               )}
             </div>
@@ -156,7 +140,9 @@ export default function ColumnMapper({
       {/* DMS format banner */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-xs text-blue-700 inline-flex items-center gap-1.5">
         <Ruler className="w-3.5 h-3.5" aria-hidden="true" />
-        <span>Decimal (<code>-15.744</code>) y DMS (<code>15°02&apos;51.6&apos;&apos;S</code>)</span>
+        <span>
+          Decimal (<code>-15.744</code>) y DMS (<code>15°02&apos;51.6&apos;&apos;S</code>)
+        </span>
       </div>
 
       {/* Column selectors */}
@@ -177,7 +163,7 @@ export default function ColumnMapper({
                 <option value="">— Seleccionar —</option>
                 {effectiveData.columns.map((col) => (
                   <option key={col} value={col}>
-                    {col} {col === suggested?.[field] ? " (detectada)" : ""}
+                    {col} {col === suggested?.[field] ? ' (detectada)' : ''}
                   </option>
                 ))}
               </select>
@@ -196,12 +182,11 @@ export default function ColumnMapper({
       <div className="card-base">
         <div className="card-header flex items-center justify-between">
           <span>
-            Vista previa ({validCount} de {effectiveData.rows.length} filas
-            válidas)
+            Vista previa ({validCount} de {effectiveData.rows.length} filas válidas)
           </span>
           <span className="text-xs text-gray-400">
-            Mapeo actual: {mapping.nameColumn} → Nombre, {mapping.latColumn}{" "}
-            → Lat, {mapping.lngColumn} → Lng
+            Mapeo actual: {mapping.nameColumn} → Nombre, {mapping.latColumn} → Lat,{' '}
+            {mapping.lngColumn} → Lng
           </span>
         </div>
         <div className="card-body max-h-56 overflow-y-auto">
@@ -210,13 +195,13 @@ export default function ColumnMapper({
               <tr className="border-b text-left text-gray-500">
                 <th className="pb-2 font-medium pr-3">#</th>
                 <th className="pb-2 font-medium pr-3">
-                  {mapping.nameColumn || t("columnMapper.defaults.name")}
+                  {mapping.nameColumn || t('columnMapper.defaults.name')}
                 </th>
                 <th className="pb-2 font-medium pr-3">
-                  {mapping.latColumn || t("columnMapper.defaults.lat")}
+                  {mapping.latColumn || t('columnMapper.defaults.lat')}
                 </th>
                 <th className="pb-2 font-medium pr-3">
-                  {mapping.lngColumn || t("columnMapper.defaults.lng")}
+                  {mapping.lngColumn || t('columnMapper.defaults.lng')}
                 </th>
                 <th className="pb-2 font-medium">Estado</th>
               </tr>
@@ -226,23 +211,17 @@ export default function ColumnMapper({
                 <tr key={row.id} className="border-b last:border-0">
                   <td className="py-1.5 text-gray-400 pr-3">{i + 1}</td>
                   <td className="py-1.5 pr-3 font-medium truncate max-w-[200px]">
-                    {row.rawName || (
-                      <span className="text-gray-300 italic">vacío</span>
-                    )}
+                    {row.rawName || <span className="text-gray-300 italic">vacío</span>}
                   </td>
-                  <td className="py-1.5 pr-3 text-gray-600 font-mono text-xs">
-                    {row.rawLat}
-                  </td>
-                  <td className="py-1.5 pr-3 text-gray-600 font-mono text-xs">
-                    {row.rawLng}
-                  </td>
+                  <td className="py-1.5 pr-3 text-gray-600 font-mono text-xs">{row.rawLat}</td>
+                  <td className="py-1.5 pr-3 text-gray-600 font-mono text-xs">{row.rawLng}</td>
                   <td className="py-1.5">
                     {row.isValid ? (
-                      <span
-                        className="text-green-600 inline-flex"
-                        title={`${row.lat}, ${row.lng}`}
-                      >
-                        <Check className="w-3.5 h-3.5" aria-label={t("columnMapper.ariaLabels.validRow")} />
+                      <span className="text-green-600 inline-flex" title={`${row.lat}, ${row.lng}`}>
+                        <Check
+                          className="w-3.5 h-3.5"
+                          aria-label={t('columnMapper.ariaLabels.validRow')}
+                        />
                       </span>
                     ) : (
                       <span
@@ -258,10 +237,7 @@ export default function ColumnMapper({
               ))}
               {effectiveData.rows.length > 5 && (
                 <tr>
-                  <td
-                    colSpan={5}
-                    className="py-2 text-center text-xs text-gray-400"
-                  >
+                  <td colSpan={5} className="py-2 text-center text-xs text-gray-400">
                     ... y {effectiveData.rows.length - 5} filas más
                   </td>
                 </tr>
@@ -282,9 +258,7 @@ export default function ColumnMapper({
               {validCount} ubicaciones válidas de {effectiveData.rows.length}
             </span>
           ) : (
-            <span className="text-amber-600">
-              Selecciona las 3 columnas para continuar
-            </span>
+            <span className="text-amber-600">Selecciona las 3 columnas para continuar</span>
           )}
         </div>
         <button
